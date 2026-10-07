@@ -1,0 +1,79 @@
+"""Exercise the real stdio transport. --create also creates a fresh native test part."""
+import argparse
+import asyncio
+import json
+from pathlib import Path
+import sys
+
+from mcp import Client
+from mcp.client.stdio import StdioServerParameters
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+async def main(create: bool, simple: bool, classic: bool):
+    params = StdioServerParameters(command=sys.executable, args=[str(ROOT / "server.py")], cwd=ROOT)
+    report = {"transport": "stdio", "client_mode": "legacy" if classic else "auto"}
+    async with Client(params, mode="legacy" if classic else "auto", read_timeout_seconds=60) as client:
+        report["protocol_version"] = client.protocol_version
+        tools = await client.list_tools()
+        report["tools"] = [t.name for t in tools.tools]
+        assert len(report["tools"]) == 31, report["tools"]
+        assert {"creo_execute_plan","creo_create_sketch","creo_extrude","creo_revolve","creo_hole","creo_dimension_pattern"} <= set(report["tools"]), report
+        capabilities = await client.call_tool("creo_capabilities", {})
+        assert not capabilities.is_error, capabilities
+        report["server"] = {key: capabilities.structured_content[key] for key in ("name", "version")}
+        assert report["server"] == {"name": "MCP_CREO_MechDog", "version": "0.2.0"}, report["server"]
+        environment = await client.call_tool("creo_check_environment", {})
+        assert not environment.is_error, environment
+        report["environment"] = environment.structured_content
+        assert report["environment"]["ready_to_build"], report["environment"]
+        status = await client.call_tool("creo_session_status", {})
+        assert not status.is_error, status
+        report["session"] = status.structured_content
+        assert report["session"]["connected"], report["session"]
+        print(json.dumps({"tools": report["tools"], "session": report["session"]}, ensure_ascii=False), flush=True)
+        invalid = await client.call_tool("creo_create_plate", {"length":80,"width":60,"thickness":20,"holes":[{"x":40,"y":0,"diameter":8}]})
+        assert invalid.is_error, "Invalid geometry must be rejected before submitting a native job"
+        report["invalid_geometry_rejected"] = True
+        if create:
+            assert report["session"]["connected"], report["session"]
+            spec = {"length":42,"width":30,"thickness":6,"corner_radius":0,"holes":[]} if simple else {
+                "length":100,"width":70,"thickness":12,"corner_radius":4,
+                "holes":[{"x":x,"y":y,"diameter":6} for x,y in [(-35,-20),(35,-20),(35,20),(-35,20)]] + [{"x":0,"y":0,"diameter":10}]
+            }
+            created = await client.call_tool("creo_create_plate", spec)
+            assert not created.is_error, created
+            job_id = created.structured_content["job_id"]
+            print(f"job_id={job_id}", flush=True)
+            stage = None
+            for _ in range(150):
+                result = await client.call_tool("creo_get_job", {"job_id":job_id})
+                assert not result.is_error, result
+                job = result.structured_content
+                state = (job["status"], job.get("stage"))
+                if state != stage:
+                    print(f"progress={state}", flush=True)
+                    stage = state
+                if job["status"] in ("succeeded","failed","unknown_outcome"):
+                    report["job"] = job
+                    break
+                await asyncio.sleep(2)
+            else:
+                raise TimeoutError(f"Job is still running: {job_id}; do not submit a duplicate")
+            (ROOT / "build" / ("mcp_simple_test.json" if simple else "mcp_integration_test.json")).write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding="utf-8")
+            assert job["status"] == "succeeded", json.dumps(job,ensure_ascii=False,indent=2)
+            assert job["result"]["saved_file_reloaded_and_verified"]
+            print(json.dumps(job,ensure_ascii=False,indent=2),flush=True)
+        else:
+            (ROOT / "build/mcp_protocol_test.json").write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding="utf-8")
+    return report
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--create", action="store_true")
+    parser.add_argument("--simple", action="store_true")
+    parser.add_argument("--classic", action="store_true")
+    args = parser.parse_args()
+    asyncio.run(main(args.create,args.simple,args.classic))
