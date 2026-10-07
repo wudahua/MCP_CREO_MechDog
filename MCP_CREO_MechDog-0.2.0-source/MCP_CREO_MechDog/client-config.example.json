@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "MCP_CREO_MechDog": {
-      "command": "C:\\MCP_CREO_MechDog\\.venv\\Scripts\\python.exe",
-      "args": ["C:\\MCP_CREO_MechDog\\server.py"]
-    }
-  }
-}
