@@ -1,0 +1,13 @@
+{
+  "length": 80,
+  "width": 60,
+  "thickness": 20,
+  "corner_radius": 5,
+  "holes": [
+    {"x": -30, "y": -20, "diameter": 8},
+    {"x": 30, "y": -20, "diameter": 8},
+    {"x": 30, "y": 20, "diameter": 8},
+    {"x": -30, "y": 20, "diameter": 8},
+    {"x": 0, "y": 0, "diameter": 10}
+  ]
+}

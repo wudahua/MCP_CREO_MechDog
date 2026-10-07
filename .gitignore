@@ -1,0 +1,15 @@
+.venv/
+.tmp/
+__pycache__/
+build/
+jobs/
+*.lock
+*.log
+
+models/
+config.json
+client-config.json
+native/constants.inc
+*.zip
+*.sha256
+.pytest_cache/

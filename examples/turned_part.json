@@ -1,0 +1,140 @@
+{
+  "operations": [
+    {
+      "op": "sketch",
+      "label": "turn_profile",
+      "plane": "XZ",
+      "entities": [
+        {
+          "type": "polyline",
+          "name": "section",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              12,
+              0
+            ],
+            [
+              12,
+              6
+            ],
+            [
+              8,
+              6
+            ],
+            [
+              8,
+              30
+            ],
+            [
+              0,
+              30
+            ]
+          ],
+          "closed": true
+        },
+        {
+          "type": "centerline",
+          "name": "axis",
+          "start": [
+            0,
+            -5
+          ],
+          "end": [
+            0,
+            35
+          ]
+        }
+      ]
+    },
+    {
+      "op": "revolve",
+      "label": "turn",
+      "sketch": "turn_profile",
+      "angle": 360
+    },
+    {
+      "op": "hole",
+      "label": "bore",
+      "diameter": 6,
+      "placement": {
+        "kind": "plane",
+        "axis": "z",
+        "offset": 30
+      },
+      "reference1": {
+        "kind": "datum_plane",
+        "axis": "x"
+      },
+      "reference2": {
+        "kind": "datum_plane",
+        "axis": "y"
+      }
+    },
+    {
+      "op": "hole",
+      "label": "blind",
+      "diameter": 2,
+      "depth": 5,
+      "placement": {
+        "kind": "plane",
+        "axis": "z",
+        "offset": 30
+      },
+      "reference1": {
+        "kind": "datum_plane",
+        "axis": "x"
+      },
+      "reference2": {
+        "kind": "datum_plane",
+        "axis": "y"
+      },
+      "offset1": 5
+    },
+    {
+      "op": "sketch",
+      "label": "groove_profile",
+      "plane": "XZ",
+      "entities": [
+        {
+          "type": "rectangle",
+          "name": "groove",
+          "min": [
+            6,
+            16
+          ],
+          "max": [
+            10,
+            20
+          ]
+        },
+        {
+          "type": "centerline",
+          "name": "axis",
+          "start": [
+            0,
+            0
+          ],
+          "end": [
+            0,
+            30
+          ]
+        }
+      ]
+    },
+    {
+      "op": "revolve",
+      "label": "groove",
+      "sketch": "groove_profile",
+      "mode": "cut",
+      "angle": 360
+    }
+  ],
+  "assertions": {
+    "volume_mm3": 6324.026011676254,
+    "require_solid": true
+  }
+}
