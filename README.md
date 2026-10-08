@@ -1,10 +1,12 @@
-# MCP_CREO_MechDog 0.2.0
+# MCP_CREO_MechDog 0.21
 
 本地 Windows MCP 服务，连接已打开的 Creo Parametric 10，通过官方 C/C++ Toolkit 创建、查询和修改**原生参数化特征**。建模由任意支持的草图轮廓及顺序特征组成：新建零件 → 草图 → 拉伸/旋转 → 切除/孔 → 后续特征。原先的底板接口保留为快捷工具。
 
-服务有 **31 个工具**，使用官方 Python MCP SDK 2.3.0、stdio 传输。采用 [MIT 许可证](LICENSE)，发布形式为源码安装版：每位使用者在自己的 Windows 电脑上安装依赖并编译 Toolkit 执行器，由本地 AI 客户端调用。
+**本版为源码预发布候选版，尚未完成所有 Creo 操作的覆盖。** 服务注册 **47 个工具，其中 46 个启用、放样接口当前禁用**。使用官方 Python MCP SDK 2.3.0、stdio 传输，采用 [MIT 许可证](LICENSE)。每位使用者在自己的 Windows 电脑上安装依赖并编译 Toolkit 执行器，由本地 AI 客户端调用。
 
-已在 Windows x64、Creo 10.0.0.0、Python 3.12、Visual Studio 2022 C++ Build Tools 环境中完成 41 个成功的原生任务及 11 项输入验证测试。发布验证摘要见 [docs/validation.json](docs/validation.json)。这份摘要是开发环境的历史实测记录，不能代替使用者自己机器的许可与运行验证。
+0.21 的实机验证和失败记录见 [docs/validation.json](docs/validation.json)，支持范围见 [docs/COVERAGE_0.21.md](docs/COVERAGE_0.21.md)。测试环境为 Windows x64、Creo 10.0.0.0、Python 3.12、Visual Studio 2022 C++ Build Tools。0.2.0 的 41 个成功任务及 11 项输入验证单独保留为历史记录。这些摘要不能代替使用者自己机器的许可与运行验证。
+
+本机 0.21 验证通过 20 项输入校验、64 个成功原生任务，其中 56 个修改任务通过保存重载。只读查询/导出不计入修改任务；禁用放样的拒绝行为不计为建模成功。
 
 ## 安装
 
@@ -34,10 +36,14 @@
 | 孔 | `creo_hole`：原生直孔，平面定位，两条参考和有符号定位尺寸，通孔或指定深度盲孔 |
 | 修饰特征 | `creo_round`、`creo_chamfer`、`creo_shell`：恒定半径圆角、等距倒角、恒定厚度抽壳；用查询得到的边/面 ID 选引用 |
 | 基准与重复 | `creo_datum_plane`、`creo_datum_axis`、`creo_dimension_pattern`：偏移/角度基准面、基准轴、一方向尺寸阵列 |
+| 镜像、扫掠、拔模 | `creo_mirror`：整体/几何镜像；`creo_sweep`：恒定截面及命名截面尺寸；`creo_draft`：恒角、不分割拔模 |
+| 钣金 | `creo_new_sheetmetal`、`creo_sheetmetal_wall`、`creo_sheetmetal_flange`、`creo_sheetmetal_unbend`、`creo_sheetmetal_bend_back`、`creo_sheetmetal_flat_pattern`：首壁、弯曲法兰、展开、折弯回去和平展；保留原生特征树 |
+| 装配 | `creo_new_assembly`、`creo_assemble_component`、`creo_component_placement`、`creo_component_constraints`、`creo_remove_component`、`creo_list_components`：组件版本副本、定位、约束、删除和查询 |
+| 未完成的保留接口 | `creo_loft`：任务入队前明确拒绝，不作为可用功能 |
 | 参数化修改 | `creo_set_dimensions`、`creo_set_sketch_dimensions`、`creo_set_parameters`、`creo_set_relations`：编辑特征尺寸/草图尺寸、零件参数、简单算术关系式，重新生成依赖特征 |
 | 特征树与拓扑查询 | `creo_inspect_model`、`creo_refresh_model`、`creo_list_models`：特征 ID、名称、类型、状态、尺寸、草图尺寸、几何引用 ID、面/边/实体、体积、包围盒、参数和版本 |
 | 高级原生特征接口 | `creo_create_feature_tree`、`creo_lookup_constants`、`creo_dump_feature_tree`：按照本机 SDK 的 Element Tree 结构创建特征，查询常量、导出特征 XML |
-| 保存与导出 | `creo_regenerate`、`creo_save_model`、`creo_export_model`：保存原生 PRT，导出 STEP、IGES、STL、JPEG |
+| 保存与导出 | `creo_regenerate`、`creo_save_model`、`creo_export_model`：保存原生 PRT/ASM，导出 STEP、IGES、STL、JPEG；装配的所有导出格式组合未验证 |
 | 环境与任务 | `creo_check_environment`、`creo_session_status`、`creo_capabilities`、`creo_get_job`、`creo_list_jobs`：环境、实际 Toolkit 连接、能力和任务进度 |
 | 快捷底板 | `creo_create_plate`：兼容此前矩形底板、角圆角、独立通孔接口 |
 
@@ -82,7 +88,7 @@
 
 随后 `creo_set_sketch_dimensions` 使用 `sketch:"profile", values:{"diameter":24}` 修改直径；拉伸实体随之更新。`creo_set_dimensions` 接收查询结果中的模型尺寸 ID，例如 `values:[{"id":18,"value":40}]`；实际 ID 由 Creo 生成。
 
-完整案例在 `examples/bracket.json`、`examples/turned_part.json`、`examples/shell.json`。尺寸阵列先建立引导孔，再查询其定位尺寸 ID，调用 `creo_dimension_pattern`，指定包含引导成员的总数量和每次增量。
+完整案例在 `examples/`；0.21 新增镜像、扫掠、拔模和钣金首壁计划。装配调用步骤见 [docs/MODELING_0.21.md](docs/MODELING_0.21.md)。尺寸阵列先建立引导孔，再查询其定位尺寸 ID，调用 `creo_dimension_pattern`，指定包含引导成员的总数量和每次增量。
 
 ## 坐标、引用与参数
 
@@ -118,7 +124,7 @@
 
 ## 验证、恢复与当前边界
 
-每次修改成功后，执行器检查单位、所有原生特征的活动/完整状态及实体状态；保存 `.prt.N`，擦除该 MCP 零件的内存模型，从实际保存文件重载、重新生成，再对比特征 ID/类型/名称、尺寸值、实体数量、体积和参数。可额外提供 `require_solid`、`volume_mm3`、`volume_tolerance` 断言。体积计算临时使用密度 1，不修改材料。
+每次修改成功后，执行器检查单位、所有原生特征的活动/完整状态及实体状态；保存 `.prt.N` 或 `.asm.N`，擦除该 MCP 零件的内存模型，从实际保存文件重载、重新生成，再对比特征 ID/类型/名称、尺寸值、实体数量、体积和参数。可额外提供 `require_solid`、`volume_mm3`、`volume_tolerance` 断言。体积计算临时使用密度 1，不修改材料。
 
 `creo_inspect_model` 返回最近已验证的快照；人工在 Creo 修改后，用 `creo_refresh_model` 获取实况。实时查询不会替换已保存模型的基线，也不会保存或接受人工修改。已有模型修改前会检测模型与记录是否一致；因任务失败或人工修改而不一致时，不应盲目重复提交。
 
@@ -126,10 +132,12 @@
 
 目前高层工具覆盖上述常见实体特征，仍有明确范围：
 
-- 持续修改只支持本服务创建、登记的零件；未提供直接接管用户现有零件/装配的接口。
+- 持续修改只支持本服务创建、登记的零件、钣金模型和装配；未提供直接接管用户现有模型的接口。
 - 各类尺寸/约束的复杂组合、极端几何及外部人工修改的自动接管仍需后续扩展。
 - 孔为直孔，尚未封装螺纹、沉头、沉孔标准孔；倒角为等距，阵列为一方向尺寸阵列。
-- 镜像、扫掠、混合/放样、拔模、筋、复杂自由曲面、钣金、装配和工程图尚未封装高层工具。
+- 放样原型尚未通过验证，对应接口当前禁用。钣金已验证首壁、90° 法兰、高度编辑、展开、折弯回去和平展；其他形状和折弯规则未全部验证。
+- 镜像、扫掠、拔模、钣金首壁和装配具有明确范围；见覆盖表。筋、复杂自由曲面、工程图和专业模块等仍未封装高层工具。
+- 装配插入源模型的版本快照，源模型后续修改不更新组件；子装配复制尚未开放。
 - `creo_create_feature_tree` 可扩展符合本机 SDK 的特征结构，但无法保证所有 PTC 特征类型和选项均可创建。
 - 不承诺任意文字描述都自动成功。AI 需要规划有效的轮廓、基准、尺寸和特征顺序；无效几何由 Creo 返回错误。
 
@@ -145,9 +153,11 @@
 .\.venv\Scripts\python.exe tools\test_general.py
 .\.venv\Scripts\python.exe tools\test_extended.py
 .\.venv\Scripts\python.exe tools\test_guards.py
+.\.venv\Scripts\python.exe tools\test_v021.py
+.\.venv\Scripts\python.exe tools\test_unit.py
 ```
 
-除输入验证外，上述集成测试会实际连接 Creo 并创建或修改独立测试模型。日志位于任务 `native.log`/`runner.log`/`job.json` 和 `build/build.log`；证据在 `build/*integration_test.json`。保存目录较长时应缩短项目路径。
+除输入验证外，上述集成测试会实际连接 Creo 并创建或修改独立测试模型。`test_v021.py` 默认验证启用功能和禁用接口的拒绝行为；禁用接口的拒绝测试不是建模成功证明。日志位于任务 `native.log`/`runner.log`/`job.json` 和 `build/build.log`；证据在 `build/*integration_test.json`。保存目录较长时应缩短项目路径。
 
 实现依据：[PTC 草图特征 Element Tree 文档](https://support.ptc.com/help/creo_toolkit/protoolkit_plus/usascii/creo_toolkit/user_guide/Element_Tree_for_Sketched_Features.html)、本机 Creo 10 Toolkit 头文件与示例、[官方 MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk)。实际本机建模成功、保存重载成功的记录才证明该路径可用，SDK/许可环境文件存在本身不能证明许可可用。
 

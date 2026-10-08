@@ -61,7 +61,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -CreoRoot 'C
 
 打开并保持一个 Creo 10 会话。处理完登录、许可及其他模态对话框，然后让 AI：
 
-1. 调用 `creo_capabilities`，确认发现 31 个工具对应的服务能力。
+1. 调用 `creo_capabilities`，确认版本为 `0.21`，发现 47 个工具；其中放样保留接口当前禁用。先查看 `families` 和 `unavailable_operations`。
 2. 调用 `creo_check_environment`，确认 SDK、模板和编译器路径正确。
 3. 调用 `creo_session_status`，确认 `connected == true`。
 4. 提交一个新零件建模计划；只提交一次，使用 `creo_get_job` 查询任务进度。
@@ -88,3 +88,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -CreoRoot 'C
 | Creo 路径长度错误 | 将源码放入较短路径，并重新安装及生成客户端配置 |
 
 模型保存在 `models/` 或任务输出目录，任务记录位于 `jobs/`。迁移电脑或移动项目目录后重新运行安装脚本并更新客户端配置；已有模型与记录需要一起保留。`.venv/` 不应从另一台电脑直接复制。
+
+## 从 0.2.0 升级到 0.21
+
+停止 MCP 客户端中的服务并等待正在运行的建模任务结束。保留项目内 `config.json`、`models/`、`jobs/`，用 0.21 的公开源码更新代码及文档，重新运行安装脚本，再重启客户端服务。模型类型未记录的旧模型按零件处理；原有底板接口仍保留。
+
+0.21 是预发布候选版；放样仍未完成，不能作为支持所有 Creo 操作的稳定版。完整边界见 [COVERAGE_0.21.md](COVERAGE_0.21.md)。

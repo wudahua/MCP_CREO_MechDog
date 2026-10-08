@@ -4,8 +4,11 @@ from pathlib import Path
 from mcp import Client
 from mcp.client.stdio import StdioServerParameters
 ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT))
+from version import VERSION
 REPORT=ROOT/'build/extended_integration_test.json'
 report=json.loads(REPORT.read_text(encoding='utf-8')) if REPORT.exists() else {'cases':[], 'started_at':time.time()}
+if report.get('version')!=VERSION: report={'version':VERSION,'cases':[], 'started_at':time.time()}
 
 async def call(c,name,args):
     r=await c.call_tool(name,args)
@@ -173,13 +176,16 @@ async def case(c,which):
 
 async def main():
     names=sys.argv[1:] or ['shell','outward_shell','edges','pattern','curves','spline','thin','cut','pocket','relations','datum','constraints','oblique','partial','dimensions','directions','revolve_modes','export']
+    report['selected_cases']=names
     async with Client(StdioServerParameters(command=sys.executable,args=[str(ROOT/'server.py')],cwd=ROOT),read_timeout_seconds=60) as c:
         for name in names:
             try:
                 report.setdefault('failures',{}).pop(name,None)
                 await case(c,name)
+                report.setdefault('case_results',{})[name]=True
                 print('CASE_PASS='+name,flush=True)
             except Exception as e:
+                report.setdefault('case_results',{})[name]=False
                 print('CASE_FAIL='+name+' '+str(e),flush=True)
                 report.setdefault('failures',{})[name]=str(e)
     report['success']=not report.get('failures')

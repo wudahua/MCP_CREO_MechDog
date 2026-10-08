@@ -4,15 +4,17 @@ import hashlib
 from pathlib import Path
 import shutil
 import zipfile
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.2.0"
+sys.path.insert(0, str(ROOT))
+from version import VERSION
 NAME = "MCP_CREO_MechDog"
 
 
 def source_files():
     names = ("README.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "server.py", "bridge.py",
-             "generic_bridge.py", "schema.py", "config.example.json", "client-config.example.json",
+             "generic_bridge.py", "schema.py", "version.py", "capabilities.py", "config.example.json", "client-config.example.json",
              "requirements.txt", "requirements.lock.txt", "setup.ps1", ".gitignore")
     files = [ROOT / name for name in names]
     for directory, extensions in {"native": {".cpp", ".hpp", ".h"}, "tools": {".py"},

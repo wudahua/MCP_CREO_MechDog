@@ -215,6 +215,123 @@ class PatternOp(StrictModel):
         if abs(self.increment)<1e-9: raise ValueError("Pattern increment must be nonzero")
         return self
 
+class MirrorOp(StrictModel):
+    op: Literal["mirror"]
+    label: Label
+    plane: dict[str,Any]
+    references: list[dict[str,Any]] = []
+    keep_original: bool = True
+    @model_validator(mode="after")
+    def geometry_references(self):
+        allowed={"curve","axis","quilt","csys","point","part","datum_feature","datum_axis_feature","datum_plane"}
+        if any(r.get("kind") not in allowed for r in self.references): raise ValueError("Toolkit mirror supports geometry/part references, not feature-tree selections")
+        if any(r.get("kind")=="part" for r in self.references) and len(self.references)!=1: raise ValueError("Whole-part mirror cannot mix reference types")
+        return self
+
+class SweepOp(StrictModel):
+    op: Literal["sweep"]
+    label: Label
+    trajectory: str | int | list[dict[str,Any]]
+    profile: Annotated[list[Entity],Field(min_length=1,max_length=500)]
+    dimensions: list[SketchDimension] = []
+    constraints: list[SketchConstraint] = []
+    mode: Literal["add","cut","surface"] = "add"
+    new_body: bool = False
+    thin: float | None = Field(default=None,gt=0)
+    capped: bool = False
+    @model_validator(mode="after")
+    def profile_valid(self):
+        SketchOp(label=self.label,op="sketch",entities=self.profile,dimensions=self.dimensions,constraints=self.constraints)
+        if isinstance(self.trajectory,list) and not self.trajectory: raise ValueError("Sweep trajectory cannot be empty")
+        return self
+
+class LoftOp(StrictModel):
+    op: Literal["loft"]
+    label: Label
+    sections: Annotated[list[str | int],Field(min_length=2,max_length=20)]
+    mode: Literal["add","cut","surface"] = "add"
+    interpolation: Literal["straight","smooth"] = "straight"
+    new_body: bool = False
+    @model_validator(mode="after")
+    def unique_sections(self):
+        if len(self.sections)!=len(set(self.sections)): raise ValueError("Loft sections must be distinct")
+        return self
+
+class DraftOp(StrictModel):
+    op: Literal["draft"]
+    label: Label
+    surfaces: Annotated[list[dict[str,Any]],Field(min_length=1,max_length=200)]
+    neutral_plane: dict[str,Any]
+    pull_direction: dict[str,Any] | None = None
+    angle: Annotated[float,Field(gt=-85,lt=85)]
+    flip: bool = False
+    include_tangent: bool = False
+    @model_validator(mode="after")
+    def nonzero_angle(self):
+        if abs(self.angle)<1e-9: raise ValueError("Draft angle must be nonzero")
+        return self
+
+class SheetmetalWallOp(StrictModel):
+    op: Literal["sheetmetal_wall"]
+    label: Label
+    sketch: str | int
+    depth: Positive
+    thickness: Positive
+    direction: Literal["positive","negative"] = "positive"
+
+class SheetmetalFlangeOp(StrictModel):
+    op: Literal["sheetmetal_flange"]
+    label: Label
+    edge: dict[str,Any]
+    height: Positive
+    angle: Annotated[float,Field(gt=0,lt=180)] = 90
+    radius: Positive = 1
+    flip: bool = False
+    y_factor: Annotated[float,Field(gt=0,le=1)] = 0.5
+
+class SheetmetalUnbendOp(StrictModel):
+    op: Literal["sheetmetal_unbend","sheetmetal_flat_pattern","sheetmetal_bend_back"]
+    label: Label
+    fixed_surface: dict[str,Any]
+    references: list[dict[str,Any]] = []
+
+class AssemblyConstraint(StrictModel):
+    type: Literal["mate","align","mate_offset","align_offset","insert","csys"]
+    assembly_reference: dict[str,Any]
+    component_reference: dict[str,Any]
+    offset: float = 0
+    assembly_side: Literal["yellow","red"] = "yellow"
+    component_side: Literal["yellow","red"] = "yellow"
+
+class AssembleOp(StrictModel):
+    op: Literal["assemble_component"]
+    label: Label
+    source_model_id: Annotated[str,Field(pattern=r"^[a-f0-9]{32}$")]
+    translation: Point3 = [0,0,0]
+    rotation: Point3 = [0,0,0]
+    placement: Literal["fixed","default","constraints"] = "fixed"
+    constraints: list[AssemblyConstraint] = []
+    @model_validator(mode="after")
+    def placement_valid(self):
+        if self.placement=="constraints" and not self.constraints: raise ValueError("Constraint placement needs constraints")
+        if self.placement!="constraints" and self.constraints: raise ValueError("Use placement=constraints when providing constraints")
+        return self
+
+class ComponentPlacementOp(StrictModel):
+    op: Literal["component_placement"]
+    component: str | int
+    translation: Point3 = [0,0,0]
+    rotation: Point3 = [0,0,0]
+
+class ComponentConstraintsOp(StrictModel):
+    op: Literal["component_constraints"]
+    component: str | int
+    constraints: Annotated[list[AssemblyConstraint],Field(min_length=1,max_length=20)]
+
+class RemoveComponentOp(StrictModel):
+    op: Literal["remove_component"]
+    component: str | int
+
 class GenericFeatureOp(StrictModel):
     op: Literal["feature_tree"]
     label: Label
@@ -258,7 +375,7 @@ class DumpTreeOp(StrictModel):
     op: Literal["dump_tree"]
     feature: str | int
 
-Operation=Annotated[Union[SketchOp,ExtrudeOp,RevolveOp,HoleOp,RoundOp,PlaneOp,AxisOp,ShellOp,DimensionsOp,SketchDimensionsOp,ParametersOp,RelationsOp,PatternOp,GenericFeatureOp,SimpleOp,ExportOp,DumpTreeOp],Field(discriminator="op")]
+Operation=Annotated[Union[SketchOp,ExtrudeOp,RevolveOp,HoleOp,RoundOp,PlaneOp,AxisOp,ShellOp,DimensionsOp,SketchDimensionsOp,ParametersOp,RelationsOp,PatternOp,MirrorOp,SweepOp,LoftOp,DraftOp,SheetmetalWallOp,SheetmetalFlangeOp,SheetmetalUnbendOp,AssembleOp,ComponentPlacementOp,ComponentConstraintsOp,RemoveComponentOp,GenericFeatureOp,SimpleOp,ExportOp,DumpTreeOp],Field(discriminator="op")]
 OPERATIONS=TypeAdapter(list[Operation])
 
 def validate_operations(operations: list[dict]) -> list[dict]:
@@ -280,17 +397,17 @@ def validate_operations(operations: list[dict]) -> list[dict]:
         if isinstance(x,dict):
             if 'kind' in x:
                 k=x['kind']
-                if k in ('surface','edge','axis','curve','dimension'):
+                if k in ('surface','edge','axis','curve','dimension','csys','point','quilt'):
                     if type(x.get('id')) is not int or x['id']<0: raise ValueError("Model item reference requires a nonnegative integer id")
                 elif k=='feature':
                     if ('label' in x)==('id' in x): raise ValueError("Feature reference requires one label or id")
-                elif k in ('datum_feature','datum_axis_feature'):
+                elif k in ('datum_feature','datum_axis_feature','sketch_curves'):
                     if not isinstance(x.get('label'),str): raise ValueError("Datum reference requires a label")
                 elif k in ('plane','datum_plane'):
                     if 'normal' in x:
                         if not isinstance(x['normal'],list) or len(x['normal'])!=3 or sum(v*v for v in x['normal'])<1e-12: raise ValueError("Plane normal requires a nonzero 3D vector")
                     elif x.get('axis','z') not in ('x','y','z'): raise ValueError("Plane axis must be x, y or z")
-                elif k!='body': raise ValueError(f"Unsupported model reference kind: {k}")
+                elif k not in ('body','part'): raise ValueError(f"Unsupported model reference kind: {k}")
             for v in x.values(): references(v)
     references(dumped)
     return dumped

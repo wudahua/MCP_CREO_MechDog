@@ -22,6 +22,18 @@
 #include <ProPart.h>
 #include <ProCollect.h>
 #include <ProCrvcollection.h>
+#include <ProMirror.h>
+#include <ProSweep.h>
+#include <ProDraft.h>
+#include <ProSrfcollection.h>
+#include <ProSmtFlangeWall.h>
+#include <ProSmtFlatWall.h>
+#include <ProRegularUnbend.h>
+#include <ProSmtBendBack.h>
+#include <ProAsmcomp.h>
+#include <ProAsmcomppath.h>
+#include <ProSheetmetal.h>
+#include <ProSmtDrvSurf.h>
 #include "constants.inc"
 using J=nlohmann::json;
 using V=std::array<double,3>;
@@ -58,20 +70,24 @@ static ProError inspect_edge(ProEdge edge,ProError status,ProAppData){
 static ProError inspect_contour(ProContour contour,ProError status,ProAppData data){if(status)return PRO_TK_NO_ERROR;return ProContourEdgeVisit((ProSurface)data,contour,inspect_edge,nullptr,nullptr);}
 static ProError inspect_surface(ProSurface surface,ProError status,ProAppData body_id){
  if(status)return PRO_TK_NO_ERROR;ProGeomitemdata* data=nullptr;CK(ProSurfaceDataGet(surface,&data));auto p=data->data.p_surface_data;int id;CK(ProSurfaceIdGet(surface,&id));J item={{"id",id},{"body_id",(int)(intptr_t)body_id}};
- if(p){item["type"]=(int)p->type;item["bbox"]=J::array({xyz(p->xyz_min),xyz(p->xyz_max)});if(p->type==PRO_SRF_PLANE){item["normal"]=xyz(p->srf_shape.plane.e3);item["origin"]=xyz(p->srf_shape.plane.origin);}if(p->type==PRO_SRF_CYL){item["radius"]=p->srf_shape.cylinder.radius;item["origin"]=xyz(p->srf_shape.cylinder.origin);item["axis"]=xyz(p->srf_shape.cylinder.e3);}}gsurfaces.push_back(item);ProGeomitemdataFree(&data);CK(ProSurfaceContourVisit(surface,inspect_contour,nullptr,surface));return PRO_TK_NO_ERROR;
+ if(p){item["type"]=(int)p->type;item["bbox"]=J::array({xyz(p->xyz_min),xyz(p->xyz_max)});if(p->type==PRO_SRF_PLANE){item["normal"]=xyz(p->srf_shape.plane.e3);item["origin"]=xyz(p->srf_shape.plane.origin);}if(p->type==PRO_SRF_CYL){item["radius"]=p->srf_shape.cylinder.radius;item["origin"]=xyz(p->srf_shape.cylinder.origin);item["axis"]=xyz(p->srf_shape.cylinder.e3);}}ProSmtSurfType st;if(!ProSmtSurfaceTypeGet((ProPart)board,surface,&st))item["sheetmetal_type"]=(int)st;gsurfaces.push_back(item);ProGeomitemdataFree(&data);CK(ProSurfaceContourVisit(surface,inspect_contour,nullptr,surface));return PRO_TK_NO_ERROR;
 }
 static ProError parameter_cb(ProParameter* param,ProError status,ProAppData data){if(status)return PRO_TK_NO_ERROR;ProParamvalue value;ProUnititem unit;J* params=(J*)data;if(!ProParameterValueWithUnitsGet(param,&value,&unit)){J v;if(value.type==PRO_PARAM_DOUBLE)v=value.value.d_val;else if(value.type==PRO_PARAM_INTEGER)v=value.value.i_val;else if(value.type==PRO_PARAM_BOOLEAN)v=value.value.l_val!=0;else if(value.type==PRO_PARAM_STRING)v=utf8(value.value.s_val);else return PRO_TK_NO_ERROR;(*params)[utf8(param->id)]={ {"value",v},{"type",(int)value.type} };}return PRO_TK_NO_ERROR;}
+static J assembly_inspection();
+static void verify_saved(const J& before,const J& after);
+static bool assembly_model(){ProMdlType t;CK(ProMdlTypeGet(board,&t));return t==PRO_MDL_ASSEMBLY;}
 static J inspection(bool require_healthy=true){
  gfeatures=J::array();gsurfaces=J::array();gedges=J::array();visited_edges.clear();CK(ProSolidFeatVisit((ProSolid)board,inspect_feature,nullptr,nullptr));bool healthy=true;for(auto& f:gfeatures)if(f["incomplete"].get<bool>()||f["status"].get<int>()!=PRO_FEAT_ACTIVE)healthy=false;
- if(require_healthy&&!healthy)throw std::runtime_error("Regeneration produced a failed, suppressed or incomplete feature");
- J bodies=J::array();ProSolidBody* list=nullptr;CK(ProSolidBodiesCollect((ProSolid)board,&list));int n=0;CK(ProArraySizeGet((ProArray)list,&n));bool solid=false;
- for(int i=0;i<n;i++){ProSolidBodyState state;CK(ProSolidBodyStateGet(&list[i],&state));J b={{"id",list[i].id},{"state",(int)state}};if(state==PRO_BODY_STATE_ACTIVE){solid=true;Pro3dPnt bounds[2];CK(ProSolidBodyOutlineGet(&list[i],bounds));b["bbox"]=J::array({xyz(bounds[0]),xyz(bounds[1])});CK(ProSolidBodySurfaceVisit(&list[i],inspect_surface,(ProAppData)(intptr_t)list[i].id));}bodies.push_back(b);}ProArrayFree((ProArray*)&list);
+ if(require_healthy&&!healthy){log("UNHEALTHY_FEATURES=%s\n",gfeatures.dump().c_str());throw std::runtime_error("Regeneration produced a failed, suppressed or incomplete feature");}
+ J bodies=J::array();bool isasm=assembly_model(),solid=false;ProSolidBody* list=nullptr;int n=0;if(!isasm){CK(ProSolidBodiesCollect((ProSolid)board,&list));CK(ProArraySizeGet((ProArray)list,&n));}
+ for(int i=0;i<n;i++){ProSolidBodyState state;CK(ProSolidBodyStateGet(&list[i],&state));J b={{"id",list[i].id},{"state",(int)state}};if(state==PRO_BODY_STATE_ACTIVE){solid=true;Pro3dPnt bounds[2];CK(ProSolidBodyOutlineGet(&list[i],bounds));b["bbox"]=J::array({xyz(bounds[0]),xyz(bounds[1])});CK(ProSolidBodySurfaceVisit(&list[i],inspect_surface,(ProAppData)(intptr_t)list[i].id));}bodies.push_back(b);}if(list)ProArrayFree((ProArray*)&list);if(isasm)for(auto f:gfeatures)if(f["type"].get<int>()==PRO_FEAT_COMPONENT)solid=true;
  J result={{"features",gfeatures},{"surfaces",gsurfaces},{"edges",gedges},{"bodies",bodies},{"healthy",healthy},{"units","mm"},{"has_solid",solid},{"volume_mm3",nullptr}};
+ result["model_type"]=isasm?"assembly":"part";if(isasm)result["components"]=assembly_inspection();else{ProMdlsubtype subtype;if(!ProMdlSubtypeGet(board,&subtype)&&subtype==PROMDLSTYPE_PART_SHEETMETAL)result["model_type"]="sheetmetal";}
  if(solid){ProMassProperty mp;ProError e=ProSolidMassPropertyWithDensityGet((ProSolid)board,nullptr,PRO_MP_DENS_USE_ALWAYS,1,&mp);result["volume_query_code"]=e;if(!e)result["volume_mm3"]=mp.volume;}
  planes.clear();CK(ProSolidFeatVisit((ProSolid)board,datum_cb,nullptr,nullptr));J ds=J::array();for(auto p:planes)ds.push_back({{"id",p.id},{"normal",xyz(p.n)},{"origin",xyz(p.o)}});result["datum_planes"]=ds;ProModelitem owner;CK(ProMdlToModelitem(board,&owner));J params=J::object();ProParameterVisit(&owner,nullptr,parameter_cb,&params);result["parameters"]=params;return result;
 }
 static ProSelection resolve(const J& r){
- std::string kind=r.at("kind");if(kind=="feature")return selection(feature_id(r.contains("label")?r["label"]:r["id"]),PRO_FEATURE);
+ std::string kind=r.at("kind");if(kind=="part"){ProModelitem mi;CK(ProMdlToModelitem(board,&mi));ProSelection s;CK(ProSelectionAlloc(nullptr,&mi,&s));return s;}if(kind=="csys"||kind=="point"||kind=="quilt")return selection(r.at("id"),kind=="csys"?PRO_CSYS:kind=="point"?PRO_POINT:PRO_QUILT);if(kind=="feature")return selection(feature_id(r.contains("label")?r["label"]:r["id"]),PRO_FEATURE);
  if(kind=="body"){int id=r.value("id",-1);if(id<0){ProSolidBody b;CK(ProSolidDefaultBodyGet((ProSolid)board,&b));id=b.id;}return selection(id,PRO_BODY);}
  if(kind=="surface"||kind=="edge"||kind=="axis"||kind=="curve"||kind=="dimension"){int id=r.at("id");return selection(id,kind=="surface"?PRO_SURFACE:kind=="edge"?PRO_EDGE:kind=="axis"?PRO_AXIS:kind=="curve"?PRO_CURVE:PRO_DIMENSION);}
  if(kind=="plane"||kind=="datum_plane"){
@@ -103,7 +119,7 @@ static Frame sketch_frame(const J& op){
  double best=10;f.orientation=-1;planes.clear();CK(ProSolidFeatVisit((ProSolid)board,datum_cb,nullptr,nullptr));for(auto p:planes){V normal={p.n[0],p.n[1],p.n[2]};double d=fabs(dot(f.n,normal));if(d<best&&d<0.95){best=d;f.orientation=p.id;}}if(f.orientation<0)throw std::runtime_error("No sketch orientation reference");return f;
 }
 static ProSectionPointType point_type(const std::string& s){return s=="start"?PRO_ENT_START:s=="end"?PRO_ENT_END:s=="center"?PRO_ENT_CENTER:PRO_ENT_WHOLE;}
-static void redefine(ProFeature* f,ProElement root){ProFeatureCreateOptions* options=nullptr;CK(ProArrayAlloc(1,sizeof(ProFeatureCreateOptions),1,(ProArray*)&options));options[0]=PRO_FEAT_CR_DEFINE_MISS_ELEMS;ProErrorlist es={};ProError e=ProFeatureWithoptionsRedefine(nullptr,f,root,options,PRO_REGEN_NO_FLAGS,&es);errors(es);ProArrayFree((ProArray*)&options);check(e,"CompleteFeature");}
+static void redefine(ProFeature* f,ProElement root){ProFeatureCreateOptions* options=nullptr;CK(ProArrayAlloc(1,sizeof(ProFeatureCreateOptions),1,(ProArray*)&options));options[0]=PRO_FEAT_CR_NO_OPTS;ProErrorlist es={};ProError e=ProFeatureWithoptionsRedefine(nullptr,f,root,options,PRO_REGEN_NO_FLAGS,&es);errors(es);ProArrayFree((ProArray*)&options);check(e,"CompleteFeature");}
 static void sketch(const J& op){
  Frame frame=sketch_frame(op);ProSelection plane_ref=selection(frame.surface,PRO_SURFACE),orient=selection(frame.orientation,PRO_SURFACE);ProElement root=node(nullptr,PRO_E_FEATURE_TREE);integer(root,PRO_E_FEATURE_TYPE,PRO_FEAT_CURVE);integer(root,PRO_E_CURVE_TYPE,PRO_CURVE_TYPE_SKETCHED);std::wstring label=wide(op.at("label"));text(root,PRO_E_STD_FEATURE_NAME,label.c_str());ProElement setup=node(node(root,PRO_E_STD_SECTION),PRO_E_STD_SEC_SETUP_PLANE);ref(setup,PRO_E_STD_SEC_PLANE,plane_ref);integer(setup,PRO_E_STD_SEC_PLANE_VIEW_DIR,PRO_SEC_VIEW_DIR_SIDE_ONE);integer(setup,PRO_E_STD_SEC_PLANE_ORIENT_DIR,PRO_SEC_ORIENT_DIR_UP);ref(setup,PRO_E_STD_SEC_PLANE_ORIENT_REF,orient);
  ProFeature f=create(root,PRO_FEAT_CR_INCOMPLETE_FEAT);CK(ProElementFree(&root));CK(ProFeatureElemtreeExtract(&f,nullptr,PRO_FEAT_EXTRACT_NO_OPTS,&root));ProElement sk=get(root,{PRO_E_STD_SECTION,PRO_E_SKETCHER});ProSection section=nullptr;CK(ProElementSpecialvalueGet(sk,nullptr,(ProAppData*)&section));int projected;CK(ProSectionEntityFromProjection(section,orient,&projected));
@@ -140,7 +156,7 @@ static void extrude_or_revolve(const J& op,bool revolve){
   if(op.contains("axis")){integer(root,PRO_E_REVOLVE_AXIS_OPT,PRO_REV_AXIS_EXT_REF);ProSelection a=resolve(op["axis"]);ref(root,PRO_E_REVOLVE_AXIS,a);ProSelectionFree(&a);}else integer(root,PRO_E_REVOLVE_AXIS_OPT,PRO_REV_AXIS_INT_REF);
   ProElement angles=node(root,PRO_E_REV_ANGLE),from=node(angles,PRO_E_REV_ANGLE_FROM),to=node(angles,PRO_E_REV_ANGLE_TO);integer(from,PRO_E_REV_ANGLE_FROM_TYPE,PRO_REV_ANG_FROM_NONE);integer(to,PRO_E_REV_ANGLE_TO_TYPE,direction=="symmetric"?PRO_REV_ANG_SYMMETRIC:PRO_REV_ANG_TO_ANGLE);real(to,PRO_E_REV_ANGLE_TO_VAL,op.value("angle",360.0));
  }else{ProElement dep=node(root,PRO_E_STD_EXT_DEPTH),from=node(dep,PRO_E_EXT_DEPTH_FROM),to=node(dep,PRO_E_EXT_DEPTH_TO);integer(from,PRO_E_EXT_DEPTH_FROM_TYPE,PRO_EXT_DEPTH_FROM_NONE);integer(to,PRO_E_EXT_DEPTH_TO_TYPE,op.value("depth_type","blind")=="through_all"?PRO_EXT_DEPTH_TO_ALL:direction=="symmetric"?PRO_EXT_DEPTH_SYMMETRIC:PRO_EXT_DEPTH_TO_BLIND);if(op.value("depth_type","blind")!="through_all")real(to,PRO_E_EXT_DEPTH_TO_VALUE,op.at("depth"));}
- ProFeature f=create(root);CK(ProElementFree(&root));remember(op,f);J state=inspection();int active=0;for(auto b:state["bodies"])if(b["state"].get<int>()==PRO_BODY_STATE_ACTIVE)active++;if(active==1)remove_empty_body();
+ ProFeature f=create(root);CK(ProElementFree(&root));remember(op,f);J state=inspection();int active=0;for(auto b:state["bodies"])if(b["state"].get<int>()==PRO_BODY_STATE_ACTIVE)active++;if(active==1&&!op.value("skip_empty_body_cleanup",false))remove_empty_body();
 }
 static void generic_hole(const J& op){
  ProElement root=node(nullptr,PRO_E_FEATURE_TREE);integer(root,PRO_E_FEATURE_TYPE,PRO_FEAT_HOLE);integer(root,PRO_E_FEATURE_FORM,PRO_HLE_TYPE_STRAIGHT);text(root,PRO_E_STD_FEATURE_NAME,wide(op.at("label")).c_str());ProElement com=node(root,PRO_E_HLE_COM);integer(com,PRO_E_HLE_TYPE_NEW,PRO_HLE_NEW_TYPE_STRAIGHT);integer(com,PRO_E_HLE_MAKE_LIGHTWT,PRO_HLE_REGULAR);real(com,PRO_E_DIAMETER,op.at("diameter"));ProElement dep=node(com,PRO_E_HOLE_STD_DEPTH);ProElement to=node(dep,PRO_E_HOLE_DEPTH_TO);integer(to,PRO_E_HOLE_DEPTH_TO_TYPE,op.contains("depth")?PRO_HLE_STRGHT_BLIND_DEPTH:PRO_HLE_STRGHT_THRU_ALL_DEPTH);if(op.contains("depth"))real(to,PRO_E_EXT_DEPTH_TO_VALUE,op.at("depth"));integer(node(dep,PRO_E_HOLE_DEPTH_FROM),PRO_E_HOLE_DEPTH_FROM_TYPE,PRO_HLE_STRGHT_NONE_DEPTH);integer(com,PRO_E_HLE_CRDIR_FLIP,op.value("flip",false)?PRO_HLE_CR_IN_SIDE_TWO:PRO_HLE_CR_IN_SIDE_ONE);integer(com,PRO_E_HLE_TOP_CLEARANCE,PRO_HOLE_GEN_CLRNCE);integer(com,PRO_E_HLE_ADD_PARAMETERS,PRO_HOLE_NO_PARAMETERS_FLAG);integer(com,PRO_E_HLE_ADD_NOTE,PRO_HOLE_NO_NOTE_FLAG);
@@ -165,6 +181,32 @@ static void write_stl(const std::wstring& file){
 static void generic_pattern(const J& op){
  ProFeature leader=feature(op["feature"]);ProElement root=node(nullptr,PRO_E_PATTERN_ROOT);integer(root,PRO_E_GENPAT_TYPE,PRO_GENPAT_DIM_DRIVEN);integer(root,PRO_E_GENPAT_REGEN_METHOD,PRO_PAT_GENERAL);ProElement dims=node(root,PRO_E_GENPAT_DIM),dir=node(dims,PRO_E_GENPAT_DIM_FIRST_DIR),item=node(dir,PRO_E_GENPAT_DIM_DIR_COMPOUND);ProSelection d=resolve({{"kind","dimension"},{"id",op["dimension_id"]}});ref(item,PRO_E_GENPAT_DIR_DIMENSION,d);ProSelectionFree(&d);integer(item,PRO_E_GENPAT_DIR_VAR_TYPE,PRO_PAT_VALUE_DRIVEN);real(item,PRO_E_GENPAT_DIR_VAR_VALUE,op["increment"]);integer(dims,PRO_E_GENPAT_DIM_FIRST_DIR_NUM_INST,op["count"]);CK(ProPatternCreate(&leader,PRO_FEAT_PATTERN,root));CK(ProElementFree(&root));ProPattern pat;ProFeature head;CK(ProFeaturePatternGet(&leader,PRO_FEAT_PATTERN,&pat));CK(ProPatternHeaderGet(&pat,&head));ProName name;wcscpy_s(name,wide(op["label"]).c_str());CK(ProModelitemNameSet(&head,name));remember(op,head,{{"leader_id",leader.id}});
 }
+static J populate_profile(ProSection section,const J& op){
+ J entities_spec=op.at("profile");Frame frame={};frame.n={0,0,1};frame.u={1,0,0};ProMatrix loc={{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};auto project=[](const J& p,double* out){out[0]=p.at(0).get<double>();out[1]=p.at(1).get<double>();};
+ CK(ProSectionIntentManagerModeSet(section,PRO_B_FALSE));Pro2dCoordSysdef cs={};cs.type=PRO_2D_COORD_SYS;int csid;CK(ProSectionEntityAdd(section,(Pro2dEntdef*)&cs,&csid));std::map<std::string,int> entities;
+ auto add_line=[&](const std::string& name,const J& a,const J& b,bool centerline,bool construction){Pro2dLinedef l={};l.type=centerline?PRO_2D_CENTER_LINE:PRO_2D_LINE;project(a,l.end1);project(b,l.end2);log("LINE_%s=%.9f,%.9f -> %.9f,%.9f\n",name.c_str(),l.end1[0],l.end1[1],l.end2[0],l.end2[1]);int id;CK(ProSectionEntityAdd(section,(Pro2dEntdef*)&l,&id));if(!centerline)CK(ProSectionEntityConstructionSet(section,id,construction?PRO_B_TRUE:PRO_B_FALSE));entities[name]=id;};
+ for(auto e:entities_spec){
+  std::string type=e.at("type"),name=e.at("name");bool construction=e.value("construction",false);int id=-1;
+  if(type=="line"||type=="centerline"){add_line(name,e["start"],e["end"],type=="centerline",construction);continue;}
+  if(type=="rectangle"||type=="polyline"){
+   J points;if(type=="rectangle"){auto a=e["min"],b=e["max"];points=J::array({a,J::array({b[0],a[1]}),b,J::array({a[0],b[1]})});}else points=e["points"];int count=(int)points.size(),segments=count-1+((type=="rectangle"||e.value("closed",false))?1:0);for(int i=0;i<segments;i++)add_line(name+"_"+std::to_string(i),points[i],points[(i+1)%count],false,construction);continue;
+  }
+  if(type=="circle"){Pro2dCircledef c={};c.type=PRO_2D_CIRCLE;project(e["center"],c.center);c.radius=e["radius"];CK(ProSectionEntityAdd(section,(Pro2dEntdef*)&c,&id));}
+  else if(type=="arc"){Pro2dArcdef a={};a.type=PRO_2D_ARC;project(e["center"],a.center);a.radius=e["radius"];double start=e["start_angle"].get<double>()*acos(-1.0)/180,end=e["end_angle"].get<double>()*acos(-1.0)/180;double p[2],q[2];J center=e["center"];project(J::array({center[0].get<double>()+a.radius*cos(start),center[1].get<double>()+a.radius*sin(start)}),p);project(J::array({center[0].get<double>()+a.radius*cos(end),center[1].get<double>()+a.radius*sin(end)}),q);a.start_angle=atan2(p[1]-a.center[1],p[0]-a.center[0]);a.end_angle=atan2(q[1]-a.center[1],q[0]-a.center[0]);if(dot(V{loc[2][0],loc[2][1],loc[2][2]},frame.n)<0)std::swap(a.start_angle,a.end_angle);CK(ProSectionEntityAdd(section,(Pro2dEntdef*)&a,&id));}
+  else if(type=="spline"){auto points=e["points"];std::vector<std::array<double,2>> xy(points.size());for(size_t i=0;i<xy.size();i++)project(points[i],xy[i].data());Pro2dSplinedef s={};s.type=PRO_2D_SPLINE;s.tangency_type=e.value("closed",false)?PRO_2D_SPLINE_TAN_PERIODIC:PRO_2D_SPLINE_TAN_NONE;s.n_points=(unsigned)xy.size();s.point_arr=(Pro2dPnt*)xy.data();CK(ProSectionEntityAdd(section,(Pro2dEntdef*)&s,&id));}
+  else if(type=="ellipse"){Pro2dEllipsedef ell={};ell.type=PRO_2D_ELLIPSE;project(e["center"],ell.origin);double align=fabs(dot(frame.u,V{loc[0][0],loc[0][1],loc[0][2]}));if(align>0.99999){ell.x_radius=e["x_radius"];ell.y_radius=e["y_radius"];}else if(align<0.00001){ell.x_radius=e["y_radius"];ell.y_radius=e["x_radius"];}else throw std::runtime_error("Ellipse axes must align with the section axes");CK(ProSectionEntityAdd(section,(Pro2dEntdef*)&ell,&id));}
+  else throw std::runtime_error("Unknown sketch entity type");CK(ProSectionEntityConstructionSet(section,id,construction?PRO_B_TRUE:PRO_B_FALSE));entities[name]=id;
+ }
+ if(!op.value("constraints",J::array()).empty()){
+  CK(ProSectionIntentManagerModeSet(section,PRO_B_TRUE));std::map<std::string,ProConstraintType> ct={{"coincident",PRO_CONSTRAINT_SAME_POINT},{"horizontal",PRO_CONSTRAINT_HORIZONTAL_ENT},{"vertical",PRO_CONSTRAINT_VERTICAL_ENT},{"point_on",PRO_CONSTRAINT_PNT_ON_ENT},{"tangent",PRO_CONSTRAINT_TANGENT_ENTS},{"perpendicular",PRO_CONSTRAINT_ORTHOG_ENTS},{"equal_radius",PRO_CONSTRAINT_EQUAL_RADII},{"parallel",PRO_CONSTRAINT_PARALLEL_ENTS},{"equal_length",PRO_CONSTRAINT_EQUAL_SEGMENTS},{"collinear",PRO_CONSTRAINT_COLLINEAR_LINES}};
+  for(auto c:op["constraints"]){std::vector<ProSelection> refs;for(auto r:c["refs"]){ProSelection s;Pro2dPnt p={0,0};CK(ProSectionEntityGetSelected(section,entities.at(r["entity"].get<std::string>()),point_type(r.value("point","whole")),p,0,&s));refs.push_back(s);}int cid;ProError err=ProSectionConstraintCreate(section,refs.data(),(int)refs.size(),ct.at(c["type"]),&cid);for(auto s:refs)ProSelectionFree(&s);if(err!=PRO_TK_E_FOUND)check(err,"CreateSketchConstraint");}CK(ProSectionIntentManagerModeSet(section,PRO_B_FALSE));
+ }
+ std::map<std::string,ProSecdimType> dt={{"length",PRO_TK_DIM_LINE},{"radius",PRO_TK_DIM_RAD},{"diameter",PRO_TK_DIM_DIA},{"distance",PRO_TK_DIM_PNT_PNT},{"horizontal",PRO_TK_DIM_PNT_PNT_HORIZ},{"vertical",PRO_TK_DIM_PNT_PNT_VERT},{"line_distance",PRO_TK_DIM_LINE_LINE},{"angle",PRO_TK_DIM_LINES_ANGLE},{"arc_angle",PRO_TK_DIM_ARC_ANGLE},{"ellipse_x_radius",PRO_TK_DIM_ELLIPSE_X_RADIUS},{"ellipse_y_radius",PRO_TK_DIM_ELLIPSE_Y_RADIUS}};J dims=J::object();
+ for(auto d:op.value("dimensions",J::array())){std::vector<int> ids;std::vector<ProSectionPointType> senses;for(auto r:d["refs"]){ids.push_back(entities.at(r["entity"].get<std::string>()));senses.push_back(point_type(r.value("point","whole")));}double place[2];project(d["position"],place);int id;CK(ProSecdimCreate(section,ids.data(),senses.data(),(int)ids.size(),dt.at(d["type"]),place,&id));CK(ProSecdimValueSet(section,id,d["value"]));dims[d["name"].get<std::string>()]=id;}
+
+ CK(ProSectionEpsilonSet(section,0.0001));ProWSecerror err;CK(ProSecerrorAlloc(&err));ProError result=ProSectionAutodim(section,&err);if(result){int count;ProSecerrorCount(&err,&count);for(int i=0;i<count;i++){ProMsg m;ProSecerrorMsgGet(err,i,m);log("PROFILE_ERROR=%ls\n",m);}}check(result,"AutodimensionProfile");CK(ProSectionRegenerate(section,&err));ProSecerrorFree(&err);J ids=J::object();for(auto item:entities)ids[item.first]=item.second;return {{"entity_ids",ids},{"dimension_ids",dims}};
+}
+#include "advanced.cpp"
 static void execute_operation(const J& op){
  std::string kind=op.at("op");log("PHASE=%s%s%s\n",kind.c_str(),op.contains("label")?":":"",op.value("label","").c_str());
  if(kind=="sketch")sketch(op);
@@ -173,11 +215,20 @@ static void execute_operation(const J& op){
  else if(kind=="round"||kind=="chamfer")generic_round(op,kind=="chamfer");
  else if(kind=="shell")generic_shell(op);
  else if(kind=="dimension_pattern")generic_pattern(op);
+ else if(kind=="mirror")generic_mirror(op);
+ else if(kind=="draft")generic_draft(op);
+ else if(kind=="sweep")generic_sweep(op);
+ else if(kind=="loft")generic_loft(op);
+ else if(kind=="sheetmetal_wall")generic_sheetmetal_wall(op);
+ else if(kind=="sheetmetal_flange")generic_sheetmetal_flange(op);
+ else if(kind=="sheetmetal_unbend"||kind=="sheetmetal_flat_pattern"||kind=="sheetmetal_bend_back")generic_sheetmetal_unbend(op);
+ else if(kind=="assemble_component")assemble_component(op);
+ else if(kind=="component_placement"||kind=="component_constraints"||kind=="remove_component")modify_component(op);
  else if(kind=="datum_plane"){double angle=op.value("angle",0.0);J axis=op.value("axis",J());auto f=offset_plane(op["reference"],op.value("offset",0.0),wide(op["label"]),op.contains("angle")?&angle:nullptr,op.contains("axis")?&axis:nullptr);remember(op,f);}
  else if(kind=="datum_axis"){ProElement root=node(nullptr,PRO_E_FEATURE_TREE);integer(root,PRO_E_FEATURE_TYPE,PRO_FEAT_DATUM_AXIS);text(root,PRO_E_STD_FEATURE_NAME,wide(op["label"]).c_str());ProElement cs=node(root,PRO_E_DTMAXIS_CONSTRAINTS);for(auto r:op["references"]){ProElement c=node(cs,PRO_E_DTMAXIS_CONSTRAINT);integer(c,PRO_E_DTMAXIS_CONSTR_TYPE,PRO_DTMAXIS_CONSTR_TYPE_THRU);ProSelection s=resolve(r);ref(c,PRO_E_DTMAXIS_CONSTR_REF,s);ProSelectionFree(&s);}ProFeature f=create(root);CK(ProElementFree(&root));remember(op,f);}
  else if(kind=="set_dimensions"){for(auto v:op["values"]){ProDimension d;CK(ProModelitemInit(board,v["id"],PRO_DIMENSION,&d));CK(ProDimensionValueSet(&d,v["value"]));}}
  else if(kind=="set_sketch_dimensions"){
-  ProFeature f=feature(op["sketch"]);ProElement root=nullptr;CK(ProFeatureElemtreeExtract(&f,nullptr,PRO_FEAT_EXTRACT_NO_OPTS,&root));ProElement sk=get(root,{PRO_E_STD_SECTION,PRO_E_SKETCHER});ProSection s=nullptr;CK(ProElementSpecialvalueGet(sk,nullptr,(ProAppData*)&s));J ids=op["sketch"].is_string()?aliases[op["sketch"].get<std::string>()].value("dimension_ids",J::object()):J::object();for(auto it=op["values"].begin();it!=op["values"].end();++it){int id=ids.contains(it.key())?ids[it.key()].get<int>():std::stoi(it.key());CK(ProSecdimValueSet(s,id,it.value()));}ProWSecerror err=nullptr;CK(ProSecerrorAlloc(&err));CK(ProSectionRegenerate(s,&err));ProSecerrorFree(&err);CK(ProElementSpecialvalueSet(sk,(ProAppData)s));redefine(&f,root);CK(ProFeatureElemtreeFree(&f,root));
+  ProFeature f=feature(op["sketch"]);ProElement root=nullptr;CK(ProFeatureElemtreeExtract(&f,nullptr,PRO_FEAT_EXTRACT_NO_OPTS,&root));J saved_path=op["sketch"].is_string()?aliases[op["sketch"].get<std::string>()].value("section_path",J::array({PRO_E_STD_SECTION,PRO_E_SKETCHER})):J::array({PRO_E_STD_SECTION,PRO_E_SKETCHER});ProElement sk=get_path(root,saved_path);ProSection s=nullptr;CK(ProElementSpecialvalueGet(sk,nullptr,(ProAppData*)&s));J ids=op["sketch"].is_string()?aliases[op["sketch"].get<std::string>()].value("dimension_ids",J::object()):J::object();for(auto it=op["values"].begin();it!=op["values"].end();++it){int id=ids.contains(it.key())?ids[it.key()].get<int>():std::stoi(it.key());CK(ProSecdimValueSet(s,id,it.value()));}ProWSecerror err=nullptr;CK(ProSecerrorAlloc(&err));CK(ProSectionRegenerate(s,&err));ProSecerrorFree(&err);CK(ProElementSpecialvalueSet(sk,(ProAppData)s));redefine(&f,root);CK(ProFeatureElemtreeFree(&f,root));
  }
  else if(kind=="set_parameters")parameters(op);
  else if(kind=="set_relations"){ProModelitem owner;CK(ProMdlToModelitem(board,&owner));ProRelset rel;ProError e=ProModelitemToRelset(&owner,&rel);if(e==PRO_TK_E_NOT_FOUND)CK(ProRelsetCreate(&owner,&rel));else check(e,"GetRelations");std::vector<std::wstring> storage;for(auto line:op["lines"])storage.push_back(wide(line));std::vector<ProWstring> ptrs;for(auto& line:storage)ptrs.push_back(const_cast<wchar_t*>(line.c_str()));CK(ProRelsetRelationsSet(&rel,ptrs.data(),(int)ptrs.size()));CK(ProRelsetRegenerate(&rel));}
@@ -192,13 +243,30 @@ static void verify_saved(const J& before,const J& after){
  if(before["features"].size()!=after["features"].size()||before["bodies"].size()!=after["bodies"].size())throw std::runtime_error("Saved feature/body count changed");
  for(size_t i=0;i<before["features"].size();i++){auto a=before["features"][i],b=after["features"][i];if(a["id"]!=b["id"]||a["type"]!=b["type"]||a["name"]!=b["name"]||a["dimensions"].size()!=b["dimensions"].size())throw std::runtime_error("Saved feature or dimensions changed");for(size_t j=0;j<a["dimensions"].size();j++)if(a["dimensions"][j]["id"]!=b["dimensions"][j]["id"]||fabs(a["dimensions"][j]["value"].get<double>()-b["dimensions"][j]["value"].get<double>())>1e-6)throw std::runtime_error("Saved dimension value changed");}
  if(!before["volume_mm3"].is_null()&&(after["volume_mm3"].is_null()||fabs(before["volume_mm3"].get<double>()-after["volume_mm3"].get<double>())>0.01))throw std::runtime_error("Saved solid volume changed");
- if(before["parameters"]!=after["parameters"])throw std::runtime_error("Saved parameter values changed");
+ if(before["parameters"].size()!=after["parameters"].size())throw std::runtime_error("Saved parameter count changed");
+ for(auto it=before["parameters"].begin();it!=before["parameters"].end();++it){
+  if(!after["parameters"].contains(it.key()))throw std::runtime_error("Saved parameter disappeared: "+it.key());
+  auto a=it.value(),b=after["parameters"][it.key()];bool equal=a["type"]==b["type"];
+  if(equal&&a["type"].get<int>()==PRO_PARAM_DOUBLE){double x=a["value"],y=b["value"];equal=fabs(x-y)<=1e-10*std::max(1.0,std::max(fabs(x),fabs(y)));}
+  else equal=equal&&a["value"]==b["value"];
+  if(!equal)throw std::runtime_error("Saved parameter value changed: "+it.key());
+ }
+ if(before.contains("components"))for(size_t i=0;i<before["components"].size();i++){
+  if(i>=after["components"].size())throw std::runtime_error("Saved component count changed");
+  auto a=before["components"][i],b=after["components"][i];
+  if(a.value("packaged",false)!=b.value("packaged",false)||a.value("underconstrained",false)!=b.value("underconstrained",false))throw std::runtime_error("Saved assembly placement state changed");
+  if(a.contains("constraints")&&a["constraints"]!=b["constraints"])throw std::runtime_error("Saved assembly constraints changed");
+ }
+ if(before.value("model_type","part")!=after.value("model_type","part"))throw std::runtime_error("Saved model type changed");if(before.contains("components")){if(before["components"].size()!=after["components"].size())throw std::runtime_error("Saved component count changed");for(size_t i=0;i<before["components"].size();i++){auto a=before["components"][i],b=after["components"][i];if(a["feature_id"]!=b["feature_id"]||a["model_name"]!=b["model_name"])throw std::runtime_error("Saved component changed");for(int r=0;r<4;r++)for(int c=0;c<4;c++)if(fabs(a["transform"][r][c].get<double>()-b["transform"][r][c].get<double>())>1e-7)throw std::runtime_error("Saved component transform changed");}}
+}
+static std::wstring latest_model_file(){
+ std::wstring extension=assembly_model()?L".asm.":L".prt.",mask=folder+L"\\"+model_name+extension+L"*";WIN32_FIND_DATAW info;HANDLE search=FindFirstFileW(mask.c_str(),&info);if(search==INVALID_HANDLE_VALUE)throw std::runtime_error("Saved model not found");int best=-1;std::wstring found;do{std::wstring name=info.cFileName;auto pos=name.rfind(extension);if(pos==std::wstring::npos)continue;try{int version=std::stoi(name.substr(pos+extension.size()));if(version>best){best=version;found=folder+L"\\"+name;}}catch(...){}}while(FindNextFileW(search,&info));FindClose(search);if(found.empty())throw std::runtime_error("Saved native model version not found");return found;
 }
 static int run_generic(const std::wstring& job){
  generic_job=job;J report={{"success",false},{"saved_file_reloaded_and_verified",false},{"rollback_succeeded",false}};J request;ProProcessHandle process={};bool connected=false,mutated=false;std::wstring checkpoint;board_log=_wfsopen((job+L"\\native.log").c_str(),L"w",_SH_DENYNO);if(!board_log)return 3;
  try{
-  std::ifstream input(job+L"\\request.json");input>>request;auto model=request.at("model");model_name=wide(model.at("model_name"));folder=wide(model.at("output_directory"));aliases=model.at("aliases");template_file=wide(request.at("template_file"));if(!model["part_file"].is_null())checkpoint=wide(model["part_file"]);
-  char empty[]="";ProBoolean random=PRO_B_FALSE;CK(ProEngineerConnect(empty,empty,empty,empty,PRO_B_FALSE,30,&random,&process));connected=true;report["connected"]=true;ProName name;wcscpy_s(name,model_name.c_str());ProError found=ProMdlInit(name,PRO_MDL_PART,&board);
+  std::ifstream input(job+L"\\request.json");input>>request;auto model=request.at("model");model_name=wide(model.at("model_name"));folder=wide(model.at("output_directory"));aliases=model.at("aliases");component_sources=request.value("components",J::object());template_file=wide(request.at("template_file"));if(!model["part_file"].is_null())checkpoint=wide(model["part_file"]);
+  char empty[]="";ProBoolean random=PRO_B_FALSE;CK(ProEngineerConnect(empty,empty,empty,empty,PRO_B_FALSE,30,&random,&process));connected=true;report["connected"]=true;ProName name;wcscpy_s(name,model_name.c_str());ProMdlType mdltype=model.value("model_type","part")=="assembly"?PRO_MDL_ASSEMBLY:PRO_MDL_PART;ProError found=ProMdlInit(name,mdltype,&board);
   if(request.at("new").get<bool>()){
    if(found==PRO_TK_NO_ERROR)throw std::runtime_error("New model name already exists in the Creo session");if(found!=PRO_TK_E_NOT_FOUND)check(found,"CheckNewModelName");ProPath original,destination,tfile;CK(ProDirectoryCurrentGet(original));path(destination,folder);path(tfile,template_file);CK(ProDirectoryChange(destination));try{ProMdl templ;CK(ProMdlFiletypeLoad(tfile,PRO_MDLFILE_UNUSED,PRO_B_FALSE,&templ));ProMdlName new_name;wcscpy_s(new_name,model_name.c_str());CK(ProMdlnameCopy(templ,new_name,&board));}catch(...){ProDirectoryChange(original);throw;}CK(ProDirectoryChange(original));mutated=true;
   }else{
@@ -207,13 +275,15 @@ static int run_generic(const std::wstring& job){
   ProUnitsystem us;ProUnititem unit;CK(ProMdlPrincipalunitsystemGet(board,&us));CK(ProUnitsystemUnitGet(&us,PRO_UNITTYPE_LENGTH,&unit));if(wcscmp(unit.name,L"mm"))throw std::runtime_error("Expected millimeter model units");
   for(auto op:request["operations"]){if(!request.value("readonly",false))mutated=true;execute_operation(op);}if(!request.value("readonly",false))CK(ProSolidRegenerate((ProSolid)board,PRO_REGEN_NO_FLAGS));J state=inspection();report["inspection"]=state;report["aliases"]=aliases;verify_assertions(state,request.value("assertions",J::object()));std::wstring saved=checkpoint;
   if(!request.value("readonly",false)){
-   log("PHASE=save_and_reload\n");ProPath destination;path(destination,folder);CK(ProMdlnameBackup(board,destination));saved=latest_part();J before=state;CK(ProMdlErase(board));board=nullptr;ProPath file;path(file,saved);CK(ProMdlFiletypeLoad(file,PRO_MDLFILE_UNUSED,PRO_B_FALSE,&board));CK(ProSolidRegenerate((ProSolid)board,PRO_REGEN_NO_FLAGS));state=inspection();verify_saved(before,state);verify_assertions(state,request.value("assertions",J::object()));report["saved_file_reloaded_and_verified"]=true;
+   log("PHASE=save_and_reload\n");ProPath destination;path(destination,folder);CK(ProMdlnameBackup(board,destination));saved=latest_model_file();J before=state;CK(ProMdlErase(board));board=nullptr;ProPath file;path(file,saved);CK(ProMdlFiletypeLoad(file,PRO_MDLFILE_UNUSED,PRO_B_FALSE,&board));CK(ProSolidRegenerate((ProSolid)board,PRO_REGEN_NO_FLAGS));state=inspection();verify_saved(before,state);verify_assertions(state,request.value("assertions",J::object()));report["saved_file_reloaded_and_verified"]=true;
   }
   CK(ProMdlDisplay(board));CK(ProMdlWindowGet(board,&win));CK(ProWindowCurrentSet(win));double a=sqrt(.5),b=sqrt(1.0/6),c=sqrt(1.0/3),d=sqrt(2.0/3);ProMatrix view={{a,-b,c,0},{a,b,-c,0},{0,d,c,0},{0,0,0,1}};CK(ProViewMatrixSet(board,nullptr,view));ProWindowRefit(win);ProWindowRepaint(win);ProWindowActivate(win);ProPath preview;path(preview,job+L"\\output\\preview.jpg");int preview_code=ProRasterFileWrite(win,PRORASTERDEPTH_24,8,6,PRORASTERDPI_100,PRORASTERTYPE_JPEG,preview);
   report.update({{"success",true},{"toolkit_code",0},{"inspection",state},{"aliases",aliases},{"part_file",utf8(saved)},{"preview_code",preview_code},{"preview_file",preview_code==0?J(utf8(preview)):J(nullptr)},{"operations",operation_results}});log("BUILD_SUCCESS=1\n");
  }catch(ProError error){report["toolkit_code"]=error;report["message"]="Toolkit operation failed; inspect native.log and its element error list";log("BUILD_FAILED=%d\n",error);}catch(const std::exception& error){report["message"]=error.what();report["toolkit_code"]=PRO_TK_GENERAL_ERROR;log("BUILD_FAILED=%s\n",error.what());}
  if(!report["success"].get<bool>()&&connected&&mutated&&!checkpoint.empty()){
-  log("PHASE=rollback_to_saved_checkpoint\n");ProError erased=board?ProMdlErase(board):PRO_TK_NO_ERROR;board=nullptr;ProPath file;path(file,checkpoint);ProError loaded=erased?erased:ProMdlFiletypeLoad(file,PRO_MDLFILE_UNUSED,PRO_B_FALSE,&board);if(!loaded){ProSolidRegenerate((ProSolid)board,PRO_REGEN_NO_FLAGS);ProMdlDisplay(board);report["rollback_succeeded"]=true;}else report["rollback_code"]=loaded;
+  log("PHASE=rollback_to_saved_checkpoint\n");ProError erased=board?ProMdlErase(board):PRO_TK_NO_ERROR;board=nullptr;ProPath file;path(file,checkpoint);ProError loaded=erased?erased:ProMdlFiletypeLoad(file,PRO_MDLFILE_UNUSED,PRO_B_FALSE,&board);
+  if(!loaded){try{CK(ProSolidRegenerate((ProSolid)board,PRO_REGEN_NO_FLAGS));verify_saved(request["model"]["inspection"],inspection());ProMdlDisplay(board);report["rollback_succeeded"]=true;}catch(...){report["rollback_message"]="Restored file could not be regenerated and verified against its saved baseline";}}
+  else report["rollback_code"]=loaded;
  }
  if(connected){int disconnected=ProEngineerDisconnect(&process,15);report["disconnect_code"]=disconnected;log("DISCONNECT=%d\n",disconnected);}std::ofstream output(job+L"\\native_result.json",std::ios::binary);output<<report.dump(2);output.close();fclose(board_log);board_log=nullptr;return report["success"].get<bool>()?0:30;
 }

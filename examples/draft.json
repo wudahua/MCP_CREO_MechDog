@@ -1,0 +1,8 @@
+{
+  "operations": [
+    {"op":"sketch","label":"profile","plane":"XY","entities":[{"type":"rectangle","name":"r","min":[0,0],"max":[20,20]}]},
+    {"op":"extrude","label":"solid","sketch":"profile","depth":20},
+    {"op":"draft","label":"taper","surfaces":[{"kind":"plane","axis":"x","offset":20}],"neutral_plane":{"kind":"datum_plane","axis":"z"},"angle":3}
+  ],
+  "assertions":{"require_solid":true}
+}

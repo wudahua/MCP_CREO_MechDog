@@ -1,0 +1,9 @@
+{
+  "operations": [
+    {"op":"sketch","label":"path","plane":"XY","entities":[{"type":"line","name":"axis","start":[0,0],"end":[40,0]}]},
+    {"op":"sweep","label":"pipe","trajectory":"path",
+     "profile":[{"type":"circle","name":"section","center":[0,0],"radius":2}],
+     "dimensions":[{"name":"diameter","type":"diameter","refs":[{"entity":"section"}],"value":4,"position":[3,0]}]}
+  ],
+  "assertions":{"require_solid":true,"volume_mm3":502.654824574367}
+}

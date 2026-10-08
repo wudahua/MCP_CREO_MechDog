@@ -15,6 +15,7 @@ import subprocess
 import sys
 import time
 import uuid
+from capabilities import REGISTERED_OPERATIONS, UNAVAILABLE_OPERATIONS
 
 ROOT = Path(__file__).resolve().parent
 JOBS = ROOT / "jobs"
@@ -145,6 +146,7 @@ def check_environment() -> dict:
         "toolkit_library": sdk / "x86e_win64/obj/protkmd_NU.lib",
         "communication_executable": common / "x86e_win64/obj/pro_comm_msg.exe",
         "metric_template": common / "templates/mmns_part_solid_abs.prt",
+        "metric_assembly_template": common / "templates/mmns_asm_design_abs.asm",
         "compiler_setup": Path(c["vcvars64"]),
     }
     checks = {key: {"exists": p.is_file(), "path": str(p)} for key, p in files.items()}
@@ -152,7 +154,8 @@ def check_environment() -> dict:
             "ready_to_build": all(p.is_file() for p in files.values()),
             "license_setting_present": bool(native_environment().get("PTC_D_LICENSE_FILE")),
             "license_usable": "unverified_here; only successful native feature creation proves it",
-            "transport": "stdio", "supported_features": ["sketch", "extrude", "revolve", "hole", "round", "chamfer", "shell", "datum_plane", "datum_axis", "dimension_pattern", "parameters", "relations", "export"]}
+            "transport": "stdio", "supported_features": [op for op in REGISTERED_OPERATIONS if op not in UNAVAILABLE_OPERATIONS],
+            "complete_creo_coverage": False}
 
 
 def build_native() -> Path:

@@ -1,0 +1,8 @@
+{
+  "operations": [
+    {"op":"sketch","label":"profile","plane":"XY","entities":[{"type":"rectangle","name":"r","min":[5,0],"max":[15,10]}]},
+    {"op":"extrude","label":"solid","sketch":"profile","depth":5},
+    {"op":"mirror","label":"reflected","plane":{"kind":"datum_plane","axis":"x"},"keep_original":true}
+  ],
+  "assertions":{"require_solid":true,"volume_mm3":1000}
+}

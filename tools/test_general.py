@@ -5,7 +5,9 @@ from mcp import Client
 from mcp.client.stdio import StdioServerParameters
 
 ROOT=Path(__file__).resolve().parents[1]
-report={"cases":[],"started_at":time.time()}
+sys.path.insert(0,str(ROOT))
+from version import VERSION
+report={"version":VERSION,"cases":[],"started_at":time.time()}
 
 async def call(client,name,args):
     r=await client.call_tool(name,args)

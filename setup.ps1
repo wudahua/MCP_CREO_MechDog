@@ -39,7 +39,8 @@ $required = @(
     'Common Files\protoolkit\x86e_win64\obj\ucore.lib',
     'Common Files\protoolkit\x86e_win64\obj\udata.lib',
     'Common Files\x86e_win64\obj\pro_comm_msg.exe',
-    'Common Files\templates\mmns_part_solid_abs.prt'
+    'Common Files\templates\mmns_part_solid_abs.prt',
+    'Common Files\templates\mmns_asm_design_abs.asm'
 )
 foreach ($relative in $required) {
     if (-not (Test-Path -LiteralPath (Join-Path $CreoRoot $relative) -PathType Leaf)) {

@@ -6,6 +6,7 @@ config=json.loads((root/'config.json').read_text(encoding='utf-8-sig'))
 inc=Path(config['creo_root'])/'Common Files/protoolkit/includes'
 headers=['ProElemId.h','ProFeatType.h','ProExtrude.h','ProRevolve.h','ProDtmCrv.h','ProDtmPln.h','ProDtmAxis.h','ProRound.h','ProChamfer.h','ProHole.h','ProShell.h','ProPattern.h','ProSecdimType.h','ProSecconstr.h','ProMirror.h','ProSweep.h','ProBodyOpts.h']
 names=set()
+headers += ['ProFeature.h','ProFeatForm.h','ProDirection.h','ProDraft.h','ProSmtFlangeWall.h','ProSmtFlatWall.h','ProRegularUnbend.h','ProSmtBendBack.h','ProAsmcomp.h','ProSmtDrvSurf.h']
 for header in headers:
     source=(inc/header).read_text(encoding='utf-8',errors='replace')
     source=re.sub(r'/\*.*?\*/|//[^\n]*','',source,flags=re.S)

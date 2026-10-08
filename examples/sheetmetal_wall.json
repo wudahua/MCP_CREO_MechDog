@@ -1,0 +1,8 @@
+{
+  "model_type":"sheetmetal",
+  "operations": [
+    {"op":"sketch","label":"wall_profile","plane":"XY","entities":[{"type":"line","name":"l","start":[0,0],"end":[40,0]}]},
+    {"op":"sheetmetal_wall","label":"wall","sketch":"wall_profile","depth":30,"thickness":1}
+  ],
+  "assertions":{"require_solid":true,"volume_mm3":1200}
+}

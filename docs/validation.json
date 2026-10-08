@@ -1,27 +1,33 @@
 {
   "name": "MCP_CREO_MechDog",
-  "version": "0.2.0",
-  "evidence_type": "historical development-machine test summary; not this installation verification",
-  "tested_environment": {
-    "os": "Windows x64",
-    "creo": "10.0.0.0",
-    "python": "3.12 x64",
-    "compiler": "Visual Studio 2022 C++ Build Tools"
-  },
-  "tool_count": 31,
-  "successful_native_jobs": 41,
-  "input_validation_tests": 11,
+  "version": "0.21",
+  "generated_at": 1791477251.6815588,
+  "all_selected_test_suites_passed": true,
+  "complete_creo_coverage": false,
+  "all_requested_families_verified": false,
+  "protocol": "2025-11-25",
+  "tool_count": 47,
+  "enabled_tool_count": 46,
+  "successful_native_jobs": 64,
+  "saved_file_verified_mutation_jobs": 56,
+  "input_validation_tests": 20,
   "verified_operations": [
+    "assemble_component",
     "chamfer",
+    "component_constraints",
+    "component_placement",
     "datum_axis",
     "datum_plane",
     "dimension_pattern",
+    "draft",
     "dump_tree",
     "export",
     "extrude",
     "feature_tree",
     "hole",
+    "mirror",
     "regenerate",
+    "remove_component",
     "revolve",
     "round",
     "save",
@@ -29,42 +35,99 @@
     "set_parameters",
     "set_relations",
     "set_sketch_dimensions",
+    "sheetmetal_bend_back",
+    "sheetmetal_flange",
+    "sheetmetal_flat_pattern",
+    "sheetmetal_unbend",
+    "sheetmetal_wall",
     "shell",
-    "sketch"
+    "sketch",
+    "sweep"
   ],
   "verified_branches": [
-    "new metric native part; independent native sketches and sequential feature creation",
-    "line, centerline, rectangle, closed polyline, circle, arc, ellipse and spline sketch entities",
-    "XY/XZ/YZ sketch frames, offset plane and angled datum support",
-    "explicit diameter/length dimensions; horizontal/vertical constraints; automatic dimensioning",
-    "positive/negative extrusion; additive features on multiple planes; new bodies",
-    "blind pocket and through-all extrusion cut; surface extrusion; symmetric thin extrusion",
-    "360-degree revolve, external-axis 180-degree revolve and revolved groove cut",
-    "native straight through hole and blind hole",
-    "constant-radius edge round, equal-distance edge chamfer; inward/outward shell with removed top face",
-    "offset/angled datum plane, two-plane datum axis and native one-direction dimension pattern",
-    "native dimension edit; named sketch diameter edit propagates to dependent solid",
-    "native parameters and relation-driven dimensions updated after parameter change",
-    "advanced symbolic element-tree datum plane and native feature XML dump",
-    "STEP, STL, IGES and JPEG exports from a turned solid",
-    "standalone regeneration and save followed by native saved-file reload verification",
-    "stale revision rejected; partial mutation failure restores original live geometry, parameters and file",
-    "surface revolve; thin revolve; symmetric 90-degree revolve"
+    "native metric sketches and dependent features, explicit dimensions and horizontal/vertical constraints",
+    "line, centerline, rectangle, closed polyline, circle, arc, ellipse and spline entities",
+    "principal and oblique sketch supports; offset/angled datum plane; two-plane datum axis",
+    "add/cut/surface/thin extrusion, through cut, blind pocket, symmetric depth, negative direction, new bodies",
+    "full/partial/symmetric revolve, external-axis revolve, revolved groove, surface and thin revolve",
+    "straight through and blind holes; constant edge rounds, equal chamfers, inward/outward shell",
+    "one-direction dimension pattern; feature and named sketch dimensions; parameters and arithmetic relations",
+    "whole-solid mirror with retained original; straight-trajectory circular constant sweep and diameter 4 to 6 edit",
+    "constant 3 degree unsplit planar draft",
+    "native sheetmetal conversion from a 40 x 30 x 1 first wall, 90 degree flange with R2/R3 bend",
+    "flange named height 15 to 20 edit, unbend, bend-back and flat pattern with saved-file reload at each step",
+    "assembly part snapshots, rigid placement, removal, datum-plane constraints, named component references, 20 mm offset",
+    "source file unaffected by insertion, source depth edit changes source volume but preserves assembly snapshot volume",
+    "symbolic feature tree and XML dump; STEP/STL/IGES/JPEG export from a part",
+    "stale edit rejection; partial failed mutation restores file hash, revision, live geometry and parameters"
+  ],
+  "families": {
+    "mirror": {
+      "enabled": true,
+      "native_test": "whole solid about a principal datum plane",
+      "limits": "whole-part/geometry references only; feature/subtree mirror is rejected"
+    },
+    "sweep": {
+      "enabled": true,
+      "native_test": "straight trajectory, circular constant section, named diameter edit",
+      "limits": "constant section; other trajectories, thin/cut/surface branches need installation-specific validation"
+    },
+    "draft": {
+      "enabled": true,
+      "native_test": "constant unsplit draft on a planar face with a planar neutral reference",
+      "limits": "variable, split and rib draft are not high-level tools"
+    },
+    "loft": {
+      "enabled": false,
+      "reason": "Native blend/loft creation has not passed Creo 10 regeneration and saved-file verification."
+    },
+    "sheetmetal": {
+      "enabled": true,
+      "scope": "first flat wall, attached flange, unbend, bend-back and flat pattern",
+      "native_test": "40 x 30 x 1 wall, 90 degree flange with R2/R3 bend, followed by unfolding and refolding",
+      "limits": "first wall uses thin extrusion then native conversion; bend relief, forms, hems and jogs are not high-level tools"
+    },
+    "assembly": {
+      "enabled": true,
+      "native_test": "part snapshots, rigid placement, removal, 3 datum-plane align constraints and 20 mm offset",
+      "limits": "MCP-owned part/sheetmetal sources; no nested assemblies; source edits do not update snapshots; mate/insert/csys/default placement need further validation"
+    }
+  },
+  "unavailable_operations": {
+    "loft": "Native blend/loft creation has not passed Creo 10 regeneration and saved-file verification."
+  },
+  "not_high_level_implemented": [
+    "loft",
+    "variable/helical sweep",
+    "feature/subtree mirror",
+    "rib",
+    "standard threaded/counterbore/countersink holes",
+    "advanced sheetmetal forms and bend tables",
+    "nested assembly copying and source-linked updates",
+    "drawing/MBD",
+    "manufacturing, mold, simulation and cabling modules"
   ],
   "not_individually_verified": [
-    "every constraint/dimension combination",
-    "all reference and geometry combinations",
-    "all advanced Toolkit feature trees"
+    "all geometry/reference combinations",
+    "all dimension/constraint combinations",
+    "every sweep mode and trajectory",
+    "sheetmetal angles/flip/partial bend references/multiple flanges",
+    "mate/insert/csys/default assembly constraints",
+    "assembly export format combinations"
   ],
-  "not_high_level_implemented": [
-    "mirror",
-    "sweep",
-    "blend/loft",
-    "draft",
-    "rib",
-    "threaded/counterbore/countersink holes",
-    "sheet metal",
-    "assembly",
-    "drawing"
-  ]
+  "expected_failure_checks": {
+    "disabled_loft_rejected_before_queue": true,
+    "stale_revision_rejected": true,
+    "partial_mutation_rollback_verified": true
+  },
+  "version_label_correction_only": true,
+  "validation_note": "Only the release label was corrected. Native modeling evidence is retained from the same modeling implementation; input validation and MCP version checks were rerun.",
+  "evidence_type": "Development-machine validation for this source version; not verification of another installation",
+  "tested_environment": {
+    "os": "Windows x64",
+    "creo": "10.0.0.0",
+    "python": "3.12 x64",
+    "compiler": "Visual Studio 2022 C++ Build Tools"
+  },
+  "historical_evidence": "validation_0.2.0.json; excluded from 0.21 counts"
 }

@@ -4,7 +4,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from schema import validate_operations
 
 class GeneralValidation(unittest.TestCase):
-    def test_unknown_operation_and_unimplemented_mirror(self):
+    def test_unknown_operation_and_invalid_mirror(self):
         for op in ({'op':'run_shell','command':'cmd'},{'op':'mirror','label':'mirror','features':['x'],'plane':{}}):
             with self.assertRaises(ValueError): validate_operations([op])
     def test_invalid_sketch_references_and_expansion_collision(self):

@@ -4,10 +4,11 @@ from pathlib import Path
 from mcp import Client
 from mcp.client.stdio import StdioServerParameters
 from test_extended import call,job
+from version import VERSION
 ROOT=Path(__file__).resolve().parents[1]
 
 async def main():
-    report={}
+    report={'version':VERSION}
     core=json.loads((ROOT/'build/general_integration_test.json').read_text(encoding='utf-8'))
     async with Client(StdioServerParameters(command=sys.executable,args=[str(ROOT/'server.py')],cwd=ROOT),read_timeout_seconds=60) as c:
         model=await call(c,'creo_inspect_model',{'model_id':core['main_models']['disk']})

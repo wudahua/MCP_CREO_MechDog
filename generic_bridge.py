@@ -8,6 +8,7 @@ import sys
 import uuid
 import bridge
 from schema import validate_operations,Assertions
+from capabilities import require_available
 
 MODELS=bridge.ROOT / "models"
 
@@ -27,20 +28,40 @@ def list_models(limit: int=10) -> dict:
     paths=sorted(MODELS.glob("*/model.json"),key=lambda p:p.stat().st_mtime,reverse=True)
     return {"models":[bridge.read_json(p) for p in paths[:limit]]}
 
+def component_graph(source: dict, target_id: str, seen: set[str] | None=None) -> dict[str,dict]:
+    """Check all assembly descendants before a native job is queued."""
+    seen=set() if seen is None else seen
+    sid=source['model_id']
+    if sid==target_id: raise ValueError("Assembly containment cycle is not allowed")
+    if sid in seen: return {}
+    seen.add(sid)
+    if source['status']!='ready' or source.get('pending_job'):
+        raise ValueError("Every component source must be ready with no pending mutation")
+    if not source.get('part_file') or not Path(source['part_file']).is_file():
+        raise ValueError("Every component source needs a verified saved native file")
+    result={sid:source}
+    for alias in source.get('aliases',{}).values():
+        child=alias.get('source_model_id')
+        if child: result.update(component_graph(model_info(child),target_id,seen))
+    return result
+
 def submit(operations: list[dict], model_id: str | None=None, model_name: str | None=None,
-           expected_revision: int | None=None, assertions: dict | None=None, readonly: bool=False) -> dict:
+           expected_revision: int | None=None, assertions: dict | None=None, readonly: bool=False,
+           model_type: str="part") -> dict:
     operations=validate_operations(operations)
+    require_available(operations)
     assertions=Assertions.model_validate(assertions or {}).model_dump(exclude_none=True)
     if readonly and any(op["op"] not in ("dump_tree","export") for op in operations): raise ValueError("Read-only requests may only inspect/export")
     with bridge.toolkit_lock():
         new=model_id is None
         if new:
+            if model_type not in ("part","sheetmetal","assembly"): raise ValueError("Unsupported model_type")
             if model_name is not None and not bridge.MODEL_NAME.fullmatch(model_name): raise ValueError("Invalid model_name")
             model_id=uuid.uuid4().hex
             path=model_path(model_id)
             (path/"output").mkdir(parents=True)
             model={"model_id":model_id,"model_name":model_name or f"ai_part_{model_id[:12]}",
-                   "revision":0,"created_at":bridge.now(),"status":"new","aliases":{},
+                   "revision":0,"created_at":bridge.now(),"status":"new","aliases":{},"model_type":model_type,
                    "output_directory":str(path/"output"),"part_file":None}
             if len(model["output_directory"])>220: raise ValueError("Project path is too long for Creo Toolkit")
         else:
@@ -50,18 +71,36 @@ def submit(operations: list[dict], model_id: str | None=None, model_name: str | 
             if model["status"]!="ready": raise ValueError("Model is not ready; inspect its last job before recovery")
             if expected_revision is None and not readonly: raise ValueError("Provide expected_revision from creo_inspect_model to prevent stale edits")
             if expected_revision is not None and expected_revision!=model["revision"]: raise ValueError(f"Stale revision: current model revision is {model['revision']}")
+        actual_type=model.get("model_type","part")
+        assembly_ops={"assemble_component","component_placement","component_constraints","remove_component"}
+        for op in operations:
+            if op['op'] in assembly_ops and actual_type!="assembly": raise ValueError("Assembly operations require an MCP assembly model")
+            if op['op'].startswith('sheetmetal_') and actual_type!="sheetmetal": raise ValueError("Sheetmetal operations require an MCP sheetmetal model")
+            if actual_type=="assembly" and op['op'] not in assembly_ops|{"datum_plane","datum_axis","set_parameters","set_relations","set_dimensions","regenerate","save","export","dump_tree","feature_tree"}: raise ValueError("This operation requires a part model")
+        components={}
+        for op in operations:
+            if op['op']=="assemble_component":
+                source=model_info(op['source_model_id'])
+                components.update(component_graph(source,model_id))
+                if source.get('model_type')=='assembly':
+                    raise ValueError("Nested assembly copying is not yet supported; insert owned part/sheetmetal models")
         duplicate=set(model["aliases"]).intersection(op["label"] for op in operations if "label" in op)
         if duplicate: raise ValueError(f"Feature labels already exist: {sorted(duplicate)}")
+        # Initialize from a solid template. Native first-wall conversion creates
+        # the sheetmetal body; the stock empty SMT body breaks attached walls.
+        templates={"part":"mmns_part_solid_abs.prt","sheetmetal":"mmns_part_solid_abs.prt","assembly":"mmns_asm_design_abs.asm"}
+        template=Path(bridge.config()["creo_root"])/"Common Files/templates"/templates[actual_type]
+        if not template.is_file(): raise ValueError(f"Missing local model template: {templates[actual_type]}")
         job_id=uuid.uuid4().hex
         directory=bridge.job_path(job_id)
         directory.mkdir(parents=True)
         (directory/"output").mkdir()
         model["pending_job"]=job_id
         bridge.write_json(path/"model.json",model)
-        request={"new":new,"model":model,"operations":operations,"readonly":readonly,
-                 "template_file":str(Path(bridge.config()["creo_root"])/"Common Files/templates/mmns_part_solid_abs.prt"),
+        request={"new":new,"model":model,"operations":operations,"readonly":readonly,"components":components,
+                 "template_file":str(template),
                  "assertions":assertions or {}}
-        manifest={"job_id":job_id,"kind":"generic","model_id":model_id,"status":"queued",
+        manifest={"job_id":job_id,"kind":"generic","model_id":model_id,"status":"queued","readonly":readonly,
                   "created_at":bridge.now(),"operations":operations,"job_directory":str(directory),
                   "output_directory":str(directory/"output"),"message":"Poll creo_get_job with this job_id; do not resubmit the operation"}
         bridge.write_json(directory/"request.json",request)
