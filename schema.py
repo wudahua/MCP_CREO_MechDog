@@ -369,13 +369,193 @@ class Assertions(StrictModel):
 
 class ExportOp(StrictModel):
     op: Literal["export"]
-    format: Literal["step","stl","iges","jpeg"] = "step"
+    format: Literal["step","stl","iges","jpeg","pdf"] = "step"
+
+class DrawingModelOp(StrictModel):
+    op: Literal["drawing_model"]
+    label: Label
+    source_model_id: Annotated[str,Field(pattern=r"^[a-f0-9]{32}$")]
+
+class DrawingSheetOp(StrictModel):
+    op: Literal["drawing_sheet"]
+    action: Literal["add","resize"] = "add"
+    sheet: Annotated[int,Field(ge=1,le=100)] = 1
+    width: Annotated[float,Field(gt=10,le=5000)] = 297
+    height: Annotated[float,Field(gt=10,le=5000)] = 210
+    name: Label | None = None
+
+ViewStyle = Literal["wireframe","hidden","no_hidden","shaded","shaded_edges"]
+class DrawingViewOp(StrictModel):
+    op: Literal["drawing_view"]
+    label: Label
+    model: Label
+    sheet: Annotated[int,Field(ge=1,le=100)] = 1
+    position: Point2
+    orientation: Literal["front","back","top","bottom","left","right","isometric"] = "front"
+    scale: Annotated[float,Field(gt=0,le=1000)] = 1
+    display: ViewStyle = "no_hidden"
+
+class DrawingProjectionOp(StrictModel):
+    op: Literal["drawing_projection"]
+    label: Label
+    parent: str | int
+    position: Point2
+    display: ViewStyle = "no_hidden"
+
+class DrawingViewUpdateOp(StrictModel):
+    op: Literal["drawing_view_update"]
+    view: str | int
+    scale: Annotated[float,Field(gt=0,le=1000)] | None = None
+    move: Point2 | None = None
+    display: ViewStyle | None = None
+    @model_validator(mode="after")
+    def has_change(self):
+        if all(v is None for v in (self.scale,self.move,self.display)): raise ValueError("Specify scale, move or display")
+        return self
+
+NoteLines = Annotated[list[Annotated[str,Field(min_length=1,max_length=79)]],Field(min_length=1,max_length=50)]
+class DrawingNoteOp(StrictModel):
+    op: Literal["drawing_note"]
+    label: Label
+    sheet: Annotated[int,Field(ge=1,le=100)] = 1
+    position: Point2
+    lines: NoteLines
+    text_height: Annotated[float,Field(gt=0,le=100)] = 3.5
+
+class DrawingNoteUpdateOp(StrictModel):
+    op: Literal["drawing_note_update"]
+    note: str | int
+    lines: NoteLines | None = None
+    position: Point2 | None = None
+    text_height: Annotated[float,Field(gt=0,le=100)] | None = None
+    @model_validator(mode="after")
+    def has_change(self):
+        if all(v is None for v in (self.lines,self.position,self.text_height)): raise ValueError("Specify lines, position or text_height")
+        return self
+
+class DrawingTableOp(StrictModel):
+    op: Literal["drawing_table"]
+    label: Label
+    sheet: Annotated[int,Field(ge=1,le=100)] = 1
+    position: Point2
+    columns: Annotated[list[Positive],Field(min_length=1,max_length=50)]
+    row_height: Positive = 8
+    cells: Annotated[list[list[Annotated[str,Field(max_length=79)]]],Field(min_length=1,max_length=100)]
+    @model_validator(mode="after")
+    def rectangular(self):
+        if any(len(row)!=len(self.columns) for row in self.cells): raise ValueError("Each table row must match the column widths")
+        return self
+
+class DrawingTableCellOp(StrictModel):
+    op: Literal["drawing_table_cell"]
+    table: str | int
+    row: Annotated[int,Field(ge=1,le=100)]
+    column: Annotated[int,Field(ge=1,le=50)]
+    text: Annotated[str,Field(max_length=79)]
+
+class DrawingDimensionOp(StrictModel):
+    op: Literal["drawing_dimension"]
+    label: Label
+    view: str | int
+    dimension_id: Annotated[int,Field(ge=0)]
+    position: Point2 | None = None
+
+class DrawingDeleteOp(StrictModel):
+    op: Literal["drawing_delete"]
+    kind: Literal["view","note","table","dimension"]
+    target: str | int
+
+    @model_validator(mode='after')
+    def dimension_label(self):
+        if self.kind=='dimension' and not isinstance(self.target,str): raise ValueError('Use a dimension label to identify its source model')
+        return self
+
+class UdfInspectOp(StrictModel):
+    op: Literal['udf_inspect']
+    file_path: Annotated[str,Field(min_length=1,max_length=250)]
+    instance: Label | None = None
+
+class UdfCreateOp(StrictModel):
+    op: Literal['udf_create']
+    label: Label
+    file_path: Annotated[str,Field(min_length=1,max_length=250)]
+    instance: Label | None = None
+    references: dict[str,dict[str,Any]]
+    dimensions: dict[str,float] = {}
 
 class DumpTreeOp(StrictModel):
     op: Literal["dump_tree"]
     feature: str | int
 
-Operation=Annotated[Union[SketchOp,ExtrudeOp,RevolveOp,HoleOp,RoundOp,PlaneOp,AxisOp,ShellOp,DimensionsOp,SketchDimensionsOp,ParametersOp,RelationsOp,PatternOp,MirrorOp,SweepOp,LoftOp,DraftOp,SheetmetalWallOp,SheetmetalFlangeOp,SheetmetalUnbendOp,AssembleOp,ComponentPlacementOp,ComponentConstraintsOp,RemoveComponentOp,GenericFeatureOp,SimpleOp,ExportOp,DumpTreeOp],Field(discriminator="op")]
+class CsysOp(StrictModel):
+    op: Literal['datum_csys']
+    label: Label
+    reference: dict[str,Any] = {'kind':'default_csys'}
+    translation: Point3 = [0,0,0]
+    rotation: Point3 = [0,0,0]
+
+class DatumPoint(StrictModel):
+    name: Label
+    position: Point3
+
+class PointsOp(StrictModel):
+    op: Literal['datum_points']
+    label: Label
+    reference: dict[str,Any] = {'kind':'default_csys'}
+    points: Annotated[list[DatumPoint],Field(min_length=1,max_length=200)]
+    @model_validator(mode='after')
+    def unique_names(self):
+        if len({p.name for p in self.points})!=len(self.points): raise ValueError('Datum point names must be unique')
+        return self
+
+class FillOp(StrictModel):
+    op: Literal['surface_fill']
+    label: Label
+    sketch: str | int
+
+class ThickenOp(StrictModel):
+    op: Literal['thicken']
+    label: Label
+    reference: dict[str,Any]
+    thickness: Positive
+    side: Literal['positive','negative','symmetric'] = 'symmetric'
+    mode: Literal['add','cut'] = 'add'
+    new_body: bool = False
+
+class SolidifyOp(StrictModel):
+    op: Literal['solidify']
+    label: Label
+    reference: dict[str,Any]
+    side: Literal['positive','negative'] = 'positive'
+    mode: Literal['add','cut'] = 'add'
+    new_body: bool = False
+
+class BooleanOp(StrictModel):
+    op: Literal['boolean_bodies']
+    label: Label
+    method: Literal['union','subtract','intersect']
+    targets: Annotated[list[dict[str,Any]],Field(min_length=1,max_length=100)]
+    tools: Annotated[list[dict[str,Any]],Field(min_length=1,max_length=100)]
+    keep_tools: bool = False
+    @model_validator(mode='after')
+    def valid_bodies(self):
+        if self.method!='subtract' and len(self.targets)!=1: raise ValueError('Union/intersection require one target body')
+        if self.method=='subtract' and len(self.tools)!=1: raise ValueError('Subtract requires one tool body')
+        if self.method!='subtract' and self.keep_tools: raise ValueError('keep_tools only applies to subtraction')
+        refs=[*self.targets,*self.tools]
+        if any(r.get('kind')!='body' or type(r.get('id')) is not int or r['id']<0 for r in refs): raise ValueError('Explicit body IDs are required')
+        if len({r['id'] for r in refs})!=len(refs): raise ValueError('Target and tool bodies must be distinct')
+        return self
+
+class RibOp(StrictModel):
+    op: Literal['rib']
+    label: Label
+    sketch: str | int
+    thickness: Positive
+    side: Literal['positive','negative','symmetric'] = 'symmetric'
+    flip: bool = False
+
+Operation=Annotated[Union[UdfInspectOp,UdfCreateOp,SketchOp,ExtrudeOp,RevolveOp,HoleOp,RoundOp,PlaneOp,AxisOp,ShellOp,DimensionsOp,SketchDimensionsOp,ParametersOp,RelationsOp,PatternOp,MirrorOp,SweepOp,LoftOp,DraftOp,SheetmetalWallOp,SheetmetalFlangeOp,SheetmetalUnbendOp,AssembleOp,ComponentPlacementOp,ComponentConstraintsOp,RemoveComponentOp,GenericFeatureOp,SimpleOp,ExportOp,DumpTreeOp,DrawingModelOp,DrawingSheetOp,DrawingViewOp,DrawingProjectionOp,DrawingViewUpdateOp,DrawingNoteOp,DrawingNoteUpdateOp,DrawingTableOp,DrawingTableCellOp,DrawingDimensionOp,DrawingDeleteOp,CsysOp,PointsOp,FillOp,ThickenOp,SolidifyOp,BooleanOp,RibOp],Field(discriminator="op")]
 OPERATIONS=TypeAdapter(list[Operation])
 
 def validate_operations(operations: list[dict]) -> list[dict]:
@@ -401,13 +581,13 @@ def validate_operations(operations: list[dict]) -> list[dict]:
                     if type(x.get('id')) is not int or x['id']<0: raise ValueError("Model item reference requires a nonnegative integer id")
                 elif k=='feature':
                     if ('label' in x)==('id' in x): raise ValueError("Feature reference requires one label or id")
-                elif k in ('datum_feature','datum_axis_feature','sketch_curves'):
+                elif k in ('datum_feature','datum_axis_feature','sketch_curves','quilt_feature','datum_csys_feature','datum_point_feature'):
                     if not isinstance(x.get('label'),str): raise ValueError("Datum reference requires a label")
                 elif k in ('plane','datum_plane'):
                     if 'normal' in x:
                         if not isinstance(x['normal'],list) or len(x['normal'])!=3 or sum(v*v for v in x['normal'])<1e-12: raise ValueError("Plane normal requires a nonzero 3D vector")
                     elif x.get('axis','z') not in ('x','y','z'): raise ValueError("Plane axis must be x, y or z")
-                elif k not in ('body','part'): raise ValueError(f"Unsupported model reference kind: {k}")
+                elif k not in ('body','part','default_csys'): raise ValueError(f"Unsupported model reference kind: {k}")
             for v in x.values(): references(v)
-    references(dumped)
+    references([op for op in dumped if not op['op'].startswith('drawing_')])
     return dumped

@@ -57,7 +57,7 @@ async def creo_check_environment() -> dict[str, Any]:
 
 @mcp.tool(annotations=READ)
 async def creo_session_status() -> dict[str, Any]:
-    """Connect through Toolkit to the single open Creo session; return current model and native connection code."""
+    """Connect through Toolkit to the configured Creo session, or the only open session; return current model and native connection code."""
     return await invoke(bridge.session_status)
 
 
@@ -94,7 +94,7 @@ async def creo_list_jobs(limit: int = 10) -> dict[str, Any]:
 async def creo_capabilities() -> dict[str, Any]:
     """Describe general modeling tools, coordinate frames, reference syntax and test evidence."""
     local_evidence = bridge.ROOT / "build/capability_evidence.json"
-    evidence = local_evidence if local_evidence.is_file() else bridge.ROOT / "docs/validation.json"
+    evidence = local_evidence if local_evidence.is_file() else bridge.ROOT / "docs/validation_development.json"
     verified = bridge.read_json(evidence) if evidence.is_file() else {}
     if verified.get('version') != VERSION:
         verified = {"version":VERSION,"status":"No validation summary for this version yet; inspect integration reports"}
@@ -117,7 +117,7 @@ async def creo_capabilities() -> dict[str, Any]:
                       "datum_label":{"kind":"datum_feature","label":"plane_label"}},
         "arbitrary_planar_support":"plane={reference:{kind:surface,id:...},origin:[x,y,z],u_axis:[x,y,z]}",
         "workflow":"submit once -> poll get_job -> inspect model -> choose references -> append using expected_revision",
-        "scope":"MCP-owned native part, sheetmetal and assembly models. Tool availability does not prove every option or Creo operation is supported; consult validation evidence and coverage documentation.",
+        "scope":"MCP-owned native part, sheetmetal, assembly and drawing models. Tool availability does not prove every option or Creo operation is supported; consult validation evidence and coverage documentation.",
         "complete_creo_coverage":False,
         "release_status":"pre-release candidate; requested complete coverage has not been achieved",
         "families":families(),
@@ -137,7 +137,7 @@ async def creo_new_part(model_name: str | None = None) -> dict[str, Any]:
 async def creo_execute_plan(operations: list[Operation], model_id: str | None = None,
                             model_name: str | None = None, expected_revision: int | None = None,
                             assertions: dict[str,Any] | None = None,
-                            model_type: Literal["part","sheetmetal","assembly"] = "part") -> dict[str, Any]:
+                            model_type: Literal["part","sheetmetal","assembly","drawing"] = "part") -> dict[str, Any]:
     """Execute an ordered general feature plan. Omit model_id to create a new part.
 
     Sketch/extrude/revolve and later features reference earlier feature labels.
@@ -468,8 +468,8 @@ async def creo_save_model(model_id: str, expected_revision: int) -> dict[str,Any
 
 
 @mcp.tool(annotations=READ)
-async def creo_export_model(model_id: str, format: Literal["step","stl","iges","jpeg"]="step") -> dict[str,Any]:
-    """Export native model geometry through Creo to STEP, STL, IGES or JPEG, inside the job output directory."""
+async def creo_export_model(model_id: str, format: Literal["step","stl","iges","jpeg","pdf"]="step") -> dict[str,Any]:
+    """Export solids to STEP/STL/IGES/JPEG or drawings to PDF/JPEG inside the job output directory."""
     return await invoke(general.submit,[{"op":"export","format":format}],model_id,None,None,None,True)
 
 
@@ -477,6 +477,186 @@ async def creo_export_model(model_id: str, format: Literal["step","stl","iges","
 async def creo_dump_feature_tree(model_id: str, feature: str | int) -> dict[str,Any]:
     """Export a native feature's Toolkit element tree to XML for inspection; returns a job_id."""
     return await invoke(general.submit,[{"op":"dump_tree","feature":feature}],model_id,None,None,None,True)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_new_drawing(source_model_id: str, model_name: str | None=None,
+                           width: float=297, height: float=210) -> dict[str,Any]:
+    """Create a native DRW with an isolated snapshot of an owned part/sheetmetal model.
+
+    Sheet dimensions and all drawing positions use mm from the lower left corner.
+    The source snapshot has label 'model'. Add views, notes, tables and shown model
+    dimensions, then export PDF. Source model edits do not update this snapshot.
+    """
+    return await invoke(general.submit,[{'op':'drawing_sheet','action':'resize','width':width,'height':height},
+        {'op':'drawing_model','label':'model','source_model_id':source_model_id}],None,model_name,model_type='drawing')
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_drawing_view(model_id: str, expected_revision: int, label: str,
+                            position: list[float], orientation: Literal['front','back','top','bottom','left','right','isometric']='front',
+                            scale: float=1, sheet: int=1, model: str='model',
+                            display: Literal['wireframe','hidden','no_hidden','shaded','shaded_edges']='no_hidden') -> dict[str,Any]:
+    """Create a native model-associated general drawing view. position is sheet [x,y] in mm."""
+    return await invoke(general.submit,[dict(op='drawing_view',label=label,position=position,orientation=orientation,
+        scale=scale,sheet=sheet,model=model,display=display)],model_id,None,expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_drawing_projection(model_id: str, expected_revision: int, label: str,
+                                  parent: str | int, position: list[float],
+                                  display: Literal['wireframe','hidden','no_hidden','shaded','shaded_edges']='no_hidden') -> dict[str,Any]:
+    """Create a native projected view from a drawing view label/ID, on the parent's sheet."""
+    return await invoke(general.submit,[dict(op='drawing_projection',label=label,parent=parent,position=position,display=display)],model_id,None,expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_drawing_note(model_id: str, expected_revision: int, label: str, lines: list[str],
+                            position: list[float], sheet: int=1, text_height: float=3.5) -> dict[str,Any]:
+    """Create a native multiline drawing note. Text is preserved in the saved DRW and PDF."""
+    return await invoke(general.submit,[dict(op='drawing_note',label=label,lines=lines,position=position,sheet=sheet,text_height=text_height)],model_id,None,expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_drawing_table(model_id: str, expected_revision: int, label: str, cells: list[list[str]],
+                             columns: list[float], position: list[float], row_height: float=8, sheet: int=1) -> dict[str,Any]:
+    """Create an editable native drawing table. Column widths, row height and position use mm."""
+    return await invoke(general.submit,[dict(op='drawing_table',label=label,cells=cells,columns=columns,position=position,row_height=row_height,sheet=sheet)],model_id,None,expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_drawing_dimension(model_id: str, expected_revision: int, label: str, view: str | int,
+                                 dimension_id: int, position: list[float] | None=None) -> dict[str,Any]:
+    """Show an existing driving model dimension in a drawing view. Inspect the source snapshot for dimension IDs."""
+    op=dict(op='drawing_dimension',label=label,view=view,dimension_id=dimension_id)
+    if position is not None: op['position']=position
+    return await invoke(general.submit,[op],model_id,None,expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_datum_csys(model_id: str, expected_revision: int, label: str,
+                          translation: list[float] | None=None, rotation: list[float] | None=None,
+                          reference: dict[str,Any] | None=None) -> dict[str,Any]:
+    """Create an offset native coordinate system. Offsets use mm; rotations use degrees about successive X,Y,Z axes."""
+    return await invoke(general.submit,[dict(op='datum_csys',label=label,translation=translation or [0,0,0],
+        rotation=rotation or [0,0,0],reference=reference or {'kind':'default_csys'})],model_id,None,expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_datum_points(model_id: str, expected_revision: int, label: str, points: list[dict[str,Any]],
+                            reference: dict[str,Any] | None=None) -> dict[str,Any]:
+    """Create dimensioned datum points: [{name: 'p1', position: [x,y,z]}], relative to a coordinate system."""
+    return await invoke(general.submit,[dict(op='datum_points',label=label,points=points,
+        reference=reference or {'kind':'default_csys'})],model_id,None,expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_surface_fill(model_id: str, expected_revision: int, label: str, sketch: str | int) -> dict[str,Any]:
+    """Create a native planar fill surface from a closed sketch. Reference its quilt by {kind:'quilt_feature',label:...}."""
+    return await invoke(general.submit,[dict(op='surface_fill',label=label,sketch=sketch)],model_id,None,expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_thicken(model_id: str, expected_revision: int, label: str, reference: dict[str,Any], thickness: float,
+                       side: Literal['positive','negative','symmetric']='symmetric',
+                       mode: Literal['add','cut']='add', new_body: bool=False) -> dict[str,Any]:
+    """Create a native thicken feature from a quilt. Supports solid addition/cut and symmetric thickness."""
+    return await invoke(general.submit,[dict(op='thicken',label=label,reference=reference,thickness=thickness,
+        side=side,mode=mode,new_body=new_body)],model_id,None,expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_solidify(model_id: str, expected_revision: int, label: str, reference: dict[str,Any],
+                        side: Literal['positive','negative']='positive', mode: Literal['add','cut']='add',
+                        new_body: bool=False) -> dict[str,Any]:
+    """Create native solidify from a quilt, or trim a solid with a datum plane using mode='cut'."""
+    return await invoke(general.submit,[dict(op='solidify',label=label,reference=reference,side=side,mode=mode,new_body=new_body)],model_id,None,expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_boolean_bodies(model_id: str, expected_revision: int, label: str,
+                              method: Literal['union','subtract','intersect'], targets: list[dict[str,Any]],
+                              tools: list[dict[str,Any]], keep_tools: bool=False) -> dict[str,Any]:
+    """Create a parametric multi-body Boolean feature. Inspect explicit body IDs; all references use {kind:'body',id:...}."""
+    return await invoke(general.submit,[dict(op='boolean_bodies',label=label,method=method,targets=targets,
+        tools=tools,keep_tools=keep_tools)],model_id,None,expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_rib(model_id: str, expected_revision: int, label: str, sketch: str | int, thickness: float,
+                   side: Literal['positive','negative','symmetric']='symmetric', flip: bool=False) -> dict[str,Any]:
+    """Create a native profile rib from an open sketch intersecting the target solid. flip changes material side."""
+    return await invoke(general.submit,[dict(op='rib',label=label,sketch=sketch,thickness=thickness,side=side,flip=flip)],model_id,None,expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_drawing_sheet(model_id: str, expected_revision: int, action: Literal['add','resize'],
+                              width: float, height: float, sheet: int=1, name: str | None=None) -> dict[str,Any]:
+    """Add or resize a native drawing sheet; dimensions use mm. add returns the sheet number in operations."""
+    op=dict(op='drawing_sheet',action=action,width=width,height=height,sheet=sheet)
+    if name is not None:op['name']=name
+    return await invoke(general.submit,[op],model_id,None,expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_drawing_view_update(model_id: str, expected_revision: int, view: str | int,
+                                    scale: float | None=None, move: list[float] | None=None,
+                                    display: Literal['wireframe','hidden','no_hidden','shaded','shaded_edges'] | None=None) -> dict[str,Any]:
+    """Change view scale/style or move it by a sheet-space [dx,dy] vector in mm."""
+    op=dict(op='drawing_view_update',view=view)
+    for key,value in dict(scale=scale,move=move,display=display).items():
+        if value is not None:op[key]=value
+    return await invoke(general.submit,[op],model_id,None,expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_drawing_note_update(model_id: str, expected_revision: int, note: str | int,
+                                    lines: list[str] | None=None, position: list[float] | None=None,
+                                    text_height: float | None=None) -> dict[str,Any]:
+    """Edit the text, absolute position or text height of an existing native drawing note."""
+    op=dict(op='drawing_note_update',note=note)
+    for key,value in dict(lines=lines,position=position,text_height=text_height).items():
+        if value is not None:op[key]=value
+    return await invoke(general.submit,[op],model_id,None,expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_drawing_table_cell(model_id: str, expected_revision: int, table: str | int,
+                                   row: int, column: int, text: str) -> dict[str,Any]:
+    """Edit one native table cell. Row and column numbers start at one."""
+    return await invoke(general.submit,[dict(op='drawing_table_cell',table=table,row=row,column=column,text=text)],model_id,None,expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_drawing_delete(model_id: str, expected_revision: int,
+                               kind: Literal['view','note','table','dimension'], target: str | int) -> dict[str,Any]:
+    """Delete a drawing item. dimension erases its display only; use its label. Remove dependent views/dimensions before parent views."""
+    return await invoke(general.submit,[dict(op='drawing_delete',kind=kind,target=target)],model_id,None,expected_revision)
+
+
+@mcp.tool(annotations=READ)
+async def creo_inspect_udf(model_id: str, file_path: str, instance: str | None=None) -> dict[str,Any]:
+    """Read a local Creo UDF (.gph) reference prompts and variable dimensions. Returns a job; inspect operations[].metadata.
+
+    The library is copied into the job directory. It is not bundled with this server.
+    """
+    op=dict(op='udf_inspect',file_path=file_path)
+    if instance is not None: op['instance']=instance
+    return await invoke(general.submit,[op],model_id,None,None,None,True)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_create_udf(model_id: str, expected_revision: int, label: str, file_path: str,
+                           references: dict[str,dict[str,Any]], dimensions: dict[str,float] | None=None,
+                           instance: str | None=None) -> dict[str,Any]:
+    """Place a native independent UDF group, preserving editable features. First inspect the library.
+
+    references maps each exact prompt to a native reference; dimensions maps variable names (e.g. d11)
+    to values in target model units. Interactive placement and missing-reference dialogs are disabled.
+    """
+    op=dict(op='udf_create',label=label,file_path=file_path,references=references,dimensions=dimensions or {})
+    if instance is not None: op['instance']=instance
+    return await invoke(general.submit,[op],model_id,None,expected_revision)
 
 
 if __name__ == "__main__":

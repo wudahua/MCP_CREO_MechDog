@@ -1,0 +1,39 @@
+{
+  "operations": [
+    {
+      "op": "sketch",
+      "label": "profile",
+      "entities": [
+        {
+          "type": "rectangle",
+          "name": "rect",
+          "min": [
+            0,
+            0
+          ],
+          "max": [
+            20,
+            10
+          ]
+        }
+      ]
+    },
+    {
+      "op": "surface_fill",
+      "label": "patch",
+      "sketch": "profile"
+    },
+    {
+      "op": "thicken",
+      "label": "plate",
+      "reference": {
+        "kind": "quilt_feature",
+        "label": "patch"
+      },
+      "thickness": 2
+    }
+  ],
+  "assertions": {
+    "volume_mm3": 400
+  }
+}

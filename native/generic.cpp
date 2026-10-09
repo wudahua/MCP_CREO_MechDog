@@ -87,6 +87,12 @@ static J inspection(bool require_healthy=true){
  planes.clear();CK(ProSolidFeatVisit((ProSolid)board,datum_cb,nullptr,nullptr));J ds=J::array();for(auto p:planes)ds.push_back({{"id",p.id},{"normal",xyz(p.n)},{"origin",xyz(p.o)}});result["datum_planes"]=ds;ProModelitem owner;CK(ProMdlToModelitem(board,&owner));J params=J::object();ProParameterVisit(&owner,nullptr,parameter_cb,&params);result["parameters"]=params;return result;
 }
 static ProSelection resolve(const J& r){
+ if(r.at("kind")=="default_csys"){
+  J state=inspection(false);for(auto f:state["features"])if(f["type"].get<int>()==PRO_FEAT_CSYS)for(auto g:f["geometry_items"])if(g["type"].get<int>()==PRO_CSYS)return selection(g["id"],PRO_CSYS);throw std::runtime_error("No default coordinate system found");
+ }
+ if(r.at("kind")=="quilt_feature"||r.at("kind")=="datum_csys_feature"||r.at("kind")=="datum_point_feature"){
+  ProType type=r["kind"]=="quilt_feature"?PRO_QUILT:r["kind"]=="datum_csys_feature"?PRO_CSYS:PRO_POINT;ProFeature f=feature(r.at("label"));J ids=J::array();CK(ProFeatureGeomitemVisit(&f,type,collect_geom_ids,nullptr,&ids));if(ids.size()!=1)throw std::runtime_error("Feature reference must identify exactly one geometry item");return selection(ids[0]["id"],type);
+ }
  std::string kind=r.at("kind");if(kind=="part"){ProModelitem mi;CK(ProMdlToModelitem(board,&mi));ProSelection s;CK(ProSelectionAlloc(nullptr,&mi,&s));return s;}if(kind=="csys"||kind=="point"||kind=="quilt")return selection(r.at("id"),kind=="csys"?PRO_CSYS:kind=="point"?PRO_POINT:PRO_QUILT);if(kind=="feature")return selection(feature_id(r.contains("label")?r["label"]:r["id"]),PRO_FEATURE);
  if(kind=="body"){int id=r.value("id",-1);if(id<0){ProSolidBody b;CK(ProSolidDefaultBodyGet((ProSolid)board,&b));id=b.id;}return selection(id,PRO_BODY);}
  if(kind=="surface"||kind=="edge"||kind=="axis"||kind=="curve"||kind=="dimension"){int id=r.at("id");return selection(id,kind=="surface"?PRO_SURFACE:kind=="edge"?PRO_EDGE:kind=="axis"?PRO_AXIS:kind=="curve"?PRO_CURVE:PRO_DIMENSION);}
@@ -207,6 +213,8 @@ static J populate_profile(ProSection section,const J& op){
  CK(ProSectionEpsilonSet(section,0.0001));ProWSecerror err;CK(ProSecerrorAlloc(&err));ProError result=ProSectionAutodim(section,&err);if(result){int count;ProSecerrorCount(&err,&count);for(int i=0;i<count;i++){ProMsg m;ProSecerrorMsgGet(err,i,m);log("PROFILE_ERROR=%ls\n",m);}}check(result,"AutodimensionProfile");CK(ProSectionRegenerate(section,&err));ProSecerrorFree(&err);J ids=J::object();for(auto item:entities)ids[item.first]=item.second;return {{"entity_ids",ids},{"dimension_ids",dims}};
 }
 #include "advanced.cpp"
+#include "surfaces.cpp"
+#include "udf.cpp"
 static void execute_operation(const J& op){
  std::string kind=op.at("op");log("PHASE=%s%s%s\n",kind.c_str(),op.contains("label")?":":"",op.value("label","").c_str());
  if(kind=="sketch")sketch(op);
@@ -219,6 +227,13 @@ static void execute_operation(const J& op){
  else if(kind=="draft")generic_draft(op);
  else if(kind=="sweep")generic_sweep(op);
  else if(kind=="loft")generic_loft(op);
+ else if(kind=="udf_inspect"||kind=="udf_create")generic_udf(op);
+ else if(kind=="datum_csys")generic_csys(op);
+ else if(kind=="datum_points")generic_points(op);
+ else if(kind=="surface_fill")generic_fill(op);
+ else if(kind=="thicken"||kind=="solidify")generic_surface_solid(op);
+ else if(kind=="boolean_bodies")generic_boolean(op);
+ else if(kind=="rib")generic_rib(op);
  else if(kind=="sheetmetal_wall")generic_sheetmetal_wall(op);
  else if(kind=="sheetmetal_flange")generic_sheetmetal_flange(op);
  else if(kind=="sheetmetal_unbend"||kind=="sheetmetal_flat_pattern"||kind=="sheetmetal_bend_back")generic_sheetmetal_unbend(op);
@@ -236,7 +251,7 @@ static void execute_operation(const J& op){
  else if(kind=="export"){std::string format=op["format"],extension=format=="step"?".stp":format=="stl"?".stl":format=="iges"?".igs":".jpg";ProPath output;path(output,generic_job+L"\\output\\"+model_name+wide(extension));if(format=="jpeg"){CK(ProMdlDisplay(board));CK(ProMdlWindowGet(board,&win));CK(ProWindowRefit(win));CK(ProWindowRepaint(win));CK(ProRasterFileWrite(win,PRORASTERDEPTH_24,8,6,PRORASTERDPI_100,PRORASTERTYPE_JPEG,output));}else if(format=="stl")write_stl(output);else{ProIntf3DExportType t=format=="step"?PRO_INTF_EXPORT_STEP:PRO_INTF_EXPORT_IGES;CK(ProIntf3DFileWriteWithDefaultProfile((ProSolid)board,t,output));}operation_results.push_back({{"op",kind},{"file",utf8(output)}});}
  else if(kind=="dump_tree"){ProFeature f=feature(op["feature"]);ProElement root;CK(ProFeatureElemtreeExtract(&f,nullptr,PRO_FEAT_EXTRACT_NO_OPTS,&root));ProPath output;path(output,generic_job+L"\\output\\feature_"+std::to_wstring(f.id)+L".xml");CK(ProElemtreeWrite(root,PRO_ELEMTREE_XML,output));CK(ProFeatureElemtreeFree(&f,root));operation_results.push_back({{"op",kind},{"file",utf8(output)}});}
  else if(kind!="regenerate"&&kind!="save")throw std::runtime_error("Operation is not implemented: "+kind);
- if(kind!="export"&&kind!="dump_tree")CK(ProSolidRegenerate((ProSolid)board,PRO_REGEN_NO_FLAGS));inspection();operation_results.push_back({{"op",kind},{"label",op.value("label","")},{"succeeded",true}});
+ if(kind!="export"&&kind!="dump_tree"&&kind!="udf_inspect")CK(ProSolidRegenerate((ProSolid)board,PRO_REGEN_NO_FLAGS));inspection();operation_results.push_back({{"op",kind},{"label",op.value("label","")},{"succeeded",true}});
 }
 static void verify_assertions(const J& state,const J& a){if(a.contains("volume_mm3")){if(state["volume_mm3"].is_null()||fabs(state["volume_mm3"].get<double>()-a["volume_mm3"].get<double>())>a.value("volume_tolerance",0.01))throw std::runtime_error("Volume assertion failed");}if(a.value("require_solid",false)&&!state["has_solid"].get<bool>())throw std::runtime_error("Solid assertion failed");}
 static void verify_saved(const J& before,const J& after){
@@ -266,7 +281,7 @@ static int run_generic(const std::wstring& job){
  generic_job=job;J report={{"success",false},{"saved_file_reloaded_and_verified",false},{"rollback_succeeded",false}};J request;ProProcessHandle process={};bool connected=false,mutated=false;std::wstring checkpoint;board_log=_wfsopen((job+L"\\native.log").c_str(),L"w",_SH_DENYNO);if(!board_log)return 3;
  try{
   std::ifstream input(job+L"\\request.json");input>>request;auto model=request.at("model");model_name=wide(model.at("model_name"));folder=wide(model.at("output_directory"));aliases=model.at("aliases");component_sources=request.value("components",J::object());template_file=wide(request.at("template_file"));if(!model["part_file"].is_null())checkpoint=wide(model["part_file"]);
-  char empty[]="";ProBoolean random=PRO_B_FALSE;CK(ProEngineerConnect(empty,empty,empty,empty,PRO_B_FALSE,30,&random,&process));connected=true;report["connected"]=true;ProName name;wcscpy_s(name,model_name.c_str());ProMdlType mdltype=model.value("model_type","part")=="assembly"?PRO_MDL_ASSEMBLY:PRO_MDL_PART;ProError found=ProMdlInit(name,mdltype,&board);
+  char empty[]="";ProBoolean random=PRO_B_FALSE;CK(connect_creo(&process));connected=true;report["connected"]=true;ProName name;wcscpy_s(name,model_name.c_str());ProMdlType mdltype=model.value("model_type","part")=="assembly"?PRO_MDL_ASSEMBLY:PRO_MDL_PART;ProError found=ProMdlInit(name,mdltype,&board);
   if(request.at("new").get<bool>()){
    if(found==PRO_TK_NO_ERROR)throw std::runtime_error("New model name already exists in the Creo session");if(found!=PRO_TK_E_NOT_FOUND)check(found,"CheckNewModelName");ProPath original,destination,tfile;CK(ProDirectoryCurrentGet(original));path(destination,folder);path(tfile,template_file);CK(ProDirectoryChange(destination));try{ProMdl templ;CK(ProMdlFiletypeLoad(tfile,PRO_MDLFILE_UNUSED,PRO_B_FALSE,&templ));ProMdlName new_name;wcscpy_s(new_name,model_name.c_str());CK(ProMdlnameCopy(templ,new_name,&board));}catch(...){ProDirectoryChange(original);throw;}CK(ProDirectoryChange(original));mutated=true;
   }else{

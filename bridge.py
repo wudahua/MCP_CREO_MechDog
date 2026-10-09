@@ -121,6 +121,9 @@ def toolkit_lock(wait_seconds: float = 0):
 def native_environment() -> dict[str, str]:
     common = Path(config()["creo_root"]) / "Common Files"
     env = os.environ.copy()
+    selected = config().get("creo_session_id")
+    if selected:
+        env["MECHDOG_CREO_SESSION_ID"] = selected
     env["PRO_COMM_MSG_EXE"] = str(common / "x86e_win64/obj/pro_comm_msg.exe")
     env["PATH"] = os.pathsep.join(str(common / p) for p in ("x86e_win64/lib", "x86e_win64/obj", "libs/dfor/lib")) + os.pathsep + env.get("PATH", "")
     # Child-process environment only; do not return or log the license value.

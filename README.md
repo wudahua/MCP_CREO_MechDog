@@ -1,12 +1,14 @@
-# MCP_CREO_MechDog 0.21
+# MCP_CREO_MechDog 0.22
 
 本地 Windows MCP 服务，连接已打开的 Creo Parametric 10，通过官方 C/C++ Toolkit 创建、查询和修改**原生参数化特征**。建模由任意支持的草图轮廓及顺序特征组成：新建零件 → 草图 → 拉伸/旋转 → 切除/孔 → 后续特征。原先的底板接口保留为快捷工具。
 
-**本版为源码预发布候选版，尚未完成所有 Creo 操作的覆盖。** 服务注册 **47 个工具，其中 46 个启用、放样接口当前禁用**。使用官方 Python MCP SDK 2.3.0、stdio 传输，采用 [MIT 许可证](LICENSE)。每位使用者在自己的 Windows 电脑上安装依赖并编译 Toolkit 执行器，由本地 AI 客户端调用。
+**本版为源码预发布候选版，尚未完成所有 Creo 操作的覆盖。** 当前开发版注册 **67 个工具，其中 66 个启用、放样接口当前禁用**。使用官方 Python MCP SDK 2.3.0、stdio 传输，采用 [MIT 许可证](LICENSE)。每位使用者在自己的 Windows 电脑上安装依赖并编译 Toolkit 执行器，由本地 AI 客户端调用。
 
-0.21 的实机验证和失败记录见 [docs/validation.json](docs/validation.json)，支持范围见 [docs/COVERAGE_0.21.md](docs/COVERAGE_0.21.md)。测试环境为 Windows x64、Creo 10.0.0.0、Python 3.12、Visual Studio 2022 C++ Build Tools。0.2.0 的 41 个成功任务及 11 项输入验证单独保留为历史记录。这些摘要不能代替使用者自己机器的许可与运行验证。
+开发版新增工程图、坐标系/点、填充曲面、加厚、实体化、多实体布尔、筋和 UDF 库工具。使用方法和完整边界见 [开发版说明](docs/RELEASE_NOTES_0.22.md)，本轮证据见 [开发版验证摘要](docs/validation_development.json)。
 
-本机 0.21 验证通过 20 项输入校验、64 个成功原生任务，其中 56 个修改任务通过保存重载。只读查询/导出不计入修改任务；禁用放样的拒绝行为不计为建模成功。
+已发布 0.21 的历史验证见 [validation_0.21.json](docs/validation_0.21.json)，历史范围见 [COVERAGE_0.21.md](docs/COVERAGE_0.21.md)。测试环境为 Windows x64、Creo 10.0.0.0、Python 3.12、Visual Studio 2022 C++ Build Tools。0.2.0 的 41 个成功任务及 11 项输入验证单独保留为历史记录。这些摘要不能代替使用者自己机器的许可与运行验证。
+
+历史 0.21 验证通过 20 项输入校验、64 个成功原生任务，其中 56 个修改任务通过保存重载。只读查询/导出不计入修改任务；禁用放样的拒绝行为不计为建模成功。
 
 ## 安装
 
@@ -39,6 +41,10 @@
 | 镜像、扫掠、拔模 | `creo_mirror`：整体/几何镜像；`creo_sweep`：恒定截面及命名截面尺寸；`creo_draft`：恒角、不分割拔模 |
 | 钣金 | `creo_new_sheetmetal`、`creo_sheetmetal_wall`、`creo_sheetmetal_flange`、`creo_sheetmetal_unbend`、`creo_sheetmetal_bend_back`、`creo_sheetmetal_flat_pattern`：首壁、弯曲法兰、展开、折弯回去和平展；保留原生特征树 |
 | 装配 | `creo_new_assembly`、`creo_assemble_component`、`creo_component_placement`、`creo_component_constraints`、`creo_remove_component`、`creo_list_components`：组件版本副本、定位、约束、删除和查询 |
+| 新增曲面与实体 | `creo_surface_fill`、`creo_thicken`、`creo_solidify`、`creo_boolean_bodies`、`creo_rib` |
+| 新增基准 | `creo_datum_csys`、`creo_datum_points` |
+| 原生工程图 | `creo_new_drawing`；图纸、一般/投影视图、尺寸显示、注释、表格及编辑/删除；原生 DRW 与 PDF 输出 |
+| UDF 特征库 | `creo_inspect_udf`、`creo_create_udf`：查询并复用用户的 .gph，保留组内原生参数特征 |
 | 未完成的保留接口 | `creo_loft`：任务入队前明确拒绝，不作为可用功能 |
 | 参数化修改 | `creo_set_dimensions`、`creo_set_sketch_dimensions`、`creo_set_parameters`、`creo_set_relations`：编辑特征尺寸/草图尺寸、零件参数、简单算术关系式，重新生成依赖特征 |
 | 特征树与拓扑查询 | `creo_inspect_model`、`creo_refresh_model`、`creo_list_models`：特征 ID、名称、类型、状态、尺寸、草图尺寸、几何引用 ID、面/边/实体、体积、包围盒、参数和版本 |
@@ -49,7 +55,7 @@
 
 特征保存为 Creo 可编辑的草图、拉伸、旋转、孔、圆角等，保留尺寸及依赖。多段线和矩形会展开为原生直线，不能将 `polyline` 名字当作单个尺寸引用；例如 `box_0` 是矩形第一条边。
 
-提供接口不等于所有参数组合都已验证。[docs/validation.json](docs/validation.json) 记录公开验证摘要，开发环境的 `build/capability_evidence.json` 记录本地详细报告。已测试非矩形支架、带内孔和沟槽的轴类件、多实体圆弧/椭圆实体、样条拉伸曲面、薄壁对称拉伸、抽壳、边圆角和倒角、尺寸阵列及参数关系驱动。高级树接口需要符合 SDK 的具体特征定义，不能自动补齐任意缺失的草图或集合。
+提供接口不等于所有参数组合都已验证。[开发版验证摘要](docs/validation_development.json) 记录本轮测试，历史证据单独保留，开发环境的 `build/capability_evidence.json` 记录本地详细报告。已测试非矩形支架、带内孔和沟槽的轴类件、多实体圆弧/椭圆实体、样条拉伸曲面、薄壁对称拉伸、抽壳、边圆角和倒角、尺寸阵列及参数关系驱动。高级树接口需要符合 SDK 的具体特征定义，不能自动补齐任意缺失的草图或集合。
 
 ## 接入与调用
 

@@ -2,7 +2,11 @@
 
 本项目已提供 MIT 许可证及第三方声明。公开内容为本项目源码、安装脚本、说明、示例和测试；使用者在自己的 Windows 电脑安装和运行。
 
-## 用网页发布仓库
+## 当前开发版 0.22
+
+当前新增能力位于 `MCP_CREO_MechDog-0.22-source.zip`。如需发布这次开发进展，上传这个包内的文件到仓库根目录，提交说明用 `Add 0.22 drawing, surface and UDF tools`；使用独立标签 `v0.22` 并标记 Pre-release，说明见 [开发版说明](RELEASE_NOTES_0.22.md)。不要替换已经发布的 v0.21 标签及其附件。所有新工具的支持范围及未完成项须保留。此处只提供发布操作方法；本轮开发没有自动修改 GitHub。
+
+## 历史 0.21：用网页发布仓库
 
 1. 登录 GitHub，点击 **New repository**。仓库名填写 **MCP_CREO_MechDog**，可见性选择 **Public**。描述可填写：`Local MCP server for native parametric modeling in Creo 10: sketches, extrude, revolve, holes and editable feature trees.`
 2. 创建空仓库：不要勾选自动生成 README，也不要再选 `.gitignore` 或许可证模板；源码已经包含这些文件。

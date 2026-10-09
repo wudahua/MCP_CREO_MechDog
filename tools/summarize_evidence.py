@@ -17,6 +17,9 @@ def load(name,protocol=False):
     return value
 
 def main():
+    if VERSION != '0.21':
+        from summarize_development import main as summarize_current
+        return summarize_current()
     core=load('general_integration_test.json')
     extended=load('extended_integration_test.json')
     guards=load('guards_integration_test.json')

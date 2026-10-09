@@ -20,8 +20,8 @@ async def main(create: bool, simple: bool, classic: bool):
         report["protocol_version"] = client.protocol_version
         tools = await client.list_tools()
         report["tools"] = [t.name for t in tools.tools]
-        assert len(report["tools"]) == 47, report["tools"]
-        assert {"creo_execute_plan","creo_create_sketch","creo_extrude","creo_revolve","creo_hole","creo_dimension_pattern"} <= set(report["tools"]), report
+        assert len(report["tools"]) == 67, report["tools"]
+        assert {"creo_execute_plan","creo_create_sketch","creo_extrude","creo_revolve","creo_hole","creo_dimension_pattern","creo_new_drawing","creo_create_udf","creo_rib","creo_boolean_bodies"} <= set(report["tools"]), report
         capabilities = await client.call_tool("creo_capabilities", {})
         assert not capabilities.is_error, capabilities
         report["server"] = {key: capabilities.structured_content[key] for key in ("name", "version")}

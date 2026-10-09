@@ -2,5 +2,6 @@
   "creo_root": "C:\\Program Files\\PTC\\Creo 10.0.0.0",
   "vcvars64": "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat",
   "native_timeout_seconds": 180,
-  "generic_timeout_seconds": 600
+  "generic_timeout_seconds": 600,
+  "creo_session_id": ""
 }

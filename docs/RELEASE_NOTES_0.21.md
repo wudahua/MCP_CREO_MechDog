@@ -18,4 +18,4 @@
 
 `creo_loft` 是未完成的保留接口，不作为可用功能。变截面扫掠、特征子树镜像、钣金成形、子装配复制、工程图及专业模块等仍未封装；全部参数/引用组合未验证。
 
-完整边界见 [COVERAGE_0.21.md](COVERAGE_0.21.md)，实际验证摘要见 [validation.json](validation.json)。历史结果单独保留在 [validation_0.2.0.json](validation_0.2.0.json)。安装见 [INSTALL.md](INSTALL.md)，新增功能示例见 [MODELING_0.21.md](MODELING_0.21.md)。使用者自行取得 Creo 10、匹配 Toolkit SDK、编译器和相应许可；项目不分发 PTC 软件、模板、SDK 库或许可。
+完整边界见 [COVERAGE_0.21.md](COVERAGE_0.21.md)，实际验证摘要见 [validation.json](validation_0.21.json)。历史结果单独保留在 [validation_0.2.0.json](validation_0.2.0.json)。安装见 [INSTALL.md](INSTALL.md)，新增功能示例见 [MODELING_0.21.md](MODELING_0.21.md)。使用者自行取得 Creo 10、匹配 Toolkit SDK、编译器和相应许可；项目不分发 PTC 软件、模板、SDK 库或许可。

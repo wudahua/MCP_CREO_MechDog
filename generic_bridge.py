@@ -2,6 +2,8 @@
 from __future__ import annotations
 import hashlib
 import json
+import re
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -51,15 +53,14 @@ def submit(operations: list[dict], model_id: str | None=None, model_name: str | 
     operations=validate_operations(operations)
     require_available(operations)
     assertions=Assertions.model_validate(assertions or {}).model_dump(exclude_none=True)
-    if readonly and any(op["op"] not in ("dump_tree","export") for op in operations): raise ValueError("Read-only requests may only inspect/export")
+    if readonly and any(op["op"] not in ("dump_tree","export","udf_inspect") for op in operations): raise ValueError("Read-only requests may only inspect/export")
     with bridge.toolkit_lock():
         new=model_id is None
         if new:
-            if model_type not in ("part","sheetmetal","assembly"): raise ValueError("Unsupported model_type")
+            if model_type not in ("part","sheetmetal","assembly","drawing"): raise ValueError("Unsupported model_type")
             if model_name is not None and not bridge.MODEL_NAME.fullmatch(model_name): raise ValueError("Invalid model_name")
             model_id=uuid.uuid4().hex
             path=model_path(model_id)
-            (path/"output").mkdir(parents=True)
             model={"model_id":model_id,"model_name":model_name or f"ai_part_{model_id[:12]}",
                    "revision":0,"created_at":bridge.now(),"status":"new","aliases":{},"model_type":model_type,
                    "output_directory":str(path/"output"),"part_file":None}
@@ -74,27 +75,46 @@ def submit(operations: list[dict], model_id: str | None=None, model_name: str | 
         actual_type=model.get("model_type","part")
         assembly_ops={"assemble_component","component_placement","component_constraints","remove_component"}
         for op in operations:
+            if op['op'].startswith('drawing_') and actual_type!='drawing': raise ValueError("Drawing operations require an MCP drawing")
+            if actual_type=='drawing' and not (op['op'].startswith('drawing_') or op['op'] in {'regenerate','save','export'}): raise ValueError("This operation requires a solid model")
+            if op['op']=='export':
+                if actual_type=='drawing' and op['format'] not in {'pdf','jpeg'}: raise ValueError("Drawing export supports PDF and JPEG")
+                if actual_type!='drawing' and op['format']=='pdf': raise ValueError("PDF export requires a drawing")
             if op['op'] in assembly_ops and actual_type!="assembly": raise ValueError("Assembly operations require an MCP assembly model")
             if op['op'].startswith('sheetmetal_') and actual_type!="sheetmetal": raise ValueError("Sheetmetal operations require an MCP sheetmetal model")
-            if actual_type=="assembly" and op['op'] not in assembly_ops|{"datum_plane","datum_axis","set_parameters","set_relations","set_dimensions","regenerate","save","export","dump_tree","feature_tree"}: raise ValueError("This operation requires a part model")
+            if actual_type=="assembly" and op['op'] not in assembly_ops|{"datum_plane","datum_axis","datum_csys","datum_points","set_parameters","set_relations","set_dimensions","regenerate","save","export","dump_tree","feature_tree"}: raise ValueError("This operation requires a part model")
         components={}
         for op in operations:
-            if op['op']=="assemble_component":
+            if op['op'] in ("assemble_component","drawing_model"):
                 source=model_info(op['source_model_id'])
                 components.update(component_graph(source,model_id))
-                if source.get('model_type')=='assembly':
+                if source.get('model_type') in ('assembly','drawing'):
                     raise ValueError("Nested assembly copying is not yet supported; insert owned part/sheetmetal models")
         duplicate=set(model["aliases"]).intersection(op["label"] for op in operations if "label" in op)
         if duplicate: raise ValueError(f"Feature labels already exist: {sorted(duplicate)}")
         # Initialize from a solid template. Native first-wall conversion creates
         # the sheetmetal body; the stock empty SMT body breaks attached walls.
-        templates={"part":"mmns_part_solid_abs.prt","sheetmetal":"mmns_part_solid_abs.prt","assembly":"mmns_asm_design_abs.asm"}
+        templates={"part":"mmns_part_solid_abs.prt","sheetmetal":"mmns_part_solid_abs.prt","assembly":"mmns_asm_design_abs.asm","drawing":"a4_drawing.drw"}
         template=Path(bridge.config()["creo_root"])/"Common Files/templates"/templates[actual_type]
         if not template.is_file(): raise ValueError(f"Missing local model template: {templates[actual_type]}")
+        udf_files={}
+        for index,op in enumerate(operations):
+            if op['op'] in ('udf_inspect','udf_create'):
+                source=Path(op['file_path']).expanduser()
+                if not source.is_absolute() or not source.is_file() or not re.search(r'\.gph(?:\.\d+)?$',source.name,re.I):
+                    raise ValueError('UDF file_path must be an absolute path to an existing .gph or .gph.N file')
+                udf_files[index]=source.resolve()
+        if new: (path/'output').mkdir(parents=True)
         job_id=uuid.uuid4().hex
         directory=bridge.job_path(job_id)
         directory.mkdir(parents=True)
         (directory/"output").mkdir()
+        for index,source in udf_files.items():
+            inputs=directory/'input'/str(index)
+            inputs.mkdir(parents=True)
+            snapshot=inputs/'library.gph'
+            shutil.copyfile(source,snapshot)
+            operations[index]['file_path']=str(snapshot)
         model["pending_job"]=job_id
         bridge.write_json(path/"model.json",model)
         request={"new":new,"model":model,"operations":operations,"readonly":readonly,"components":components,

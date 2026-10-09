@@ -9,6 +9,9 @@ REGISTERED_OPERATIONS = (
     "assemble_component", "component_placement", "component_constraints", "remove_component",
     "set_dimensions", "set_sketch_dimensions", "set_parameters", "set_relations", "feature_tree",
     "regenerate", "save", "export", "dump_tree",
+    "udf_inspect", "udf_create", "datum_csys", "datum_points", "surface_fill", "thicken", "solidify", "boolean_bodies", "rib",
+    "drawing_model", "drawing_sheet", "drawing_view", "drawing_projection", "drawing_view_update",
+    "drawing_note", "drawing_note_update", "drawing_table", "drawing_table_cell", "drawing_dimension", "drawing_delete",
 )
 
 UNAVAILABLE_OPERATIONS = {
@@ -23,6 +26,19 @@ def require_available(operations: list[dict]) -> None:
 
 def families() -> dict:
     return {
+        'drawing': {'enabled': True, 'scope': 'native DRW sheets, general/projected views, driving dimensions, notes, tables, edits, deletion and PDF',
+                    'limits': 'owned part/sheetmetal snapshots; no live source update, assembly drawings, sections, detail views, GD&T or automatic BOM'},
+        'datums': {'enabled': True, 'scope': 'coordinate systems and dimensioned point arrays in addition to planes and axes',
+                   'native_test': 'XYZ offsets 10/20/30, Z rotation 45 degrees, native origin check and offset dimension edit'},
+        'surface_solid': {'enabled': True, 'scope': 'planar fill, thicken and solidify',
+                          'native_test': '20 x 10 fill, symmetric thickness 2 to 3; plane cut of a cube',
+                          'limits': 'closed-quilt solidification, curved-quilt offset/cut and all side options need further validation'},
+        'boolean_bodies': {'enabled': True, 'native_test': 'overlapping cubes: union 1500, difference 500 and intersection 500 mm3',
+                           'limits': 'multi-target/tool lists and keep_tools require further native validation'},
+        'rib': {'enabled': True, 'scope': 'native profile rib driven by an open sketch',
+                'limits': 'sketch must intersect the solid; material side depends on sketch direction; trajectory ribs are not wrapped'},
+        'udf': {'enabled': True, 'scope': 'local UDF metadata and independent native feature-group placement with reference/variable-dimension mapping',
+                'limits': 'part/sheetmetal only; exact reference prompts required; assembly UDFs, quadrants, variable parameters and manufacturing UDFs are not wrapped; libraries supplied by user'},
         'mirror': {'enabled': True, 'native_test': 'whole solid about a principal datum plane',
                    'limits': 'whole-part/geometry references only; feature/subtree mirror is rejected'},
         'sweep': {'enabled': True, 'native_test': 'straight trajectory, circular constant section, named diameter edit',

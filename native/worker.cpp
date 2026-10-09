@@ -14,6 +14,18 @@ static std::string json_string(const std::wstring& s){
  std::string r="\"";for(unsigned char c:utf8(s)){if(c=='"'||c=='\\'){r+='\\';r+=c;}else if(c<32){char b[7];sprintf_s(b,"\\u%04x",c);r+=b;}else r+=c;}return r+'"';
 }
 static void path(ProPath dest,const std::wstring& value){if(value.size()>=PRO_PATH_SIZE)throw PRO_TK_BAD_INPUTS;wcscpy_s(dest,PRO_PATH_SIZE,value.c_str());}
+static ProError connect_creo(ProProcessHandle* process){
+ char empty[]="";char* selected=nullptr;size_t length=0;_dupenv_s(&selected,&length,"MECHDOG_CREO_SESSION_ID");
+ std::string expected=selected?selected:"";free(selected);ProBoolean random=PRO_B_FALSE;
+ ProError error=ProEngineerConnect(expected.empty()?empty:expected.data(),empty,empty,empty,PRO_B_FALSE,30,&random,process);
+ // Toolkit can fall back to another session if the requested session vanished.
+ // Reject that fallback before reading or modifying any model.
+ if(!error&&!expected.empty()){
+  ProConnectionId actual;error=ProEngineerConnectIdGet(actual);
+  if(error||expected!=actual){ProEngineerDisconnect(process,15);return error?error:PRO_TK_E_NOT_FOUND;}
+ }
+ return error;
+}
 static double expected_volume(){
  double area=length_mm*width_mm-(4-acos(-1.0))*radius_mm*radius_mm;
  for(auto& h:holes)area-=acos(-1.0)*h.diameter*h.diameter/4;
@@ -69,13 +81,14 @@ static std::wstring create_plate(){
  double a=sqrt(0.5),b=sqrt(1.0/6),c=sqrt(1.0/3),d=sqrt(2.0/3);ProMatrix matrix={{a,-b,c,0},{a,b,-c,0},{0,d,c,0},{0,0,0,1}};CK(ProViewMatrixSet(board,nullptr,matrix));CK(ProWindowRefit(win));CK(ProWindowRepaint(win));CK(ProWindowActivate(win));return saved;
 }
 #include "generic.cpp"
+#include "drawing.cpp"
 int wmain(int argc,wchar_t* argv[]){
- if(argc==3&&!wcscmp(argv[1],L"generic"))return run_generic(argv[2]);
+ if(argc==3&&!wcscmp(argv[1],L"generic")){std::ifstream f(std::wstring(argv[2])+L"\\request.json");J request;f>>request;return request["model"].value("model_type","part")=="drawing"?run_drawing(argv[2]):run_generic(argv[2]);}
  if(argc==2&&!wcscmp(argv[1],L"constants")){J result=J::object();for(auto p:tk_constants)result[p.first]=p.second;printf("%s\n",result.dump().c_str());return 0;}
  bool probe=argc==2&&wcscmp(argv[1],L"status")==0;if(!probe&&(argc!=3||wcscmp(argv[1],L"create")))return 2;
  std::wstring job=probe?L"":argv[2];ProError result=PRO_TK_NO_ERROR;ProProcessHandle process={};bool connected=false;std::wstring saved;int preview_code=-1;double measured=0;ProError disconnect_code=PRO_TK_NO_ERROR;
  if(!probe){board_log=_wfsopen((job+L"\\native.log").c_str(),L"w",_SH_DENYNO);if(!board_log)return 3;try{read_spec(job);}catch(ProError e){result=e;}}
- if(!result){char empty[]="";ProBoolean random=PRO_B_FALSE;result=ProEngineerConnect(empty,empty,empty,empty,PRO_B_FALSE,30,&random,&process);connected=result==PRO_TK_NO_ERROR;log("CONNECT=%d\n",result);}
+ if(!result){char empty[]="";ProBoolean random=PRO_B_FALSE;result=connect_creo(&process);connected=result==PRO_TK_NO_ERROR;log("CONNECT=%d\n",result);}
  if(probe){std::wstring name;int type=-1,current_code=-8,release=0;if(connected){ProMdl current=nullptr;current_code=ProMdlCurrentGet(&current);if(!current_code){ProName value;ProMdlNameGet(current,value);name=value;ProMdlType t;ProMdlTypeGet(current,&t);type=t;}ProEngineerReleaseNumericversionGet(&release);disconnect_code=ProEngineerDisconnect(&process,15);}printf("{\"connected\":%s,\"toolkit_code\":%d,\"current_model\":%s,\"current_model_code\":%d,\"model_type\":%d,\"release_numeric\":%d,\"disconnect_code\":%d,\"feature_creation_license\":\"requires_actual_modeling_test\"}\n",connected?"true":"false",result,json_string(name).c_str(),current_code,type,release,disconnect_code);return result?20:0;}
  if(connected){try{saved=create_plate();measured=volume();ProPath image;path(image,folder+L"\\preview.jpg");preview_code=ProRasterFileWrite(win,PRORASTERDEPTH_24,8,6,PRORASTERDPI_100,PRORASTERTYPE_JPEG,image);log("BUILD_SUCCESS=1\n");}catch(ProError e){result=e;log("BUILD_FAILED=%d\n",e);}catch(...){result=PRO_TK_GENERAL_ERROR;log("BUILD_FAILED=unexpected\n");}disconnect_code=ProEngineerDisconnect(&process,15);log("DISCONNECT=%d\n",disconnect_code);}
  std::ostringstream out;out.precision(15);out<<"{\"success\":"<<(result?"false":"true")<<",\"toolkit_code\":"<<result<<",\"connected\":"<<(connected?"true":"false")<<",\"part_file\":"<<json_string(saved)<<",\"volume_mm3\":"<<measured<<",\"expected_volume_mm3\":"<<expected_volume()<<",\"extrude_count\":"<<counts[0]<<",\"round_count\":"<<counts[1]<<",\"hole_count\":"<<counts[2]<<",\"preview_code\":"<<preview_code<<",\"disconnect_code\":"<<disconnect_code<<",\"saved_file_reloaded_and_verified\":"<<(result?"false":"true")<<"}";

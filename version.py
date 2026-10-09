@@ -1,2 +1,2 @@
 """Public server and source-release version."""
-VERSION = "0.21"
+VERSION = "0.22"
