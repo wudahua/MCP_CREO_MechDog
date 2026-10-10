@@ -26,7 +26,7 @@ def main():
     assert drawing['success'] and udf['success'] and unit['success']
     required={'datums','thicken','union','subtract','intersect','solidify','rib'}
     assert all(surface['cases'].get(c,{}).get('success') for c in required)
-    assert protocol['session']['connected'] and len(protocol['tools'])==67
+    assert protocol['session']['connected'] and len(protocol['tools'])==68
     entries=[*drawing['jobs'],*udf['jobs']]
     for c in required:entries.extend({'job_id':j,'expected_failure':False} for j in surface['cases'][c]['jobs'])
     unique={};expected_failures=[];operations=set();mutations=0
@@ -59,7 +59,7 @@ def main():
     if inherited_evidence:
         result['version_label_correction_only']=True
         result['modeling_validation_version']=correction['from_version']
-        result['validation_note']='The release label is 0.22. Native modeling evidence retains its original development version and applies to byte-identical modeling runtime. Input validation and MCP version/connection checks were rerun for 0.22.'
+        result['validation_note']=f'The release label is {VERSION}. Native modeling evidence retains its original development version and applies to byte-identical modeling runtime. Input validation and MCP version/connection checks were rerun for {VERSION}.'
     (ROOT/'docs/validation.json').write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     (ROOT/'docs/validation_development.json').write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     result['jobs']=list(unique);result['expected_failure_jobs']=expected_failures

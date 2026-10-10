@@ -2,9 +2,11 @@
 
 本项目已提供 MIT 许可证及第三方声明。公开内容为本项目源码、安装脚本、说明、示例和测试；使用者在自己的 Windows 电脑安装和运行。
 
-## 当前开发版 0.22
+## 当前开发版 0.2.3
 
-当前新增能力位于 `MCP_CREO_MechDog-0.22-source.zip`。如需发布这次开发进展，上传这个包内的文件到仓库根目录，提交说明用 `Add 0.22 drawing, surface and UDF tools`；使用独立标签 `v0.22` 并标记 Pre-release，说明见 [开发版说明](RELEASE_NOTES_0.22.md)。不要替换已经发布的 v0.21 标签及其附件。所有新工具的支持范围及未完成项须保留。此处只提供发布操作方法；本轮开发没有自动修改 GitHub。
+`MCP_CREO_MechDog-0.2.3-source.zip` 收录当前源码，包括两个平行 XY 截面的直线、平滑实体混合种子复用工具，详见 [LOFT_SEED.md](LOFT_SEED.md)。已发布的旧 `MCP_CREO_MechDog-0.22-source.zip` 和 GitHub v0.22 保留为历史版本。
+
+更新仓库根目录的公开源码后，新建标签 **v0.2.3**，标题填写 **MCP_CREO_MechDog 0.2.3 — MIT 源码预发布候选版**，发布说明使用 [RELEASE_NOTES_0.2.3.md](RELEASE_NOTES_0.2.3.md)，附件为 `MCP_CREO_MechDog-0.2.3-source.zip` 与对应 `.zip.sha256`。当前仍有未完成操作，保留 **Pre-release** 标记。本地生成源码包不会自动上传 GitHub。
 
 ## 历史 0.21：用网页发布仓库
 

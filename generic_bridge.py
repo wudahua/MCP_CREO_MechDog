@@ -9,7 +9,7 @@ import subprocess
 import sys
 import uuid
 import bridge
-from schema import validate_operations,Assertions
+from schema import validate_operations,Assertions,LoftOp
 from capabilities import require_available
 
 MODELS=bridge.ROOT / "models"
@@ -47,12 +47,32 @@ def component_graph(source: dict, target_id: str, seen: set[str] | None=None) ->
         if child: result.update(component_graph(model_info(child),target_id,seen))
     return result
 
+def new_loft_part(seed_file: str, seed_feature_id: int, sections: list[dict], label: str="loft",
+                  model_name: str | None=None, assertions: dict | None=None, interpolation: str="straight") -> dict:
+    """Create a new part by rebinding a user's two-section native Blend seed."""
+    sections=validate_operations(sections)
+    if len(sections)!=2 or any(s['op']!='sketch' for s in sections):
+        raise ValueError('Exactly two sketch operations are required')
+    if any(s['plane']!='XY' for s in sections) or sections[0]['offset']>=sections[1]['offset']:
+        raise ValueError('This verified workflow requires two XY sketches with increasing Z offsets')
+    binding=LoftOp.model_validate({'op':'loft','label':label,'sections':[s['label'] for s in sections],'interpolation':interpolation}).model_dump()
+    if label in binding['sections']: raise ValueError('Loft and sketch labels must be distinct')
+    if isinstance(seed_feature_id,bool) or not isinstance(seed_feature_id,int) or not 0<=seed_feature_id<=2147483647:
+        raise ValueError('seed_feature_id must be a nonnegative 32-bit native feature ID')
+    source=Path(seed_file).expanduser()
+    if not source.is_absolute() or not source.is_file() or not re.fullmatch(r'[A-Za-z0-9_]{1,31}\.prt(?:\.\d+)?',source.name,re.I):
+        raise ValueError('seed_file must be an absolute path to a native .prt or .prt.N file')
+    binding={'label':label,'sections':binding['sections'],'feature_id':seed_feature_id,'source_file':str(source.resolve()),'interpolation':binding['interpolation']}
+    return submit(sections,model_name=model_name,assertions=assertions,loft_seed=binding)
+
 def submit(operations: list[dict], model_id: str | None=None, model_name: str | None=None,
            expected_revision: int | None=None, assertions: dict | None=None, readonly: bool=False,
-           model_type: str="part") -> dict:
+           model_type: str="part", loft_seed: dict | None=None) -> dict:
     operations=validate_operations(operations)
     require_available(operations)
     assertions=Assertions.model_validate(assertions or {}).model_dump(exclude_none=True)
+    if loft_seed and (model_id is not None or readonly or model_type!='part'):
+        raise ValueError('Native loft seed initialization is only available for a new part')
     if readonly and any(op["op"] not in ("dump_tree","export","udf_inspect") for op in operations): raise ValueError("Read-only requests may only inspect/export")
     with bridge.toolkit_lock():
         new=model_id is None
@@ -109,6 +129,13 @@ def submit(operations: list[dict], model_id: str | None=None, model_name: str | 
         directory=bridge.job_path(job_id)
         directory.mkdir(parents=True)
         (directory/"output").mkdir()
+        if loft_seed:
+            source=Path(loft_seed['source_file'])
+            inputs=directory/'input'/'loft_seed'
+            inputs.mkdir(parents=True)
+            template=inputs/source.name.lower()
+            shutil.copyfile(source,template)
+            loft_seed={**loft_seed,'snapshot_sha256':hashlib.sha256(template.read_bytes()).hexdigest()}
         for index,source in udf_files.items():
             inputs=directory/'input'/str(index)
             inputs.mkdir(parents=True)
@@ -120,9 +147,11 @@ def submit(operations: list[dict], model_id: str | None=None, model_name: str | 
         request={"new":new,"model":model,"operations":operations,"readonly":readonly,"components":components,
                  "template_file":str(template),
                  "assertions":assertions or {}}
+        if loft_seed: request['loft_seed']=loft_seed
         manifest={"job_id":job_id,"kind":"generic","model_id":model_id,"status":"queued","readonly":readonly,
                   "created_at":bridge.now(),"operations":operations,"job_directory":str(directory),
                   "output_directory":str(directory/"output"),"message":"Poll creo_get_job with this job_id; do not resubmit the operation"}
+        if loft_seed: manifest['construction']='native_two_section_blend_seed_rebinding'
         bridge.write_json(directory/"request.json",request)
         bridge.write_json(directory/"job.json",manifest)
         try:

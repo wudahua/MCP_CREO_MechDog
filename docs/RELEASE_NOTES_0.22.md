@@ -1,6 +1,8 @@
 # 0.22：工程图、曲面、多实体和 UDF
 
-此源码在已发布的 0.21 上继续开发，本轮版本为 **0.22**。原来的 0.21 验证记录单独保留。当前注册 **67 个 MCP 工具，66 个启用**，`creo_loft` 仍在入队前拒绝。支持 52 种计划操作，其中 51 种启用。数量不等于覆盖所有 Creo 操作；本项目尚未达到这个目标。
+本文件保留 0.22 阶段的历史开发记录。当前源码版本已更新为 **0.2.3**，最新说明见 [RELEASE_NOTES_0.2.3.md](RELEASE_NOTES_0.2.3.md)。
+
+此源码在已发布的 0.21 上继续开发，版本为 **0.22**。已发布 v0.22 注册 67 个 MCP 工具、66 个启用；新增普通放样种子复用后，本地源码注册 **68 个工具、67 个启用**。增量尚未写入旧发布包。`creo_loft` 仍在入队前拒绝；新入口 `creo_new_loft_part` 的使用与实测边界见 [LOFT_SEED.md](LOFT_SEED.md)。支持 52 种计划操作，其中 51 种启用；新入口是零件初始化工具，不是新增计划操作。数量不等于覆盖所有 Creo 操作。
 
 ## 新增能力
 
@@ -60,14 +62,14 @@
 
 | 类别 | 当前缺口 |
 | --- | --- |
-| 普通放样 | `creo_loft` 仍禁用。对本机官方示例中实际的 “Blend, Parallel, Regular Sections” 提取 Element Tree，两个特征均返回 `PRO_TK_INVALID_TYPE (-18)`。这是该 Creo 10 实测路径的限制，不能外推为所有版本、所有混合类型均无法实现 |
+| 普通放样 | 新增 `creo_new_loft_part`，支持两张新 XY 草图驱动种子中的原生直线或平滑混合，创建独立新零件；已验证模式保留、尺寸修改和保存重载。仍需匹配模式的种子，未覆盖模式自动转换、已有零件追加、更多截面、非平行或端点相切/曲率控制。`creo_loft` 直接创建仍禁用。Element Tree 提取在本机已测混合返回 `PRO_TK_INVALID_TYPE (-18)`，不外推为所有版本或路径均不可行 |
 | 高级曲面 | 边界混合、曲面合并/修剪、Style、自由曲面和完整连续性控制 |
 | 高级实体 | 变截面/螺旋扫掠、变半径圆角、分割/可变拔模、更多阵列、标准螺纹孔等 |
 | 工程图/MBD | 剖视/局部/详细视图、新建任意尺寸、GD&T、公差、表面粗糙度、符号库、BOM、模型注解、实时源关联 |
 | 钣金/装配 | 钣金成形、折弯表、卷边/偏移折弯；子装配、机构、骨架、柔性组件和源关联更新 |
 | 专业模块 | 模具、NC 制造、仿真、线缆/管道、复合材料等仍没有专用高层工具；不能用通用树或 UDF 工具代替其完整模块覆盖声明 |
 
-`creo_capabilities.complete_creo_coverage` 保持 false。具体测试结果以 [validation_development.json](validation_development.json) 为准；未验证的分支不会计入通过数量。
+`creo_capabilities.complete_creo_coverage` 保持 false。此前模块的测试记录见 [validation_development.json](validation_development.json)，最新直线、平滑测试分别见 [validation_loft_seed.json](validation_loft_seed.json)、[validation_loft_smooth.json](validation_loft_smooth.json)，平滑调用说明见 [SMOOTH_BLEND.md](SMOOTH_BLEND.md)；本轮未重跑此前模块的完整套件。
 
 ## 运行验证
 
@@ -89,4 +91,4 @@ UDF 集成测试需要本机安装 PTC 自带的 node.gph 示例，不随仓库�
 
 ## 本轮版本信息
 
-本轮成果统一定名为 0.22。此次仅修正版本标签和发布资料，建模实现未改变。原生建模记录保留当时的开发标签，验证摘要注明证据来源；输入校验和 MCP 报告版本另行按 0.22 复核。
+最初发布 0.22 时仅修正版本标签和发布资料，原生建模记录保留当时的开发标签。本次普通放样增量已改变建模实现，版本标签暂保持 0.22；它具有独立验证摘要，不沿用“实现未改变”的结论。旧 GitHub Release 和源码包保留原状。

@@ -20,10 +20,16 @@ async def main(create: bool, simple: bool, classic: bool):
         report["protocol_version"] = client.protocol_version
         tools = await client.list_tools()
         report["tools"] = [t.name for t in tools.tools]
-        assert len(report["tools"]) == 67, report["tools"]
-        assert {"creo_execute_plan","creo_create_sketch","creo_extrude","creo_revolve","creo_hole","creo_dimension_pattern","creo_new_drawing","creo_create_udf","creo_rib","creo_boolean_bodies"} <= set(report["tools"]), report
+        assert len(report["tools"]) == 68, report["tools"]
+        assert {"creo_execute_plan","creo_create_sketch","creo_extrude","creo_revolve","creo_hole","creo_dimension_pattern","creo_new_drawing","creo_create_udf","creo_rib","creo_boolean_bodies","creo_new_loft_part"} <= set(report["tools"]), report
+        loft_tool = next(t for t in tools.tools if t.name == "creo_new_loft_part")
+        interpolation = loft_tool.input_schema["properties"]["interpolation"]
+        assert set(interpolation["enum"]) == {"straight", "smooth"}, interpolation
+        assert interpolation["default"] == "straight", interpolation
+        report["loft_interpolation_schema_verified"] = True
         capabilities = await client.call_tool("creo_capabilities", {})
         assert not capabilities.is_error, capabilities
+        assert capabilities.structured_content["families"]["loft_seed"]["interpolation"] == ["straight", "smooth"]
         report["server"] = {key: capabilities.structured_content[key] for key in ("name", "version")}
         assert report["server"] == {"name": "MCP_CREO_MechDog", "version": VERSION}, report["server"]
         environment = await client.call_tool("creo_check_environment", {})
@@ -34,7 +40,7 @@ async def main(create: bool, simple: bool, classic: bool):
         assert not status.is_error, status
         report["session"] = status.structured_content
         assert report["session"]["connected"], report["session"]
-        print(json.dumps({"tools": report["tools"], "session": report["session"]}, ensure_ascii=False), flush=True)
+        print(json.dumps({"tool_count":len(report["tools"]), "session_connected":report["session"]["connected"]}), flush=True)
         invalid = await client.call_tool("creo_create_plate", {"length":80,"width":60,"thickness":20,"holes":[{"x":40,"y":0,"diameter":8}]})
         assert invalid.is_error, "Invalid geometry must be rejected before submitting a native job"
         report["invalid_geometry_rejected"] = True

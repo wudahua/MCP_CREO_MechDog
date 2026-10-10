@@ -1,10 +1,10 @@
-# MCP_CREO_MechDog 0.22
+# MCP_CREO_MechDog 0.2.3
 
 本地 Windows MCP 服务，连接已打开的 Creo Parametric 10，通过官方 C/C++ Toolkit 创建、查询和修改**原生参数化特征**。建模由任意支持的草图轮廓及顺序特征组成：新建零件 → 草图 → 拉伸/旋转 → 切除/孔 → 后续特征。原先的底板接口保留为快捷工具。
 
-**本版为源码预发布候选版，尚未完成所有 Creo 操作的覆盖。** 当前开发版注册 **67 个工具，其中 66 个启用、放样接口当前禁用**。使用官方 Python MCP SDK 2.3.0、stdio 传输，采用 [MIT 许可证](LICENSE)。每位使用者在自己的 Windows 电脑上安装依赖并编译 Toolkit 执行器，由本地 AI 客户端调用。
+**本版为源码预发布候选版，尚未完成所有 Creo 操作的覆盖。** 当前本地开发版注册 **68 个工具，其中 67 个启用**。新增两截面原生混合种子复用工具 `creo_new_loft_part`；直接创建接口 `creo_loft` 仍禁用。使用官方 Python MCP SDK 2.3.0、stdio 传输，采用 [MIT 许可证](LICENSE)。每位使用者在自己的 Windows 电脑上安装依赖并编译 Toolkit 执行器，由本地 AI 客户端调用。
 
-开发版新增工程图、坐标系/点、填充曲面、加厚、实体化、多实体布尔、筋和 UDF 库工具。使用方法和完整边界见 [开发版说明](docs/RELEASE_NOTES_0.22.md)，本轮证据见 [开发版验证摘要](docs/validation_development.json)。
+开发版包括工程图、坐标系/点、填充曲面、加厚、实体化、多实体布尔、筋和 UDF 库工具。当前版本为 **0.2.3**，使用方法和边界见 [版本说明](docs/RELEASE_NOTES_0.2.3.md)。普通放样增量见 [调用说明](docs/LOFT_SEED.md)、[直线验证摘要](docs/validation_loft_seed.json) 与 [平滑混合说明](docs/SMOOTH_BLEND.md)、[平滑验证摘要](docs/validation_loft_smooth.json)；其他模块的 [历史验证摘要](docs/validation_development.json) 单独保留。已发布的 GitHub v0.22 和旧源码包不会自动包含这些增量，0.2.3 需单独发布。
 
 已发布 0.21 的历史验证见 [validation_0.21.json](docs/validation_0.21.json)，历史范围见 [COVERAGE_0.21.md](docs/COVERAGE_0.21.md)。测试环境为 Windows x64、Creo 10.0.0.0、Python 3.12、Visual Studio 2022 C++ Build Tools。0.2.0 的 41 个成功任务及 11 项输入验证单独保留为历史记录。这些摘要不能代替使用者自己机器的许可与运行验证。
 
@@ -45,6 +45,7 @@
 | 新增基准 | `creo_datum_csys`、`creo_datum_points` |
 | 原生工程图 | `creo_new_drawing`；图纸、一般/投影视图、尺寸显示、注释、表格及编辑/删除；原生 DRW 与 PDF 输出 |
 | UDF 特征库 | `creo_inspect_udf`、`creo_create_udf`：查询并复用用户的 .gph，保留组内原生参数特征 |
+| 普通混合种子复用 | `creo_new_loft_part`：按两张新 XY 草图创建新零件，支持 `straight` 和 `smooth`，要求种子模式与请求一致；已验证矩形、圆和三角形、尺寸修改及保存重载；[调用说明](docs/LOFT_SEED.md) |
 | 未完成的保留接口 | `creo_loft`：任务入队前明确拒绝，不作为可用功能 |
 | 参数化修改 | `creo_set_dimensions`、`creo_set_sketch_dimensions`、`creo_set_parameters`、`creo_set_relations`：编辑特征尺寸/草图尺寸、零件参数、简单算术关系式，重新生成依赖特征 |
 | 特征树与拓扑查询 | `creo_inspect_model`、`creo_refresh_model`、`creo_list_models`：特征 ID、名称、类型、状态、尺寸、草图尺寸、几何引用 ID、面/边/实体、体积、包围盒、参数和版本 |
@@ -55,7 +56,7 @@
 
 特征保存为 Creo 可编辑的草图、拉伸、旋转、孔、圆角等，保留尺寸及依赖。多段线和矩形会展开为原生直线，不能将 `polyline` 名字当作单个尺寸引用；例如 `box_0` 是矩形第一条边。
 
-提供接口不等于所有参数组合都已验证。[开发版验证摘要](docs/validation_development.json) 记录本轮测试，历史证据单独保留，开发环境的 `build/capability_evidence.json` 记录本地详细报告。已测试非矩形支架、带内孔和沟槽的轴类件、多实体圆弧/椭圆实体、样条拉伸曲面、薄壁对称拉伸、抽壳、边圆角和倒角、尺寸阵列及参数关系驱动。高级树接口需要符合 SDK 的具体特征定义，不能自动补齐任意缺失的草图或集合。
+提供接口不等于所有参数组合都已验证。[直线混合摘要](docs/validation_loft_seed.json) 与 [平滑混合摘要](docs/validation_loft_smooth.json) 记录最新增量测试；[其他开发功能摘要](docs/validation_development.json) 和 `build/capability_evidence.json` 是此前测试的历史证据，本轮未重跑其完整套件。已测试非矩形支架、带内孔和沟槽的轴类件、多实体圆弧/椭圆实体、样条拉伸曲面、薄壁对称拉伸、抽壳、边圆角和倒角、尺寸阵列及参数关系驱动。高级树接口需要符合 SDK 的具体特征定义，不能自动补齐任意缺失的草图或集合。
 
 ## 接入与调用
 
@@ -141,8 +142,8 @@
 - 持续修改只支持本服务创建、登记的零件、钣金模型和装配；未提供直接接管用户现有模型的接口。
 - 各类尺寸/约束的复杂组合、极端几何及外部人工修改的自动接管仍需后续扩展。
 - 孔为直孔，尚未封装螺纹、沉头、沉孔标准孔；倒角为等距，阵列为一方向尺寸阵列。
-- 放样原型尚未通过验证，对应接口当前禁用。钣金已验证首壁、90° 法兰、高度编辑、展开、折弯回去和平展；其他形状和折弯规则未全部验证。
-- 镜像、扫掠、拔模、钣金首壁和装配具有明确范围；见覆盖表。筋、复杂自由曲面、工程图和专业模块等仍未封装高层工具。
+- 普通放样支持两截面直线、平滑种子复用；仍需用户提供匹配模式的种子，不支持自动转换连接模式、向已有零件追加、三截面以上、非平行截面或端点相切/曲率控制。`creo_loft` 直接创建路径仍禁用。
+- 钣金已验证首壁、90° 法兰、高度编辑、展开、折弯回去和平展；其他形状和折弯规则未全部验证。镜像、扫掠、拔模、装配、筋和工程图各自具有明确范围，见开发版说明；复杂自由曲面及专业模块仍未完整封装。
 - 装配插入源模型的版本快照，源模型后续修改不更新组件；子装配复制尚未开放。
 - `creo_create_feature_tree` 可扩展符合本机 SDK 的特征结构，但无法保证所有 PTC 特征类型和选项均可创建。
 - 不承诺任意文字描述都自动成功。AI 需要规划有效的轮廓、基准、尺寸和特征顺序；无效几何由 Creo 返回错误。
@@ -167,10 +168,11 @@
 
 实现依据：[PTC 草图特征 Element Tree 文档](https://support.ptc.com/help/creo_toolkit/protoolkit_plus/usascii/creo_toolkit/user_guide/Element_Tree_for_Sketched_Features.html)、本机 Creo 10 Toolkit 头文件与示例、[官方 MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk)。实际本机建模成功、保存重载成功的记录才证明该路径可用，SDK/许可环境文件存在本身不能证明许可可用。
 
-重新生成发布验证摘要和源码包：
+完成普通放样实机测试后，可生成它的独立摘要；打包会重新生成本地同版本压缩包：
 
 ```powershell
-.\.venv\Scripts\python.exe tools\summarize_evidence.py
+.\.venv\Scripts\python.exe tools\summarize_loft_seed.py
+.\.venv\Scripts\python.exe tools\summarize_loft_seed.py --interpolation smooth
 .\.venv\Scripts\python.exe tools\package.py
 ```
 

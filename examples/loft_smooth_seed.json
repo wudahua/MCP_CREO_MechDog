@@ -1,0 +1,25 @@
+{
+  "seed_file": "C:\\my_library\\smooth_seed.prt.1",
+  "seed_feature_id": 60,
+  "interpolation": "smooth",
+  "label": "blend",
+  "sections": [
+    {
+      "op": "sketch", "label": "bottom", "plane": "XY", "offset": 0,
+      "entities": [{"type": "rectangle", "name": "profile", "min": [-10, -10], "max": [10, 10]}],
+      "dimensions": [
+        {"name": "width", "type": "length", "refs": [{"entity": "profile_0"}], "value": 20, "position": [20, 20]},
+        {"name": "height", "type": "length", "refs": [{"entity": "profile_1"}], "value": 20, "position": [20, 20]}
+      ]
+    },
+    {
+      "op": "sketch", "label": "top", "plane": "XY", "offset": 30,
+      "entities": [{"type": "rectangle", "name": "profile", "min": [-5, -5], "max": [5, 5]}],
+      "dimensions": [
+        {"name": "width", "type": "length", "refs": [{"entity": "profile_0"}], "value": 10, "position": [10, 10]},
+        {"name": "height", "type": "length", "refs": [{"entity": "profile_1"}], "value": 10, "position": [10, 10]}
+      ]
+    }
+  ],
+  "assertions": {"require_solid": true, "volume_mm3": 7000}
+}

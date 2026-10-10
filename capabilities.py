@@ -15,7 +15,7 @@ REGISTERED_OPERATIONS = (
 )
 
 UNAVAILABLE_OPERATIONS = {
-    "loft": "Native blend/loft creation has not passed Creo 10 regeneration and saved-file verification.",
+    "loft": "Direct Blend creation and insertion into existing parts remain unavailable. Use creo_new_loft_part for the tested two-section seed workflow.",
 }
 
 def require_available(operations: list[dict]) -> None:
@@ -45,7 +45,14 @@ def families() -> dict:
                   'limits': 'constant section; other trajectories, thin/cut/surface branches need installation-specific validation'},
         'draft': {'enabled': True, 'native_test': 'constant unsplit draft on a planar face with a planar neutral reference',
                   'limits': 'variable, split and rib draft are not high-level tools'},
-        'loft': {'enabled': False, 'reason': UNAVAILABLE_OPERATIONS['loft']},
+        'loft': {'enabled': False, 'reason': UNAVAILABLE_OPERATIONS['loft'],
+                 'alternative_tool': 'creo_new_loft_part'},
+        'loft_seed': {'enabled': True, 'tool': 'creo_new_loft_part',
+                      'scope': 'new native part by rebinding a user-supplied two-section ordinary Blend seed to two new XY sketches',
+                      'interpolation': ['straight', 'smooth'],
+                      'mode_verification': 'requested interpolation must match the saved seed; native PRO_FEAT_INFO checked before save, after parameter edits and after reload',
+                      'native_test': 'rectangle, circle and triangle sections; top dimensions 10 to 12; saved reload and failed-assertion rollback',
+                      'limits': 'requires a saved solid Blend seed with matching interpolation, Chinese/English Creo; two XY sketches with increasing Z offsets; no mode conversion, existing-target insertion, extra sections, cut/surface or tangency controls; seed endpoint settings and datums are inherited; free endpoints may produce identical geometry in straight and smooth modes'},
         'sheetmetal': {'enabled': True, 'scope': 'first flat wall, attached flange, unbend, bend-back and flat pattern',
                       'native_test': '40 x 30 x 1 wall, 90 degree flange with R2/R3 bend, followed by unfolding and refolding',
                       'limits': 'first wall uses thin extrusion then native conversion; bend relief, forms, hems and jogs are not high-level tools'},

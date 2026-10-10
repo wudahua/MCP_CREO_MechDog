@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 import bridge
 import generic_bridge as general
-from schema import Entity, SketchDimension, SketchConstraint, Operation
+from schema import Entity, SketchDimension, SketchConstraint, SketchOp, Operation
 from typing import Literal
 from version import VERSION
 from capabilities import families,UNAVAILABLE_OPERATIONS,REGISTERED_OPERATIONS
@@ -98,6 +98,12 @@ async def creo_capabilities() -> dict[str, Any]:
     verified = bridge.read_json(evidence) if evidence.is_file() else {}
     if verified.get('version') != VERSION:
         verified = {"version":VERSION,"status":"No validation summary for this version yet; inspect integration reports"}
+    loft_evidence = bridge.ROOT / "docs/validation_loft_seed.json"
+    smooth_evidence = bridge.ROOT / "docs/validation_loft_smooth.json"
+    verified = {"scope":"Historical feature suites were not rerun for the loft addition",
+                "historical_features":verified,
+                "loft_seed":bridge.read_json(loft_evidence) if loft_evidence.is_file() else {"status":"No loft integration summary yet"},
+                "loft_smooth":bridge.read_json(smooth_evidence) if smooth_evidence.is_file() else {"status":"No smooth Blend integration summary yet"}}
     return {
         "name":"MCP_CREO_MechDog", "version":VERSION, "unit":"mm", "angle_unit":"degrees",
         "tool_count":len(await mcp.list_tools()),
@@ -131,6 +137,31 @@ async def creo_capabilities() -> dict[str, Any]:
 async def creo_new_part(model_name: str | None = None) -> dict[str, Any]:
     """Create a new metric native part with datum planes and coordinate system. Returns model_id and job_id."""
     return await invoke(general.submit,[],None,model_name)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_new_loft_part(seed_file: str, seed_feature_id: int, sections: list[SketchOp],
+                             label: str="loft", model_name: str | None=None,
+                             assertions: dict[str,Any] | None=None,
+                             interpolation: Literal["straight","smooth"]="straight") -> dict[str,Any]:
+    """Create a NEW part with a native ordinary Blend by rebinding a saved seed.
+
+    Supply a local .prt/.prt.N containing one solid two-section Blend
+    referencing two independent XY sketches created and selected bottom first,
+    plus its native feature ID. interpolation must match the saved seed's
+    straight/smooth setting: it validates the mode, never converts the seed.
+    Use a dedicated solid seed in mm with one body. The file is
+    snapshotted and never edited. sections must contain exactly two sketch ops
+    on XY with increasing Z offsets; their geometry and dimensions drive the
+    result. Rectangles, circles and triangles have been verified. This preserves
+    a native parametric Blend; it is seed reuse, not direct element-tree creation.
+    The native mode is checked after creation, edits and saved-file reload.
+    No existing-target insertion, additional sections, cut/surface modes or
+    editable tangency/curvature controls; endpoint settings are inherited.
+    Poll the returned job_id and use the resulting model_id for later features.
+    """
+    return await invoke(general.new_loft_part,seed_file,seed_feature_id,
+                        [s.model_dump(exclude_none=True) for s in sections],label,model_name,assertions,interpolation)
 
 
 @mcp.tool(annotations=CREATE)
@@ -281,7 +312,7 @@ async def creo_sweep(model_id: str, expected_revision: int, label: str,
 async def creo_loft(model_id: str, expected_revision: int, label: str, sections: list[str | int],
                     mode: Literal["add","cut","surface"]="add",
                     interpolation: Literal["straight","smooth"]="straight", new_body: bool=False) -> dict[str,Any]:
-    """Unavailable in 0.21: native blend/loft has not passed Creo 10 verification.
+    """Direct native blend creation is unavailable; use creo_new_loft_part for the verified seed workflow.
 
     This reserved interface returns an explicit error before queuing or mutating a model.
     """
