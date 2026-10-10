@@ -7,9 +7,12 @@ static ProMdl load_isolated_loft_seed(const std::wstring& filename){
  ProMdl loaded=nullptr;
  try{
   std::wstring basename=source.filename().wstring();auto extension=basename.find(L".prt");if(extension==std::wstring::npos)throw std::runtime_error("Invalid native loft seed filename");
-  ProMdlName from,to;wcscpy_s(from,basename.substr(0,extension).c_str());std::wstring unique=L"ls_"+std::filesystem::path(generic_job).filename().wstring().substr(0,20);wcscpy_s(to,unique.c_str());
+  ProMdlName to;std::wstring unique=L"ls_"+std::filesystem::path(generic_job).filename().wstring().substr(0,20);wcscpy_s(to,unique.c_str());
   ProMdl existing=nullptr;ProError found=ProMdlInit(to,PRO_MDL_PART,&existing);if(found!=PRO_TK_E_NOT_FOUND)throw std::runtime_error("Isolated loft seed name already exists; inspect the previous job");
-  CK(ProMdlfileMdlnameCopy(PRO_MDLFILE_PART,from,to));ProPath file;path(file,(source.parent_path()/(unique+L".prt")).wstring());CK(ProMdlFiletypeLoad(file,PRO_MDLFILE_UNUSED,PRO_B_FALSE,&loaded));
+  // Load the exact snapshotted bytes/version under a unique name. Avoid Creo's
+  // name-based file search and collisions with a user's already loaded seed.
+  auto isolated=source.parent_path()/(unique+L".prt.1");std::filesystem::copy_file(source,isolated);
+  ProPath file;path(file,isolated.wstring());CK(ProMdlFiletypeLoad(file,PRO_MDLFILE_UNUSED,PRO_B_FALSE,&loaded));
  }catch(...){ProDirectoryChange(previous);throw;}
  CK(ProDirectoryChange(previous));return loaded;
 }
@@ -32,6 +35,15 @@ static ProSelection blend_profile_selection(int feature_id,ProType type){
  if(composites.size()!=1)throw std::runtime_error("Replacement sketch must contain exactly one complete composite curve");ProModelitem composite;CK(ProModelitemInit(board,composites[0],PRO_COMP_CRV,&composite));CK(ProSelectionAlloc(nullptr,&composite,&selected));return selected;
 }
 
+static void suppress_seed_for_profiles(int feature_id,bool suppress){
+ // Prevent automatic dimensions from referencing coincident seed solid edges.
+ // Only the isolated, new owned copy is affected; the original seed is intact.
+ int* ids=nullptr;CK(ProArrayAlloc(1,sizeof(int),1,(ProArray*)&ids));ids[0]=feature_id;ProError code;
+ if(suppress){ProFeatureDeleteOptions* options=nullptr;CK(ProArrayAlloc(1,sizeof(ProFeatureDeleteOptions),1,(ProArray*)&options));options[0]=PRO_FEAT_DELETE_NO_OPTS;code=ProFeatureWithoptionsSuppress((ProSolid)board,ids,options,PRO_REGEN_NO_FLAGS);ProArrayFree((ProArray*)&options);}
+ else{ProFeatureResumeOptions* options=nullptr;CK(ProArrayAlloc(1,sizeof(ProFeatureResumeOptions),1,(ProArray*)&options));options[0]=PRO_FEAT_RESUME_NO_OPTS;code=ProFeatureWithoptionsResume((ProSolid)board,ids,options,PRO_REGEN_NO_FLAGS);ProArrayFree((ProArray*)&options);}
+ ProArrayFree((ProArray*)&ids);check(code,suppress?"SuppressSeedDuringSketchCreation":"ResumeSeedAfterSketchCreation");temporarily_suppressed_loft=suppress?feature_id:-1;
+}
+
 static J validate_loft_seed(const J& binding){
  ProFeature blend;CK(ProFeatureInit((ProSolid)board,binding.at("feature_id"),&blend));ProFeattype type;CK(ProFeatureTypeGet(&blend,&type));ProLine subtype=L"";CK(ProFeatureSubtypeGet(&blend,subtype));
  if(type!=PRO_FEAT_PROTRUSION||(wcscmp(subtype,L"\u6df7\u5408")&&_wcsicmp(subtype,L"Blend")))throw std::runtime_error("Seed feature must be an ordinary native Blend (Chinese/English Creo supported)");
@@ -41,7 +53,8 @@ static J validate_loft_seed(const J& binding){
  J state=inspection();int solids=0;for(auto b:state["bodies"])if(b["state"].get<int>()==PRO_BODY_STATE_ACTIVE)solids++;
  if(solids!=1)throw std::runtime_error("Seed must contain exactly one active solid body");
  for(auto f:state["features"]){int t=f["type"],id=f["id"];if(id!=blend.id&&t!=PRO_FEAT_DATUM&&t!=PRO_FEAT_CSYS&&t!=PRO_FEAT_DATUM_AXIS&&t!=PRO_FEAT_CURVE)throw std::runtime_error("Seed contains unsupported additional features; use a dedicated Blend reference part");}
- ProReference* refs=nullptr;CK(ProFeatureReferenceEditRefsGet((ProSolid)board,&blend,PRO_EDITREF_REF_TYPE_ALL,&refs));J profiles=J::array();
+ ProReference* refs=nullptr;ProError reference_code=ProFeatureReferenceEditRefsGet((ProSolid)board,&blend,PRO_EDITREF_REF_TYPE_ALL,&refs);log("SeedBlendReferences id=%d current_window=%d code=%d\n",blend.id,win,reference_code);
+ if(reference_code){if(refs)ProReferencearrayFree(refs);throw std::runtime_error("Cannot read seed Blend edit references after activating its model window (Toolkit code "+std::to_string(reference_code)+"); finish modal Creo commands, verify the seed uses independent external sketch sections, and inspect native.log");}J profiles=J::array();
  try{int n=0;CK(ProArraySizeGet((ProArray)refs,&n));for(int i=0;i<n;i++){ProType rt;int id;ProMdl owner;CK(ProReferenceTypeGet(refs[i],&rt));CK(ProReferenceIdGet(refs[i],&id));CK(ProReferenceOwnerGet(refs[i],&owner));if(owner!=board)throw std::runtime_error("External-model references are not supported in a loft seed");
    if(rt==PRO_FEATURE||rt==PRO_COMP_CRV){int profile=blend_profile_owner(rt,id);ProFeature f;CK(ProFeatureInit((ProSolid)board,profile,&f));ProFeattype ft;CK(ProFeatureTypeGet(&f,&ft));if(ft!=PRO_FEAT_CURVE)throw std::runtime_error("Seed sections must reference independent sketches");profiles.push_back(profile);}
    else if(rt!=PRO_BODY)throw std::runtime_error("Unsupported reference in Blend seed");
@@ -58,6 +71,7 @@ static J validate_loft_seed(const J& binding){
 static void bind_loft_seed(const J& binding,const J& original_profiles){
  int section_count=(int)original_profiles.size();if(section_count!=(int)binding.at("sections").size())throw std::runtime_error("Blend section mapping size changed");
  std::map<int,int> replacements;for(int i=0;i<section_count;i++)replacements.emplace(original_profiles[i].get<int>(),feature_id(binding["sections"][i]));
+ for(auto replacement:replacements){ProFeature profile;CK(ProFeatureInit((ProSolid)board,replacement.second,&profile));ProIntlist parents=nullptr;int count=0;CK(ProFeatureParentsGet(&profile,&parents,&count));bool dependent=false;for(int i=0;i<count;i++)if(parents[i]==binding["feature_id"].get<int>()||replacements.count(parents[i]))dependent=true;ProArrayFree((ProArray*)&parents);if(dependent)throw std::runtime_error("New loft profile unexpectedly references seed geometry; provide independent sketch dimensions/constraints and inspect native.log");}
  int final_sketch=feature_id(binding["sections"].back());ProFeature last;CK(ProFeatureInit((ProSolid)board,final_sketch,&last));int position=0;CK(ProFeatureNumberGet(&last,&position));
  int* ids=nullptr;CK(ProArrayAlloc(1,sizeof(int),1,(ProArray*)&ids));ids[0]=binding["feature_id"];ProError moved=ProFeatureWithoptionsReorder((ProSolid)board,ids,position,PRO_REGEN_NO_FLAGS);ProArrayFree((ProArray*)&ids);check(moved,"ReorderSeedBlend");
  ProFeature blend;CK(ProFeatureInit((ProSolid)board,binding["feature_id"],&blend));ProReference* old_refs=nullptr;ProReference* new_refs=nullptr;CK(ProFeatureReferenceEditRefsGet((ProSolid)board,&blend,PRO_EDITREF_REF_TYPE_ALL,&old_refs));int count=0;CK(ProArraySizeGet((ProArray)old_refs,&count));CK(ProArrayAlloc(0,sizeof(ProReference),1,(ProArray*)&new_refs));int replaced=0;

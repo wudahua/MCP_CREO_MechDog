@@ -70,23 +70,38 @@ if ($pythonInfo.bits -ne 64 -or $pythonInfo.version[0] -ne 3 -or $pythonInfo.ver
 Write-Output ("Prerequisites found: Python {0}, Creo SDK and MSVC x64." -f ($pythonInfo.version -join '.'))
 if ($CheckOnly) { Write-Output 'File checks passed. Toolkit license and the live Creo connection still require runtime verification.'; return }
 
-$localSettings = [ordered]@{
-    creo_root = $CreoRoot
-    vcvars64 = $VcVars64
-    native_timeout_seconds = $settings.native_timeout_seconds
-    generic_timeout_seconds = $settings.generic_timeout_seconds
-}
-$localSettings | ConvertTo-Json | Set-Content -LiteralPath $settingsPath -Encoding UTF8
-& $Python @pythonPrefix -m venv (Join-Path $PSScriptRoot '.venv')
-if ($LASTEXITCODE -ne 0) { throw 'Python venv creation failed.' }
+$localSettings = [ordered]@{}
+# Preserve session selection and future local options when reinstalling/upgrading.
+foreach ($property in $settings.PSObject.Properties) { $localSettings[$property.Name] = $property.Value }
+$localSettings['creo_root'] = $CreoRoot
+$localSettings['vcvars64'] = $VcVars64
 $projectPython = Join-Path $PSScriptRoot '.venv\Scripts\python.exe'
-& $projectPython -m pip install -r (Join-Path $PSScriptRoot 'requirements.lock.txt')
-if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed. Check internet/PyPI access and requirements.lock.txt.' }
-& $projectPython (Join-Path $PSScriptRoot 'tools\generate_constants.py')
-if ($LASTEXITCODE -ne 0) { throw 'SDK constant generation failed.' }
-& $projectPython (Join-Path $PSScriptRoot 'bridge.py') build
-if ($LASTEXITCODE -ne 0) { throw 'Toolkit worker build failed; inspect build\build.log.' }
-$connection = @{ mcpServers = @{ 'MCP_CREO_MechDog' = @{ command = $projectPython; args = @((Join-Path $PSScriptRoot 'server.py')) } } }
-$connection | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'client-config.json') -Encoding UTF8
+$stage = 'local configuration'
+$completed = @()
+try {
+    $localSettings | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $settingsPath -Encoding UTF8
+    $completed += $stage
+    $stage = 'Python virtual environment'
+    & $Python @pythonPrefix -m venv (Join-Path $PSScriptRoot '.venv')
+    if ($LASTEXITCODE -ne 0) { throw 'Python venv creation failed.' }
+    $completed += $stage
+    $stage = 'client configuration'
+    $connection = @{ mcpServers = @{ 'MCP_CREO_MechDog' = @{ command = $projectPython; args = @((Join-Path $PSScriptRoot 'server.py')) } } }
+    $connection | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'client-config.json') -Encoding UTF8
+    $completed += $stage
+    $stage = 'Python dependencies'
+    & $projectPython -m pip install -r (Join-Path $PSScriptRoot 'requirements.lock.txt')
+    if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed. Check internet/PyPI access and requirements.lock.txt.' }
+    $completed += $stage
+    $stage = 'SDK constants and native worker'
+    & $projectPython (Join-Path $PSScriptRoot 'bridge.py') build
+    if ($LASTEXITCODE -ne 0) { throw 'Toolkit worker build failed; inspect build\generate_constants.log and build\build.log.' }
+    $completed += $stage
+} catch {
+    Write-Output ("INSTALL_INCOMPLETE: failed at {0}. Completed: {1}." -f $stage, ($completed -join ', '))
+    Write-Output 'Existing models/jobs and local settings are retained. client-config.json, if generated, does not mean the native worker is ready.'
+    Write-Output 'Fix the reported prerequisite/network/compiler error and rerun the same setup.ps1 command. No cleanup is required; existing .venv and unchanged native builds are reused.'
+    throw
+}
 Write-Output 'Ready. Open one Creo 10 session and import client-config.json into your local MCP client.'
 Write-Output 'Check creo_session_status before modeling; installation alone does not prove Toolkit license availability.'

@@ -118,6 +118,60 @@ def toolkit_lock(wait_seconds: float = 0):
             msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
 
 
+def license_setting_state(value: str | None) -> str:
+    """Describe local paths/server specs without exposing the license value."""
+    if not value or not value.strip():
+        return "unset"
+    states = []
+    for item in value.split(";"):
+        item = os.path.expandvars(item.strip().strip('"'))
+        if not item:
+            continue
+        if re.fullmatch(r"(?:\d+)?@[^\s;]+", item):
+            states.append("server_unverified")
+        elif Path(item).is_file():
+            states.append("local_file_exists")
+        elif Path(item).is_dir():
+            states.append("local_directory_exists")
+        elif any(c in item for c in "\\/:") or item.lower().endswith((".dat", ".lic")):
+            states.append("missing_local_path")
+        else:
+            states.append("unrecognized_unverified")
+    if not states:
+        return "unset"
+    if len(set(states)) == 1:
+        return states[0]
+    return "partially_missing" if "missing_local_path" in states else "mixed_unverified"
+
+
+def resolve_license_environment() -> tuple[str | None, dict]:
+    """Fallback only for an unset value or an entirely missing local path list."""
+    configured = os.environ.get("PTC_D_LICENSE_FILE")
+    env_state = license_setting_state(configured)
+    psf_value = None
+    psf = Path(config()["creo_root"]) / "Parametric/bin/parametric.psf"
+    if psf.is_file():
+        for line in psf.read_text(encoding="utf-8", errors="replace").splitlines():
+            match = re.search(r"PTC_D_LICENSE_FILE[^=]*=(.+)$", line, re.I)
+            if match and not line.lstrip().startswith("#"):
+                psf_value = match[1].strip()
+                break
+    psf_state = license_setting_state(psf_value)
+    use_psf = env_state in ("unset", "missing_local_path") and psf_state not in ("unset", "missing_local_path")
+    selected = psf_value if use_psf else configured
+    selected_state = psf_state if use_psf else env_state
+    warnings = []
+    if env_state == "missing_local_path":
+        warnings.append("Environment license paths do not exist; using parametric.psf" if use_psf else
+                        "Environment license paths do not exist and parametric.psf has no usable fallback; correct the local license setting")
+    if selected_state == "partially_missing":
+        warnings.append("Some local license paths do not exist; retained other configured entries")
+    return selected, {"source": "parametric.psf" if use_psf else ("environment" if configured else "unset"),
+                      "environment_state": env_state, "psf_state": psf_state,
+                      "selected_state": selected_state, "fallback_used": use_psf and env_state != "unset",
+                      "warnings": warnings}
+
+
 def native_environment() -> dict[str, str]:
     common = Path(config()["creo_root"]) / "Common Files"
     env = os.environ.copy()
@@ -127,13 +181,9 @@ def native_environment() -> dict[str, str]:
     env["PRO_COMM_MSG_EXE"] = str(common / "x86e_win64/obj/pro_comm_msg.exe")
     env["PATH"] = os.pathsep.join(str(common / p) for p in ("x86e_win64/lib", "x86e_win64/obj", "libs/dfor/lib")) + os.pathsep + env.get("PATH", "")
     # Child-process environment only; do not return or log the license value.
-    psf = Path(config()["creo_root"]) / "Parametric/bin/parametric.psf"
-    if not env.get("PTC_D_LICENSE_FILE") and psf.exists():
-        for line in psf.read_text(encoding="utf-8", errors="replace").splitlines():
-            match = re.search(r"PTC_D_LICENSE_FILE[^=]*=(.+)$", line, re.I)
-            if match:
-                env["PTC_D_LICENSE_FILE"] = match[1].strip()
-                break
+    license_value, _ = resolve_license_environment()
+    if license_value:
+        env["PTC_D_LICENSE_FILE"] = license_value
     return env
 
 
@@ -147,15 +197,19 @@ def check_environment() -> dict:
         "toolkit_headers": sdk / "includes/ProToolkit.h",
         "async_library": sdk / "x86e_win64/obj/ptasyncmd.lib",
         "toolkit_library": sdk / "x86e_win64/obj/protkmd_NU.lib",
+        "ucore_library": sdk / "x86e_win64/obj/ucore.lib",
+        "udata_library": sdk / "x86e_win64/obj/udata.lib",
         "communication_executable": common / "x86e_win64/obj/pro_comm_msg.exe",
         "metric_template": common / "templates/mmns_part_solid_abs.prt",
         "metric_assembly_template": common / "templates/mmns_asm_design_abs.asm",
         "compiler_setup": Path(c["vcvars64"]),
     }
     checks = {key: {"exists": p.is_file(), "path": str(p)} for key, p in files.items()}
+    license_value, license_diagnostics = resolve_license_environment()
     return {"platform": sys.platform, "creo_root": str(root), "checks": checks,
             "ready_to_build": all(p.is_file() for p in files.values()),
-            "license_setting_present": bool(native_environment().get("PTC_D_LICENSE_FILE")),
+            "compiler_environment": "unverified_here; build runs vcvars64 and checks compiler, UCRT and Windows SDK",
+            "license_setting_present": bool(license_value), "license_diagnostics": license_diagnostics,
             "license_usable": "unverified_here; only successful native feature creation proves it",
             "transport": "stdio", "supported_features": [op for op in REGISTERED_OPERATIONS if op not in UNAVAILABLE_OPERATIONS],
             "complete_creo_coverage": False}
@@ -167,17 +221,22 @@ def build_native() -> Path:
     build = ROOT / "build"
     build.mkdir(exist_ok=True)
     exe = build / "creo_worker.exe"
-    if not (ROOT / "native/constants.inc").is_file():
-        if not check_environment()["ready_to_build"]:
-            raise RuntimeError("Creo SDK, template or MSVC is missing; call creo_check_environment")
-        with (build / "generate_constants.log").open("wb") as log:
-            generated = subprocess.run([sys.executable, str(ROOT / "tools/generate_constants.py")],
-                                       cwd=ROOT, stdout=log, stderr=subprocess.STDOUT,
-                                       timeout=30, creationflags=HIDDEN)
-        if generated.returncode:
-            raise RuntimeError(f"SDK constant generation failed; see {build / 'generate_constants.log'}")
+    # Always refresh before checking the cached binary. The generator only writes
+    # changed content, so upgrades and SDK changes cannot retain an obsolete map.
+    with (build / "generate_constants.log").open("wb") as log:
+        generated = subprocess.run([sys.executable, str(ROOT / "tools/generate_constants.py")],
+                                   cwd=ROOT, stdout=log, stderr=subprocess.STDOUT,
+                                   timeout=30, creationflags=HIDDEN)
+    if generated.returncode:
+        raise RuntimeError(f"SDK constant generation failed; see {build / 'generate_constants.log'}")
     digest = hashlib.sha256()
     for p in sorted(p for p in (ROOT / "native").rglob("*") if p.suffix in (".cpp", ".h", ".hpp", ".inc")):
+        digest.update(p.read_bytes())
+    # Enum values and ABI declarations come from SDK headers. A names-only map
+    # can stay identical while these change during an SDK maintenance upgrade.
+    includes = Path(c["creo_root"]) / "Common Files/protoolkit/includes"
+    for p in sorted(includes.rglob("*.h")):
+        digest.update(b"\0SDK_HEADER\0" + p.relative_to(includes).as_posix().encode())
         digest.update(p.read_bytes())
     digest.update(json.dumps(c, sort_keys=True).encode())
     fingerprint = digest.hexdigest()
@@ -193,6 +252,8 @@ def build_native() -> Path:
 setlocal
 call "{c['vcvars64']}"
 if errorlevel 1 exit /b 1
+"{sys.executable}" "{ROOT / 'tools/compiler_preflight.py'}"
+if errorlevel 1 exit /b 4
 cl /nologo /MD /EHsc /std:c++17 /bigobj /W3 /DPRO_MACHINE=36 /DPRO_OS=4 /DPRO_USE_VAR_ARGS /I"{sdk / 'includes'}" /c "{ROOT / 'native/worker.cpp'}" /Fo"{build / 'worker.obj'}"
 if errorlevel 1 exit /b 2
 link /nologo /MACHINE:X64 /SUBSYSTEM:CONSOLE /OUT:"{exe}" "{build / 'worker.obj'}" {libs} kernel32.lib user32.lib wsock32.lib advapi32.lib mpr.lib winspool.lib netapi32.lib psapi.lib gdi32.lib shell32.lib comdlg32.lib ole32.lib ws2_32.lib
@@ -202,6 +263,8 @@ exit /b 0
     with (build / "build.log").open("wb") as log:
         result = subprocess.run(["cmd.exe", "/d", "/c", str(script)], cwd=build, stdout=log, stderr=subprocess.STDOUT, timeout=120, creationflags=HIDDEN)
     if result.returncode:
+        if result.returncode == 4:
+            raise RuntimeError(f"MSVC/Windows SDK environment preflight failed; inspect {build / 'build.log'} (SDK discovery or registry access may be blocked)")
         raise RuntimeError(f"Native build failed ({result.returncode}); see {build / 'build.log'}")
     stamp.write_text(fingerprint)
     constants = subprocess.run([str(exe), "constants"], env=native_environment(), capture_output=True, timeout=20, creationflags=HIDDEN)

@@ -1,0 +1,153 @@
+{
+  "version": "0.2.4",
+  "success": true,
+  "cases": {
+    "rectangle_empty_A": {
+      "success": true,
+      "native_blend_id": 60,
+      "section_count": 2,
+      "interpolation": "straight",
+      "initial_volume_mm3": 7000.000000000004,
+      "edited_volume_mm3": 8166.666666666666,
+      "parameter_edit": {
+        "op": "set_dimensions",
+        "values": [
+          {
+            "id": 18,
+            "value": 35
+          }
+        ]
+      },
+      "saved_reloaded_verified": true
+    },
+    "rectangle_explicit_B": {
+      "success": true,
+      "native_blend_id": 60,
+      "section_count": 2,
+      "interpolation": "straight",
+      "initial_volume_mm3": 7000.000000000004,
+      "edited_volume_mm3": 7840.0,
+      "parameter_edit": {
+        "op": "set_sketch_dimensions",
+        "sketch": "top",
+        "values": {
+          "width": 12,
+          "height": 12
+        }
+      },
+      "saved_reloaded_verified": true
+    },
+    "rectangle_empty_C": {
+      "success": true,
+      "native_blend_id": 60,
+      "section_count": 2,
+      "interpolation": "straight",
+      "initial_volume_mm3": 7000.000000000004,
+      "edited_volume_mm3": 8166.666666666666,
+      "parameter_edit": {
+        "op": "set_dimensions",
+        "values": [
+          {
+            "id": 18,
+            "value": 35
+          }
+        ]
+      },
+      "saved_reloaded_verified": true
+    },
+    "rectangle_smooth_empty": {
+      "success": true,
+      "native_blend_id": 60,
+      "section_count": 2,
+      "interpolation": "smooth",
+      "initial_volume_mm3": 7000.000000000004,
+      "edited_volume_mm3": 8166.666666666666,
+      "parameter_edit": {
+        "op": "set_dimensions",
+        "values": [
+          {
+            "id": 20,
+            "value": 35
+          }
+        ]
+      },
+      "saved_reloaded_verified": true
+    },
+    "five_rectangle_empty": {
+      "success": true,
+      "native_blend_id": 93,
+      "section_count": 5,
+      "interpolation": "smooth",
+      "initial_volume_mm3": 69220.87091984395,
+      "edited_volume_mm3": 70471.92873174255,
+      "parameter_edit": {
+        "op": "set_dimensions",
+        "values": [
+          {
+            "id": 37,
+            "value": 55
+          }
+        ]
+      },
+      "saved_reloaded_verified": true
+    },
+    "five_airfoil_empty": {
+      "success": true,
+      "native_blend_id": 93,
+      "section_count": 5,
+      "interpolation": "smooth",
+      "initial_volume_mm3": 5682.892315200524,
+      "edited_volume_mm3": 5787.8977290049315,
+      "parameter_edit": {
+        "op": "set_dimensions",
+        "values": [
+          {
+            "id": 47,
+            "value": 55
+          }
+        ]
+      },
+      "saved_reloaded_verified": true
+    }
+  },
+  "source_hashes": {
+    "two_straight": "7d2dbeb4f3bea4839b6501e311105753bfc752a0033f72039f8230b6aa61f5f2",
+    "two_smooth": "865204bea18f5098342e97a5fadb670e27cdd10a174cb7c45e2192e6c14b0518",
+    "five_smooth": "818c1e8c364725aeb1a37e6e1f9ff6424baf4a3b16e2b75cc7a93c4c3c9148b5"
+  },
+  "source_files_unchanged": true,
+  "date": "2026-10-10",
+  "validated_installation": "WorkBuddy local stdio",
+  "python": "3.13.14",
+  "unit_tests": {
+    "count": 36,
+    "success": true,
+    "tested_python_versions": [
+      "3.12",
+      "3.13"
+    ]
+  },
+  "native_jobs": {
+    "total": 14,
+    "succeeded": 12,
+    "expected_rejections": 2
+  },
+  "legacy_seed_checks": [
+    {
+      "case": "original_requested_file",
+      "source_sha256": "9665650c4ebfe0e8ae0da077f940710d391715534ea2d628412ff4e583abc2af",
+      "native_mode": "straight",
+      "saved_reloaded_verified": true,
+      "copy_matches_source": true,
+      "source_unchanged": true
+    },
+    {
+      "case": "old_successful_isolated_copy",
+      "source_sha256": "8503cb62d25b5cf7da903315dbed815b5f07bdb7ad7762780525126b5168f0fd",
+      "native_mode": "smooth",
+      "saved_reloaded_verified": true,
+      "copy_matches_source": true,
+      "source_unchanged": true
+    }
+  ]
+}

@@ -40,6 +40,7 @@ using V=std::array<double,3>;
 static J aliases=J::object(),gfeatures=J::array(),gsurfaces=J::array(),gedges=J::array();
 static std::set<int> visited_edges;
 static std::wstring generic_job;
+static int temporarily_suppressed_loft=-1;
 static J operation_results=J::array();
 static V vec(const J& j){return {j.at(0).get<double>(),j.at(1).get<double>(),j.at(2).get<double>()};}
 static double dot(const V&a,const V&b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}
@@ -78,7 +79,7 @@ static void verify_saved(const J& before,const J& after);
 static bool assembly_model(){ProMdlType t;CK(ProMdlTypeGet(board,&t));return t==PRO_MDL_ASSEMBLY;}
 static J inspection(bool require_healthy=true){
  gfeatures=J::array();gsurfaces=J::array();gedges=J::array();visited_edges.clear();CK(ProSolidFeatVisit((ProSolid)board,inspect_feature,nullptr,nullptr));bool healthy=true;for(auto& f:gfeatures)if(f["incomplete"].get<bool>()||f["status"].get<int>()!=PRO_FEAT_ACTIVE)healthy=false;
- if(require_healthy&&!healthy){log("UNHEALTHY_FEATURES=%s\n",gfeatures.dump().c_str());throw std::runtime_error("Regeneration produced a failed, suppressed or incomplete feature");}
+ if(require_healthy&&!healthy){bool expected_only=true;for(auto f:gfeatures)if(f["incomplete"].get<bool>()||(f["status"].get<int>()!=PRO_FEAT_ACTIVE&&f["id"].get<int>()!=temporarily_suppressed_loft))expected_only=false;if(!expected_only){log("UNHEALTHY_FEATURES=%s\n",gfeatures.dump().c_str());throw std::runtime_error("Regeneration produced a failed, suppressed or incomplete feature");}}
  J bodies=J::array();bool isasm=assembly_model(),solid=false;ProSolidBody* list=nullptr;int n=0;if(!isasm){CK(ProSolidBodiesCollect((ProSolid)board,&list));CK(ProArraySizeGet((ProArray)list,&n));}
  for(int i=0;i<n;i++){ProSolidBodyState state;CK(ProSolidBodyStateGet(&list[i],&state));J b={{"id",list[i].id},{"state",(int)state}};if(state==PRO_BODY_STATE_ACTIVE){solid=true;Pro3dPnt bounds[2];CK(ProSolidBodyOutlineGet(&list[i],bounds));b["bbox"]=J::array({xyz(bounds[0]),xyz(bounds[1])});CK(ProSolidBodySurfaceVisit(&list[i],inspect_surface,(ProAppData)(intptr_t)list[i].id));}bodies.push_back(b);}if(list)ProArrayFree((ProArray*)&list);if(isasm)for(auto f:gfeatures)if(f["type"].get<int>()==PRO_FEAT_COMPONENT)solid=true;
  J result={{"features",gfeatures},{"surfaces",gsurfaces},{"edges",gedges},{"bodies",bodies},{"healthy",healthy},{"units","mm"},{"has_solid",solid},{"volume_mm3",nullptr}};
@@ -291,8 +292,8 @@ static int run_generic(const std::wstring& job){
   }
   ProUnitsystem us;ProUnititem unit;CK(ProMdlPrincipalunitsystemGet(board,&us));CK(ProUnitsystemUnitGet(&us,PRO_UNITTYPE_LENGTH,&unit));if(wcscmp(unit.name,L"mm"))throw std::runtime_error("Expected millimeter model units");
   report["loft_checks"]["loaded"]=verify_loft_settings(L"loaded");
-  J seed_profiles;if(request.contains("loft_seed")){if(!request.at("new").get<bool>()||request.value("readonly",false))throw std::runtime_error("Loft seed binding requires a new writable part");seed_profiles=validate_loft_seed(request["loft_seed"]);}
-  for(auto op:request["operations"]){if(!request.value("readonly",false))mutated=true;execute_operation(op);}if(request.contains("loft_seed"))bind_loft_seed(request["loft_seed"],seed_profiles);if(!request.value("readonly",false))CK(ProSolidRegenerate((ProSolid)board,PRO_REGEN_NO_FLAGS));J state=inspection();report["inspection"]=state;report["aliases"]=aliases;verify_assertions(state,request.value("assertions",J::object()));std::wstring saved=checkpoint;
+  J seed_profiles;if(request.contains("loft_seed")){if(!request.at("new").get<bool>()||request.value("readonly",false))throw std::runtime_error("Loft seed binding requires a new writable part");seed_profiles=validate_loft_seed(request["loft_seed"]);suppress_seed_for_profiles(request["loft_seed"]["feature_id"],true);}
+  for(auto op:request["operations"]){if(!request.value("readonly",false))mutated=true;execute_operation(op);}if(request.contains("loft_seed")){suppress_seed_for_profiles(request["loft_seed"]["feature_id"],false);bind_loft_seed(request["loft_seed"],seed_profiles);}if(!request.value("readonly",false))CK(ProSolidRegenerate((ProSolid)board,PRO_REGEN_NO_FLAGS));J state=inspection();report["inspection"]=state;report["aliases"]=aliases;verify_assertions(state,request.value("assertions",J::object()));std::wstring saved=checkpoint;
   if(!request.value("readonly",false)){
    report["loft_checks"]["before_save"]=verify_loft_settings(L"before_save");
    log("PHASE=save_and_reload\n");ProPath destination;path(destination,folder);CK(ProMdlnameBackup(board,destination));saved=latest_model_file();J before=state;CK(ProMdlErase(board));board=nullptr;ProPath file;path(file,saved);CK(ProMdlFiletypeLoad(file,PRO_MDLFILE_UNUSED,PRO_B_FALSE,&board));CK(ProSolidRegenerate((ProSolid)board,PRO_REGEN_NO_FLAGS));state=inspection();verify_saved(before,state);verify_assertions(state,request.value("assertions",J::object()));

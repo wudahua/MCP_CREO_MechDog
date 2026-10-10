@@ -5,6 +5,7 @@
 - Windows x64；本版实测环境是 Creo Parametric 10.0.0.0。
 - Python 3.12+ x64；本版安装实测使用 Python 3.12。
 - 与 Creo 安装匹配的 C/C++ Toolkit SDK，包括头文件和 x64 链接库。
+- Creo 公制模板 `Common Files/templates/mmns_part_solid_abs.prt` 和 `mmns_asm_design_abs.asm`。安装器与环境检查都要求这两份文件，即使首次只建零件，也需安装公制装配模板。
 - Visual Studio C++ Build Tools，包含 MSVC x64 和 Windows SDK；本版实测 VS 2022。
 - 可用于当前 Toolkit 开发与运行路径的 PTC 许可。
 - 能运行本地 stdio MCP 服务的 AI 客户端。
@@ -40,7 +41,9 @@
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -CreoRoot 'C:\Program Files\PTC\Creo 10.0.0.0'
 ```
 
-脚本创建项目内的 Python 虚拟环境，安装锁定依赖，生成本机 SDK 常量，编译本地执行器，并写入本机配置。不需要把 Creo 安装到示例路径；不修改 PTC 安装目录或全局 AI 客户端配置。
+脚本保留已有本机配置中的额外选项，创建项目内的 Python 虚拟环境及客户端配置，再安装锁定依赖、更新本机 SDK 常量并编译执行器。每次构建先按当前 SDK 更新常量，并将 SDK 头文件内容计入缓存指纹；源码、配置及头文件都不变时复用现有二进制。不需要把 Creo 安装到示例路径；不修改 PTC 安装目录或全局 AI 客户端配置。
+
+安装中断会输出 `INSTALL_INCOMPLETE`、失败阶段、已完成步骤和重跑方法。修复错误后在同一目录重跑相同安装命令即可，不必删除 `.venv`、模型或任务。`client-config.json` 提前生成便于接入与诊断；它存在不代表依赖、原生执行器或许可验证已完成。
 
 ## AI 客户端配置
 
@@ -81,13 +84,16 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -CreoRoot 'C
 | 缺少 Toolkit 头文件或库 | 给对应 Creo 安装补装匹配的 Toolkit SDK |
 | 找不到 `vcvars64.bat` | 安装 C++ Build Tools 及 Windows SDK，使用 `-VcVars64` 指定位置 |
 | 依赖下载失败 | 检查访问 PyPI 的网络，再运行安装脚本 |
-| 原生编译失败 | 查看 `build/build.log`；确认 Creo SDK 和 MSVC x64 安装完整 |
-| 文件检查通过但 Toolkit 连接失败 | 确认只打开一个 Creo 会话，处理模态对话框，再核查当前 PTC 许可 |
+| 原生编译失败 | 查看 `build/generate_constants.log` 和 `build/build.log`；编译前检查 `cl.exe`、`link.exe`、UCRT 的 `stdio.h`、Windows SDK 的 `windows.h` 及 x64 库 |
+| `vcvars64` 成功但缺少 `stdio.h` / SDK 库 | Windows SDK 可能未安装，或注册表 / `reg.exe` 探测被客户端策略拦截。由管理员修复安装或允许必要探测；也可将经审核的本机编译环境包装脚本传给 `-VcVars64`。安装器不会修改全局安全策略 |
+| 文件检查通过但 Toolkit 连接失败 | 确认只打开一个 Creo 会话，处理模态对话框，再核查当前 PTC 许可；检查 `license_diagnostics`，路径拼写错误可能导致许可文件不存在 |
 | 客户端发现工具但调用报缺少 `config.json` | 在同一源码目录完成 `setup.ps1`，核查客户端 command/args |
 | 参数变化后版本不匹配 | 查询最新模型 revision；修改现有零件时提供 `expected_revision` |
 | Creo 路径长度错误 | 将源码放入较短路径，并重新安装及生成客户端配置 |
 
 模型保存在 `models/` 或任务输出目录，任务记录位于 `jobs/`。迁移电脑或移动项目目录后重新运行安装脚本并更新客户端配置；已有模型与记录需要一起保留。`.venv/` 不应从另一台电脑直接复制。
+
+许可诊断仅返回状态，不返回许可值、服务器名或文件位置。环境变量 `PTC_D_LICENSE_FILE` 未设置，或其中所有本地路径都不存在时，子进程会尝试使用 `parametric.psf` 的有效路径或服务器配置；不改系统环境变量。有效文件、目录、`端口@服务器` 及仍含有效项的列表保持原配置。文件存在或服务器字符串可解析仍不证明能取得 Toolkit 许可，需要实际建模验证。
 
 ## 从 0.2.0 升级到 0.21
 
@@ -98,6 +104,6 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -CreoRoot 'C
 
 ## 升级到 0.2.4
 
-升级流程同上，保留本机配置、模型和任务目录，等待原生任务完成后更新代码。新接口及限制见 [版本说明](RELEASE_NOTES_0.2.4.md)。更新源码后重启客户端中的 MCP 服务，调用 `creo_capabilities` 确认 `version == "0.2.4"`。只打开一个 Creo 会话；高级配置 `creo_session_id` 可固定 Toolkit 连接目标，重启会话后需重新取得有效 ID，程序拒绝连接回退。
+升级流程同上，保留本机配置、模型和任务目录，等待原生任务完成后更新代码并重跑 `setup.ps1`。不必手动删除 `native/constants.inc`；构建会自动更新。新接口及限制见 [版本说明](RELEASE_NOTES_0.2.4.md)。更新源码后重启客户端中的 MCP 服务，调用 `creo_capabilities` 确认 `version == "0.2.4"`。只打开一个 Creo 会话；高级配置 `creo_session_id` 可固定 Toolkit 连接目标，重启会话后需重新取得有效 ID，程序拒绝连接回退。重跑安装保留已有 ID，不会自动猜测新的连接目标。
 
 普通混合用户还需下载独立的 `MCP_CREO_MechDog-0.2.4-seed-library.zip`；源码安装器不会自动下载或注册它。库内有两截面直线、两截面平滑和五截面平滑原生 PRT。复制原文件后，使用清单 ID 和本机路径调用 `creo_new_loft_part`；详细步骤见 [SEED_LIBRARY.md](SEED_LIBRARY.md)。新电脑需要重新安装并验证，不直接复制旧 `.venv`、二进制、配置或会话 ID；同机换客户端可以共用安装目录，见 [MIGRATION.md](MIGRATION.md)。

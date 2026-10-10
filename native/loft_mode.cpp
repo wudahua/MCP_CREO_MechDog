@@ -1,5 +1,19 @@
 // Ordinary Blend settings are not exposed through the FET in Creo 10.
 // Read the numbered Blended surfaces row in Creo's own UTF-8 feature report.
+static void activate_blend_context(){
+ // Creo 10 can reject edit-reference queries on a valid but undisplayed model.
+ // Feature-info output also needs the target current, including after reload.
+ log("PHASE=activate_blend_context\n");
+ // Reuse the current/base window. ObjectwindowCreate would accumulate windows
+ // during repeated jobs; PTC recommends Display for a single target model.
+ CK(ProMdlDisplay(board));CK(ProMdlWindowGet(board,&win));CK(ProWindowCurrentSet(win));
+ // CurrentSet only changes Toolkit's graphics context, not the active model.
+ // Activate is supported by this asynchronous worker and must precede queries.
+ CK(ProWindowActivate(win));
+ ProMdl current=nullptr;CK(ProMdlCurrentGet(&current));
+ if(current!=board)throw std::runtime_error("Cannot activate the target Blend model; finish any modal Creo command before retrying");
+}
+
 static J parse_blend_setting(const std::wstring& filename){
  std::ifstream input(filename,std::ios::binary);if(!input)throw std::runtime_error("Missing native Blend feature information");
  std::string line,mode="unknown",matched;const std::string chinese=utf8(L"\u6df7\u5408\u66f2\u9762");
@@ -18,6 +32,7 @@ static J parse_blend_setting(const std::wstring& filename){
 }
 
 static J read_blend_setting(int feature_id,const std::wstring& phase){
+ activate_blend_context();
  ProPath previous,target;CK(ProDirectoryCurrentGet(previous));path(target,generic_job);CK(ProDirectoryChange(target));
  std::wstring filename=L"blend_"+std::to_wstring(feature_id)+L"_"+phase+L".txt";ProMdlFileName name;wcscpy_s(name,filename.c_str());
  ProError exported=ProOutputFileMdlnameWrite(board,name,PRO_FEAT_INFO,nullptr,&feature_id,nullptr,nullptr);ProError restored=ProDirectoryChange(previous);check(exported,"ExportBlendFeatureInfo");check(restored,"RestoreFeatureInfoDirectory");

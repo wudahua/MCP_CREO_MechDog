@@ -6,6 +6,8 @@
 
 开发版包括工程图、坐标系/点、填充曲面、加厚、实体化、多实体布尔、筋和 UDF 库工具。当前版本为 **0.2.4**，使用方法和边界见 [版本说明](docs/RELEASE_NOTES_0.2.4.md)。多截面增量见 [多截面说明](docs/MULTISECTION_BLEND.md)、[验证摘要](docs/validation_multisection.json)；两截面普通放样见 [调用说明](docs/LOFT_SEED.md)、[直线验证摘要](docs/validation_loft_seed.json) 与 [平滑混合说明](docs/SMOOTH_BLEND.md)、[平滑验证摘要](docs/validation_loft_smooth.json)；其他模块的 [历史验证摘要](docs/validation_development.json) 单独保留。已发布的 GitHub v0.22 和旧源码包不会自动包含这些增量，0.2.4 需单独发布，已发布的 v0.2.3 不会自动更新。
 
+**2026-10-10 安装与普通混合修复**：修正活动模型上下文、空尺寸矩形意外依赖种子实体、SDK 常量更新和构建缓存、许可失效路径回退、安装中断恢复及 Windows SDK 构建诊断。版本号仍为 0.2.4；这是已发布 v0.2.4 之后的源码修复，旧下载包不会自动变化。逐项结论与验证见 [修复报告](docs/INSTALL_FIX_2026-10-10.md)。
+
 另提供 **0.2.4 原生混合种子库**：两截面直线、两截面平滑、五截面平滑。项目原创模型及配套文件采用 MIT，作为独立 Release 附件提供，源码 ZIP 不含 PRT。普通混合用户应同时下载源码和 `MCP_CREO_MechDog-0.2.4-seed-library.zip`；详见 [种子库说明](docs/SEED_LIBRARY.md) 和 [换电脑、换 Agent](docs/MIGRATION.md)。安装器当前不会自动下载或注册种子库。
 
 已发布 0.21 的历史验证见 [validation_0.21.json](docs/validation_0.21.json)，历史范围见 [COVERAGE_0.21.md](docs/COVERAGE_0.21.md)。测试环境为 Windows x64、Creo 10.0.0.0、Python 3.12、Visual Studio 2022 C++ Build Tools。0.2.0 的 41 个成功任务及 11 项输入验证单独保留为历史记录。这些摘要不能代替使用者自己机器的许可与运行验证。
