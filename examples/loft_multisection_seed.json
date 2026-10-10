@@ -1,0 +1,261 @@
+{
+  "seed_file": "C:\\my_library\\five_section_smooth.prt.1",
+  "seed_feature_id": 123,
+  "interpolation": "smooth",
+  "label": "blend",
+  "sections": [
+    {
+      "op": "sketch",
+      "label": "section_0",
+      "plane": "XY",
+      "offset": 0,
+      "entities": [
+        {
+          "type": "rectangle",
+          "name": "profile",
+          "min": [
+            -6.0,
+            -6.0
+          ],
+          "max": [
+            6.0,
+            6.0
+          ]
+        }
+      ],
+      "dimensions": [
+        {
+          "name": "width",
+          "type": "length",
+          "refs": [
+            {
+              "entity": "profile_0"
+            }
+          ],
+          "value": 12,
+          "position": [
+            12,
+            12
+          ]
+        },
+        {
+          "name": "height",
+          "type": "length",
+          "refs": [
+            {
+              "entity": "profile_1"
+            }
+          ],
+          "value": 12,
+          "position": [
+            12,
+            12
+          ]
+        }
+      ]
+    },
+    {
+      "op": "sketch",
+      "label": "section_1",
+      "plane": "XY",
+      "offset": 20,
+      "entities": [
+        {
+          "type": "rectangle",
+          "name": "profile",
+          "min": [
+            -13.0,
+            -13.0
+          ],
+          "max": [
+            13.0,
+            13.0
+          ]
+        }
+      ],
+      "dimensions": [
+        {
+          "name": "width",
+          "type": "length",
+          "refs": [
+            {
+              "entity": "profile_0"
+            }
+          ],
+          "value": 26,
+          "position": [
+            26,
+            26
+          ]
+        },
+        {
+          "name": "height",
+          "type": "length",
+          "refs": [
+            {
+              "entity": "profile_1"
+            }
+          ],
+          "value": 26,
+          "position": [
+            26,
+            26
+          ]
+        }
+      ]
+    },
+    {
+      "op": "sketch",
+      "label": "section_2",
+      "plane": "XY",
+      "offset": 50,
+      "entities": [
+        {
+          "type": "rectangle",
+          "name": "profile",
+          "min": [
+            -17.0,
+            -17.0
+          ],
+          "max": [
+            17.0,
+            17.0
+          ]
+        }
+      ],
+      "dimensions": [
+        {
+          "name": "width",
+          "type": "length",
+          "refs": [
+            {
+              "entity": "profile_0"
+            }
+          ],
+          "value": 34,
+          "position": [
+            34,
+            34
+          ]
+        },
+        {
+          "name": "height",
+          "type": "length",
+          "refs": [
+            {
+              "entity": "profile_1"
+            }
+          ],
+          "value": 34,
+          "position": [
+            34,
+            34
+          ]
+        }
+      ]
+    },
+    {
+      "op": "sketch",
+      "label": "section_3",
+      "plane": "XY",
+      "offset": 80,
+      "entities": [
+        {
+          "type": "rectangle",
+          "name": "profile",
+          "min": [
+            -11.0,
+            -11.0
+          ],
+          "max": [
+            11.0,
+            11.0
+          ]
+        }
+      ],
+      "dimensions": [
+        {
+          "name": "width",
+          "type": "length",
+          "refs": [
+            {
+              "entity": "profile_0"
+            }
+          ],
+          "value": 22,
+          "position": [
+            22,
+            22
+          ]
+        },
+        {
+          "name": "height",
+          "type": "length",
+          "refs": [
+            {
+              "entity": "profile_1"
+            }
+          ],
+          "value": 22,
+          "position": [
+            22,
+            22
+          ]
+        }
+      ]
+    },
+    {
+      "op": "sketch",
+      "label": "section_4",
+      "plane": "XY",
+      "offset": 100,
+      "entities": [
+        {
+          "type": "rectangle",
+          "name": "profile",
+          "min": [
+            -4.0,
+            -4.0
+          ],
+          "max": [
+            4.0,
+            4.0
+          ]
+        }
+      ],
+      "dimensions": [
+        {
+          "name": "width",
+          "type": "length",
+          "refs": [
+            {
+              "entity": "profile_0"
+            }
+          ],
+          "value": 8,
+          "position": [
+            8,
+            8
+          ]
+        },
+        {
+          "name": "height",
+          "type": "length",
+          "refs": [
+            {
+              "entity": "profile_1"
+            }
+          ],
+          "value": 8,
+          "position": [
+            8,
+            8
+          ]
+        }
+      ]
+    }
+  ],
+  "assertions": {
+    "require_solid": true
+  }
+}

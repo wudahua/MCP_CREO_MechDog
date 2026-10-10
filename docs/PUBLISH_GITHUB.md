@@ -2,11 +2,22 @@
 
 本项目已提供 MIT 许可证及第三方声明。公开内容为本项目源码、安装脚本、说明、示例和测试；使用者在自己的 Windows 电脑安装和运行。
 
-## 当前开发版 0.2.3
+## 当前开发版 0.2.4
 
-`MCP_CREO_MechDog-0.2.3-source.zip` 收录当前源码，包括两个平行 XY 截面的直线、平滑实体混合种子复用工具，详见 [LOFT_SEED.md](LOFT_SEED.md)。已发布的旧 `MCP_CREO_MechDog-0.22-source.zip` 和 GitHub v0.22 保留为历史版本。
+`MCP_CREO_MechDog-0.2.4-source.zip` 收录当前源码，包括2～20 张平行 XY 截面的原生实体混合种子复用工具，种子数量和模式须匹配，详见 [LOFT_SEED.md](LOFT_SEED.md)。已发布的旧 `MCP_CREO_MechDog-0.22-source.zip` 和 GitHub v0.22 保留为历史版本。
 
-更新仓库根目录的公开源码后，新建标签 **v0.2.3**，标题填写 **MCP_CREO_MechDog 0.2.3 — MIT 源码预发布候选版**，发布说明使用 [RELEASE_NOTES_0.2.3.md](RELEASE_NOTES_0.2.3.md)，附件为 `MCP_CREO_MechDog-0.2.3-source.zip` 与对应 `.zip.sha256`。当前仍有未完成操作，保留 **Pre-release** 标记。本地生成源码包不会自动上传 GitHub。
+更新仓库根目录的公开源码后，新建标签 **v0.2.4**，标题填写 **MCP_CREO_MechDog 0.2.4 — MIT 源码与混合种子库**，发布说明使用 [RELEASE_NOTES_0.2.4.md](RELEASE_NOTES_0.2.4.md)。当前仍有未完成操作，保留 **Pre-release** 标记。本地生成源码包不会自动上传 GitHub。
+
+本次 Release 上传四个附件：
+
+- `MCP_CREO_MechDog-0.2.4-source.zip`
+- `MCP_CREO_MechDog-0.2.4-source.zip.sha256`
+- `MCP_CREO_MechDog-0.2.4-seed-library.zip`
+- `MCP_CREO_MechDog-0.2.4-seed-library.zip.sha256`
+
+在 Releases 中新建发布，或在允许编辑附件的已有发布中添加种子库 ZIP 和校验码，上传到附件区域后发布或更新。使用附带的 `GITHUB_RELEASE_说明.md` 可给现有说明追加种子库内容。GitHub 自动生成的 Source code ZIP 不含仅作为 Release 附件上传的种子，说明中应明确要求普通混合用户同时下载源码和种子两个包。[GitHub 官方发布说明](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository)
+
+种子库包括项目原创 PRT、MIT 许可证、清单、校验、路径解析器和迁移说明，详见 [SEED_LIBRARY.md](SEED_LIBRARY.md)。也可把种子库目录里的内容放到仓库 `seed_library/`，但仍推荐保留独立 Release 附件。公开源码包及 GitHub 源码上传目录保持源码内容，不自动混入原生 PRT。安装器不会自动下载或注册种子；使用者或 Agent 需读取库清单并填写本机绝对路径。跨电脑、跨 Agent 步骤见 [MIGRATION.md](MIGRATION.md)。
 
 ## 历史 0.21：用网页发布仓库
 

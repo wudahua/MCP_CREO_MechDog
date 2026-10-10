@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
+from typing import Any, Annotated
 
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
@@ -100,10 +100,12 @@ async def creo_capabilities() -> dict[str, Any]:
         verified = {"version":VERSION,"status":"No validation summary for this version yet; inspect integration reports"}
     loft_evidence = bridge.ROOT / "docs/validation_loft_seed.json"
     smooth_evidence = bridge.ROOT / "docs/validation_loft_smooth.json"
+    multisection_evidence = bridge.ROOT / "docs/validation_multisection.json"
     verified = {"scope":"Historical feature suites were not rerun for the loft addition",
                 "historical_features":verified,
                 "loft_seed":bridge.read_json(loft_evidence) if loft_evidence.is_file() else {"status":"No loft integration summary yet"},
-                "loft_smooth":bridge.read_json(smooth_evidence) if smooth_evidence.is_file() else {"status":"No smooth Blend integration summary yet"}}
+                "loft_smooth":bridge.read_json(smooth_evidence) if smooth_evidence.is_file() else {"status":"No smooth Blend integration summary yet"},
+                "loft_multisection":bridge.read_json(multisection_evidence) if multisection_evidence.is_file() else {"status":"No multisection Blend integration summary yet"}}
     return {
         "name":"MCP_CREO_MechDog", "version":VERSION, "unit":"mm", "angle_unit":"degrees",
         "tool_count":len(await mcp.list_tools()),
@@ -140,23 +142,24 @@ async def creo_new_part(model_name: str | None = None) -> dict[str, Any]:
 
 
 @mcp.tool(annotations=CREATE)
-async def creo_new_loft_part(seed_file: str, seed_feature_id: int, sections: list[SketchOp],
+async def creo_new_loft_part(seed_file: str, seed_feature_id: int, sections: Annotated[list[SketchOp],Field(min_length=2,max_length=20)],
                              label: str="loft", model_name: str | None=None,
                              assertions: dict[str,Any] | None=None,
                              interpolation: Literal["straight","smooth"]="straight") -> dict[str,Any]:
     """Create a NEW part with a native ordinary Blend by rebinding a saved seed.
 
-    Supply a local .prt/.prt.N containing one solid two-section Blend
-    referencing two independent XY sketches created and selected bottom first,
+    Supply a local .prt/.prt.N containing one solid Blend with exactly the same
+    number of independent XY sketch sections, created and selected low Z first,
     plus its native feature ID. interpolation must match the saved seed's
     straight/smooth setting: it validates the mode, never converts the seed.
     Use a dedicated solid seed in mm with one body. The file is
-    snapshotted and never edited. sections must contain exactly two sketch ops
-    on XY with increasing Z offsets; their geometry and dimensions drive the
-    result. Rectangles, circles and triangles have been verified. This preserves
+    snapshotted and never edited. sections must contain 2 to 20 sketch ops
+    on XY with strictly increasing Z offsets; their geometry and dimensions drive the
+    result. Five-section smooth rectangles and spline airfoils have been verified.
+    Two-section rectangles, circles and triangles are also supported. This preserves
     a native parametric Blend; it is seed reuse, not direct element-tree creation.
     The native mode is checked after creation, edits and saved-file reload.
-    No existing-target insertion, additional sections, cut/surface modes or
+    It does not increase the seed's section count. No existing-target insertion, cut/surface modes or
     editable tangency/curvature controls; endpoint settings are inherited.
     Poll the returned job_id and use the resulting model_id for later features.
     """

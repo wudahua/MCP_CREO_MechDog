@@ -49,12 +49,12 @@ def component_graph(source: dict, target_id: str, seen: set[str] | None=None) ->
 
 def new_loft_part(seed_file: str, seed_feature_id: int, sections: list[dict], label: str="loft",
                   model_name: str | None=None, assertions: dict | None=None, interpolation: str="straight") -> dict:
-    """Create a new part by rebinding a user's two-section native Blend seed."""
+    """Create a new part by rebinding a native Blend seed with matching section count."""
     sections=validate_operations(sections)
-    if len(sections)!=2 or any(s['op']!='sketch' for s in sections):
-        raise ValueError('Exactly two sketch operations are required')
-    if any(s['plane']!='XY' for s in sections) or sections[0]['offset']>=sections[1]['offset']:
-        raise ValueError('This verified workflow requires two XY sketches with increasing Z offsets')
+    if not 2<=len(sections)<=20 or any(s['op']!='sketch' for s in sections):
+        raise ValueError('Between 2 and 20 sketch operations are required')
+    if any(s['plane']!='XY' for s in sections) or any(a['offset']>=b['offset'] for a,b in zip(sections,sections[1:])):
+        raise ValueError('This workflow requires XY sketches with strictly increasing Z offsets')
     binding=LoftOp.model_validate({'op':'loft','label':label,'sections':[s['label'] for s in sections],'interpolation':interpolation}).model_dump()
     if label in binding['sections']: raise ValueError('Loft and sketch labels must be distinct')
     if isinstance(seed_feature_id,bool) or not isinstance(seed_feature_id,int) or not 0<=seed_feature_id<=2147483647:
@@ -151,7 +151,7 @@ def submit(operations: list[dict], model_id: str | None=None, model_name: str | 
         manifest={"job_id":job_id,"kind":"generic","model_id":model_id,"status":"queued","readonly":readonly,
                   "created_at":bridge.now(),"operations":operations,"job_directory":str(directory),
                   "output_directory":str(directory/"output"),"message":"Poll creo_get_job with this job_id; do not resubmit the operation"}
-        if loft_seed: manifest['construction']='native_two_section_blend_seed_rebinding'
+        if loft_seed: manifest['construction']='native_multisection_blend_seed_rebinding'
         bridge.write_json(directory/"request.json",request)
         bridge.write_json(directory/"job.json",manifest)
         try:

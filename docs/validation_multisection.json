@@ -1,0 +1,182 @@
+{
+  "name": "MCP_CREO_MechDog",
+  "version": "0.2.4",
+  "scope": "new parts from matching-count and matching-mode native solid Blend seeds",
+  "tool": "creo_new_loft_part",
+  "tool_count": 68,
+  "enabled_tool_count": 67,
+  "section_count_input_range": [
+    2,
+    20
+  ],
+  "input_range_is_not_all_counts_tested": true,
+  "direct_loft_creation_enabled": false,
+  "complete_creo_coverage": false,
+  "native_modeling_validation_version": "0.2.4",
+  "input_validation_version": "0.2.4",
+  "input_validation_tests": 29,
+  "mcp_validation_version": "0.2.4",
+  "mcp_stdio_connected": true,
+  "suites": [
+    {
+      "section_count": 5,
+      "interpolation": "smooth",
+      "successful_native_jobs": 8,
+      "expected_failure_jobs": 3,
+      "saved_file_verified_mutation_jobs": 4,
+      "rollback_verified_jobs": 1,
+      "seed_count_mismatch_rejected": true,
+      "seed_mode_mismatch_rejected": true,
+      "source_seed_file_unchanged": true,
+      "cases": {
+        "rectangle": {
+          "success": true,
+          "initial_volume_mm3": 69220.87091984395,
+          "edited_volume_mm3": 82684.57495659773,
+          "native_blend_feature_preserved": true,
+          "all_parameter_sketches_preserved": true,
+          "parameter_edit_changes_solid": true,
+          "saved_file_reloaded_with_count_and_mode_preserved": true,
+          "actual_stl_sections": {
+            "success": true,
+            "facets": 252,
+            "sections": [
+              {
+                "z_mm": 0,
+                "width_mm": 12.0,
+                "height_mm": 12.0,
+                "requested_size_mm": 12
+              },
+              {
+                "z_mm": 20,
+                "width_mm": 25.99323854,
+                "height_mm": 25.99323854,
+                "requested_size_mm": 26
+              },
+              {
+                "z_mm": 50,
+                "width_mm": 39.9352435,
+                "height_mm": 39.9352435,
+                "requested_size_mm": 40
+              },
+              {
+                "z_mm": 80,
+                "width_mm": 22.0017313,
+                "height_mm": 22.0017313,
+                "requested_size_mm": 22
+              },
+              {
+                "z_mm": 100,
+                "width_mm": 8.0,
+                "height_mm": 8.0,
+                "requested_size_mm": 8
+              }
+            ],
+            "tolerance_mm": 0.15
+          },
+          "middle_size_mm": [
+            34,
+            40
+          ],
+          "rollback_verified": true
+        },
+        "airfoil": {
+          "success": true,
+          "initial_volume_mm3": 5682.892315200524,
+          "edited_volume_mm3": 5787.8977290049315,
+          "native_blend_feature_preserved": true,
+          "all_parameter_sketches_preserved": true,
+          "parameter_edit_changes_solid": true,
+          "saved_file_reloaded_with_count_and_mode_preserved": true,
+          "actual_stl_sections": {
+            "success": true,
+            "facets": 7840,
+            "sections": [
+              {
+                "z_mm": 0,
+                "chord_mm": 11.996015000103565,
+                "requested_chord_mm": 12,
+                "requested_angle_deg": 35,
+                "max_vertical_formula_deviation_mm": 0.04426222048778097,
+                "max_nearest_profile_distance_mm": 0.026301717867981363,
+                "boundary_points": 187
+              },
+              {
+                "z_mm": 20,
+                "chord_mm": 25.97264995553867,
+                "requested_chord_mm": 26,
+                "requested_angle_deg": 28,
+                "max_vertical_formula_deviation_mm": 0.115377906152408,
+                "max_nearest_profile_distance_mm": 0.04753476027392457,
+                "boundary_points": 354
+              },
+              {
+                "z_mm": 55,
+                "chord_mm": 33.903706136833705,
+                "requested_chord_mm": 34,
+                "requested_angle_deg": 18,
+                "max_vertical_formula_deviation_mm": 0.22540798577892113,
+                "max_nearest_profile_distance_mm": 0.055560822074564115,
+                "boundary_points": 353
+              },
+              {
+                "z_mm": 80,
+                "chord_mm": 21.987049701207837,
+                "requested_chord_mm": 22,
+                "requested_angle_deg": 10,
+                "max_vertical_formula_deviation_mm": 0.088943623868672,
+                "max_nearest_profile_distance_mm": 0.03266693121880469,
+                "boundary_points": 354
+              },
+              {
+                "z_mm": 100,
+                "chord_mm": 8.000680790985742,
+                "requested_chord_mm": 8,
+                "requested_angle_deg": 5,
+                "max_vertical_formula_deviation_mm": 0.050187414107152425,
+                "max_nearest_profile_distance_mm": 0.029343908570881108,
+                "boundary_points": 181
+              }
+            ],
+            "tolerance_mm": 0.15
+          },
+          "middle_plane_edit": {
+            "dimension_id": 47,
+            "symbol": "d47",
+            "before_mm": 50,
+            "after_mm": 55
+          },
+          "profile": "NACA 0012 splines, finite trailing edge"
+        }
+      },
+      "private_report_sha256": "3c62431c79ef926e8a9cbdb9f83fab625724963ff20711e35428f7608a90d1a5"
+    }
+  ],
+  "native_source_sha256": {
+    "native/advanced.cpp": "43e42de0dfe6be4c23f33c880bf23313733d29097b2be694a9c5e6e543c515dc",
+    "native/drawing.cpp": "4009a78eaabcacac1c7a5dc37b738103ca8fdf272a0a0d188d22483506f9b06e",
+    "native/generic.cpp": "08546520363c75901bc1d0804b8f396b2f182ed61d44b7170b140204af420356",
+    "native/geometry.cpp": "efa17458e160f59fe7f3a119593f6f8f84845e5fe9d94398d46a1234242a0132",
+    "native/loft_mode.cpp": "a6af1e750730cc8ac46f98d9e8dca120ee3d11d5d4ea17e2b69d8b5bd1eb6ef5",
+    "native/loft_seed.cpp": "4730826ac5c1d90e0ea2fdb26f1f7f28fb4b35bc8a0bf240b2676dcadf61bf28",
+    "native/surfaces.cpp": "6e8ce0e79d8f80e7763a5f979d4c14ae4db0f618ae4dda1a34de97e494779016",
+    "native/third_party/json.hpp": "aaf127c04cb31c406e5b04a63f1ae89369fccde6d8fa7cdda1ed4f32dfc5de63",
+    "native/udf.cpp": "46d0024f5a2a27dc732e2a25305aef44abaca0c6b92004cef6e7bafbb785b938",
+    "native/worker.cpp": "4e5c314e51007792c943d4270129f218cc64f9fe8b0d215ec3ef21e14100bed8"
+  },
+  "native_worker_sha256": "0b46c4cec83bd27344272307e10a2660d4a3b4de5644ba4a8e2f4e9dae2ecb62",
+  "tested_environment": {
+    "os": "Windows x64",
+    "creo": "10.0.0.0",
+    "python": "3.12 x64"
+  },
+  "limits": [
+    "Requires a dedicated saved mm solid Blend seed with the requested section count and interpolation",
+    "2 to 20 independent closed XY sketches; offsets strictly increase, seed sketches created and selected low Z first",
+    "No seed section insertion/removal, interpolation conversion, existing-target insertion or direct no-seed Blend creation",
+    "No nonparallel sections, surface/cut mode or endpoint tangency/curvature controls",
+    "Only listed count/mode/profile combinations were tested; other inputs need individual validation",
+    "STL section tolerance is a tessellation check, not a guarantee of analytical or aerodynamic accuracy"
+  ],
+  "evidence_type": "Development-machine MCP/native tests; not verification of another installation"
+}

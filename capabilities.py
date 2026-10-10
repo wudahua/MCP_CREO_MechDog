@@ -15,7 +15,7 @@ REGISTERED_OPERATIONS = (
 )
 
 UNAVAILABLE_OPERATIONS = {
-    "loft": "Direct Blend creation and insertion into existing parts remain unavailable. Use creo_new_loft_part for the tested two-section seed workflow.",
+    "loft": "Direct Blend creation and insertion into existing parts remain unavailable. Use creo_new_loft_part with a saved seed matching the requested section count and interpolation.",
 }
 
 def require_available(operations: list[dict]) -> None:
@@ -48,11 +48,16 @@ def families() -> dict:
         'loft': {'enabled': False, 'reason': UNAVAILABLE_OPERATIONS['loft'],
                  'alternative_tool': 'creo_new_loft_part'},
         'loft_seed': {'enabled': True, 'tool': 'creo_new_loft_part',
-                      'scope': 'new native part by rebinding a user-supplied two-section ordinary Blend seed to two new XY sketches',
+                      'scope': 'new native part by rebinding a user-supplied ordinary Blend seed to 2 to 20 new XY sketches with matching section count',
+                      'section_count_input_range': [2, 20],
+                      'seed_section_count_must_match': True,
                       'interpolation': ['straight', 'smooth'],
+                      'tested_section_count_mode_pairs': [{'section_count': 2, 'interpolation': 'straight'},
+                                                          {'section_count': 2, 'interpolation': 'smooth'},
+                                                          {'section_count': 5, 'interpolation': 'smooth'}],
                       'mode_verification': 'requested interpolation must match the saved seed; native PRO_FEAT_INFO checked before save, after parameter edits and after reload',
-                      'native_test': 'rectangle, circle and triangle sections; top dimensions 10 to 12; saved reload and failed-assertion rollback',
-                      'limits': 'requires a saved solid Blend seed with matching interpolation, Chinese/English Creo; two XY sketches with increasing Z offsets; no mode conversion, existing-target insertion, extra sections, cut/surface or tangency controls; seed endpoint settings and datums are inherited; free endpoints may produce identical geometry in straight and smooth modes'},
+                      'native_test': 'five-section smooth rectangles and NACA 0012 spline airfoils; middle sketch/plane edits; saved reload, all-section STL checks and failed-assertion rollback; two-section rectangle/circle/triangle regression',
+                      'limits': 'requires a saved solid Blend seed with matching section count and interpolation, Chinese/English Creo; XY sketches with strictly increasing Z offsets; no seed section insertion/removal, mode conversion, existing-target insertion, cut/surface or tangency controls; seed endpoint settings and datums are inherited; input range is not proof that every count/profile is tested; free endpoints may produce identical geometry with two sections'},
         'sheetmetal': {'enabled': True, 'scope': 'first flat wall, attached flange, unbend, bend-back and flat pattern',
                       'native_test': '40 x 30 x 1 wall, 90 degree flange with R2/R3 bend, followed by unfolding and refolding',
                       'limits': 'first wall uses thin extrusion then native conversion; bend relief, forms, hems and jogs are not high-level tools'},

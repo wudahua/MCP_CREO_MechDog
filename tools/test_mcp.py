@@ -26,10 +26,15 @@ async def main(create: bool, simple: bool, classic: bool):
         interpolation = loft_tool.input_schema["properties"]["interpolation"]
         assert set(interpolation["enum"]) == {"straight", "smooth"}, interpolation
         assert interpolation["default"] == "straight", interpolation
+        sections = loft_tool.input_schema["properties"]["sections"]
+        assert sections["minItems"] == 2 and sections["maxItems"] == 20, sections
+        report["loft_section_count_schema_verified"] = True
         report["loft_interpolation_schema_verified"] = True
         capabilities = await client.call_tool("creo_capabilities", {})
         assert not capabilities.is_error, capabilities
         assert capabilities.structured_content["families"]["loft_seed"]["interpolation"] == ["straight", "smooth"]
+        assert capabilities.structured_content["families"]["loft_seed"]["section_count_input_range"] == [2, 20]
+        assert capabilities.structured_content["families"]["loft_seed"]["seed_section_count_must_match"] is True
         report["server"] = {key: capabilities.structured_content[key] for key in ("name", "version")}
         assert report["server"] == {"name": "MCP_CREO_MechDog", "version": VERSION}, report["server"]
         environment = await client.call_tool("creo_check_environment", {})

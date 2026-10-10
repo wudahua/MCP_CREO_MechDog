@@ -27,3 +27,14 @@ procedures. See:
 https://support.ptc.com/help/creo_toolkit/protoolkit_pma/r12/usascii/creo_toolkit/user_guide/Unlocking_a_Creo_Toolkit_Application.html
 
 MCP_CREO_MechDog is an independent project and is not an official PTC product.
+
+## Separate reference seed library
+
+The optional `MCP_CREO_MechDog-0.2.4-seed-library.zip` contains project-created
+native Blend reference models, a manifest, a path resolver and documentation.
+Project-authored geometry and accompanying project files are provided under MIT;
+the seed package retains its own `LICENSE` and states the scope of that grant.
+These are project test references, not a redistributed PTC example-model library.
+No Creo installation, Toolkit headers/libraries, application binaries or license
+files are included. The project license grants no rights to PTC software or
+other third-party materials. Target-machine runtime requirements still apply.

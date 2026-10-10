@@ -61,7 +61,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -CreoRoot 'C
 
 打开并保持一个 Creo 10 会话。处理完登录、许可及其他模态对话框，然后让 AI：
 
-1. 调用 `creo_capabilities`，确认当前版本为 `0.2.3`。包含最新放样增量的源码发现 68 个工具；已发布的旧 v0.22 为 67 个。新增 `creo_new_loft_part` 的种子要求见 [LOFT_SEED.md](LOFT_SEED.md)，平滑模式见 [SMOOTH_BLEND.md](SMOOTH_BLEND.md)；直接放样保留接口仍禁用。先查看 `families` 和 `unavailable_operations`。
+1. 调用 `creo_capabilities`，确认当前版本为 `0.2.4`。包含最新放样增量的源码发现 68 个工具；已发布的旧 v0.22 为 67 个。`creo_new_loft_part` 的种子要求见 [LOFT_SEED.md](LOFT_SEED.md)，多截面见 [MULTISECTION_BLEND.md](MULTISECTION_BLEND.md)，平滑模式见 [SMOOTH_BLEND.md](SMOOTH_BLEND.md)；直接放样保留接口仍禁用。先查看 `families` 和 `unavailable_operations`。
 2. 调用 `creo_check_environment`，确认 SDK、模板和编译器路径正确。
 3. 调用 `creo_session_status`，确认 `connected == true`。
 4. 提交一个新零件建模计划；只提交一次，使用 `creo_get_job` 查询任务进度。
@@ -96,6 +96,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -CreoRoot 'C
 0.21 是预发布候选版；放样仍未完成，不能作为支持所有 Creo 操作的稳定版。完整边界见 [COVERAGE_0.21.md](COVERAGE_0.21.md)。
 
 
-## 升级到 0.2.3
+## 升级到 0.2.4
 
-升级流程同上，保留本机配置、模型和任务目录，等待原生任务完成后更新代码。新接口及限制见 [版本说明](RELEASE_NOTES_0.2.3.md)。更新源码后重启客户端中的 MCP 服务，调用 `creo_capabilities` 确认 `version == "0.2.3"`。只打开一个 Creo 会话；高级配置 `creo_session_id` 可固定 Toolkit 连接目标，重启会话后需重新取得有效 ID，程序拒绝连接回退。
+升级流程同上，保留本机配置、模型和任务目录，等待原生任务完成后更新代码。新接口及限制见 [版本说明](RELEASE_NOTES_0.2.4.md)。更新源码后重启客户端中的 MCP 服务，调用 `creo_capabilities` 确认 `version == "0.2.4"`。只打开一个 Creo 会话；高级配置 `creo_session_id` 可固定 Toolkit 连接目标，重启会话后需重新取得有效 ID，程序拒绝连接回退。
+
+普通混合用户还需下载独立的 `MCP_CREO_MechDog-0.2.4-seed-library.zip`；源码安装器不会自动下载或注册它。库内有两截面直线、两截面平滑和五截面平滑原生 PRT。复制原文件后，使用清单 ID 和本机路径调用 `creo_new_loft_part`；详细步骤见 [SEED_LIBRARY.md](SEED_LIBRARY.md)。新电脑需要重新安装并验证，不直接复制旧 `.venv`、二进制、配置或会话 ID；同机换客户端可以共用安装目录，见 [MIGRATION.md](MIGRATION.md)。

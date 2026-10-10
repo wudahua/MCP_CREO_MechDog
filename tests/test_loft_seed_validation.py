@@ -14,7 +14,9 @@ class LoftSeedValidation(unittest.TestCase):
     def test_invalid_scope_rejected_without_queueing(self):
         cases=[self.sections()[:1],self.sections()*2]
         inverted=self.sections();inverted[1]['offset']=0;cases.append(inverted)
+        middle=self.sections();middle.insert(1,{**middle[1],'label':'middle','offset':40});cases.append(middle)
         tilted=self.sections();tilted[1]['plane']='XZ';cases.append(tilted)
+        too_many=[{**self.sections()[0],'label':f'section_{i}','offset':i} for i in range(21)];cases.append(too_many)
         with patch.object(generic_bridge,'submit') as submit:
             for sections in cases:
                 with self.assertRaises(ValueError):generic_bridge.new_loft_part('missing.prt',60,sections)
@@ -43,3 +45,12 @@ class LoftSeedValidation(unittest.TestCase):
             submit.assert_not_called()
             generic_bridge.new_loft_part(str(seed),60,self.sections(),interpolation='smooth')
             self.assertEqual(submit.call_args.kwargs['loft_seed']['interpolation'],'smooth')
+
+    def test_multisection_order_preserved_for_seed_binding(self):
+        seed=Path(__file__).resolve().parent/'seed.prt.1'
+        for count in [3,5,20]:
+            sections=[{**self.sections()[0],'label':f'section_{i}','offset':i*10} for i in range(count)]
+            with patch.object(Path,'is_file',return_value=True), patch.object(generic_bridge,'submit',return_value={'queued':True}) as submit:
+                self.assertEqual(generic_bridge.new_loft_part(str(seed),60,sections),{'queued':True})
+                self.assertEqual(submit.call_args.kwargs['loft_seed']['sections'],[s['label'] for s in sections])
+                self.assertEqual(len(submit.call_args.args[0]),count)
