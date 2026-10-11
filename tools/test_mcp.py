@@ -20,12 +20,17 @@ async def main(create: bool, simple: bool, classic: bool):
         report["protocol_version"] = client.protocol_version
         tools = await client.list_tools()
         report["tools"] = [t.name for t in tools.tools]
-        assert len(report["tools"]) == 68, report["tools"]
+        assert len(report["tools"]) == 80, report["tools"]
         assert {"creo_execute_plan","creo_create_sketch","creo_extrude","creo_revolve","creo_hole","creo_dimension_pattern","creo_new_drawing","creo_create_udf","creo_rib","creo_boolean_bodies","creo_new_loft_part"} <= set(report["tools"]), report
+        assert {'creo_list_seeds','creo_install_seed_library','creo_validate_seed','creo_new_airfoil_blade',
+                'creo_create_airfoil_section','creo_set_airfoil_parameters','creo_update_sketch_geometry',
+                'creo_transform_geometry','creo_set_geometry_transform','creo_group_features',
+                'creo_reorder_features','creo_axis_pattern'} <= set(report['tools'])
         loft_tool = next(t for t in tools.tools if t.name == "creo_new_loft_part")
         interpolation = loft_tool.input_schema["properties"]["interpolation"]
         assert set(interpolation["enum"]) == {"straight", "smooth"}, interpolation
         assert interpolation["default"] == "straight", interpolation
+        assert not {'seed_file','seed_feature_id'} & set(loft_tool.input_schema.get('required',[]))
         sections = loft_tool.input_schema["properties"]["sections"]
         assert sections["minItems"] == 2 and sections["maxItems"] == 20, sections
         report["loft_section_count_schema_verified"] = True

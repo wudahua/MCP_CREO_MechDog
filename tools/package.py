@@ -1,6 +1,7 @@
 """Build the public MIT source release from an explicit allowlist."""
 import argparse
 import hashlib
+import re
 from pathlib import Path
 import shutil
 import zipfile
@@ -13,7 +14,7 @@ NAME = "MCP_CREO_MechDog"
 
 
 def source_files():
-    names = ("README.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "server.py", "bridge.py",
+    names = ("README.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "server.py", "bridge.py", "seeds.py", "airfoil.py",
              "generic_bridge.py", "schema.py", "version.py", "capabilities.py", "config.example.json", "client-config.example.json",
              "requirements.txt", "requirements.lock.txt", "setup.ps1", ".gitignore")
     files = [ROOT / name for name in names]
@@ -23,6 +24,9 @@ def source_files():
         files.extend(p for p in (ROOT / directory).rglob("*")
                      if p.is_file() and p.suffix in extensions and "__pycache__" not in p.parts)
     files.append(ROOT / "native/third_party/LICENSE.nlohmann-json")
+    files.extend(p for p in (ROOT / 'seed_library').rglob('*') if p.is_file()
+                 and (p.suffix in {'.md', '.json', '.py'} or p.name == 'LICENSE'
+                      or re.fullmatch(r'[A-Za-z0-9_]{1,31}\.prt\.\d+', p.name)))
     for path in files:
         if not path.is_file() or path.is_symlink():
             raise ValueError(f"Missing source file or unexpected symlink: {path}")
@@ -32,6 +36,7 @@ def source_files():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--stage", type=Path, help="Also copy public files into a new empty upload directory")
+    parser.add_argument("--output", type=Path, help="New ZIP path; refuses to overwrite an existing archive")
     args = parser.parse_args()
     files = source_files()
     if args.stage:
@@ -45,7 +50,9 @@ def main():
             destination = stage / source.relative_to(ROOT)
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, destination)
-    archive = ROOT.parent / f"{NAME}-{VERSION}-source.zip"
+    archive = args.output.resolve() if args.output else ROOT.parent / f"{NAME}-{VERSION}-source.zip"
+    if args.output and archive.exists():
+        raise ValueError('Explicit output archive already exists; choose a new path')
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as output:
         for source in files:
             output.write(source, f"{NAME}/" + source.relative_to(ROOT).as_posix())

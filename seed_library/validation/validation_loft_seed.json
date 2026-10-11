@@ -1,0 +1,79 @@
+{
+  "name": "MCP_CREO_MechDog",
+  "version": "0.2.4",
+  "scope": "new parts from a user-supplied two-section native Blend seed",
+  "native_modeling_validation_version": "0.2.4",
+  "input_validation_version": "0.2.4",
+  "mcp_validation_version": "0.2.4",
+  "version_label_update_only": false,
+  "complete_creo_coverage": false,
+  "direct_loft_creation_enabled": false,
+  "tool": "creo_new_loft_part",
+  "tool_count": 68,
+  "enabled_tool_count": 67,
+  "successful_native_jobs": 5,
+  "saved_file_verified_mutation_jobs": 5,
+  "expected_failure_jobs": 3,
+  "rollback_verified_jobs": 1,
+  "input_validation_tests": 29,
+  "mcp_stdio_connected": true,
+  "source_seed_file_unchanged": true,
+  "interpolation": "straight",
+  "native_mode_verified_before_save_and_after_reload": true,
+  "native_mode_verified_after_parameter_edit": true,
+  "mismatched_seed_rejected": true,
+  "acceptance": {
+    "native_blend_feature_preserved": true,
+    "parameter_edit_changes_solid": true,
+    "saved_file_reloaded_with_mode_preserved": true
+  },
+  "cases": {
+    "rectangle": {
+      "success": true,
+      "volume_mm3": 7000.000000000004
+    },
+    "circle": {
+      "success": true,
+      "volume_mm3": 5497.787143782138
+    },
+    "triangle": {
+      "success": true,
+      "volume_mm3": 3499.9999999999995
+    }
+  },
+  "rectangle_dimensions_edited_mm": [
+    12,
+    12
+  ],
+  "edited_rectangle_volume_mm3": 7840.0,
+  "subsequent_cut_volume_mm3": 7745.752220392307,
+  "tested_environment": {
+    "os": "Windows x64",
+    "creo": "10.0.0.0",
+    "python": "3.12 x64"
+  },
+  "limits": [
+    "Requires a saved dedicated solid Blend seed in mm with the requested interpolation setting",
+    "This regression suite uses exactly two XY sketches with increasing Z offsets; seed bottom sketch created and selected first",
+    "Multisection validation is reported separately in validation_multisection.json",
+    "No existing-target insertion, nonparallel sections, cut/surface mode or tangency controls",
+    "interpolation checks the seed mode; it does not convert a straight seed to smooth or vice versa",
+    "Two sections with free endpoints may have the same geometry in straight and smooth modes",
+    "Other contours and seeds require individual verification; seed settings and datums are inherited"
+  ],
+  "other_feature_evidence": "Historical validation_development.json and validation_0.21.json; full suites were not rerun",
+  "evidence_type": "Development-machine MCP/native tests; not verification of another installation",
+  "native_source_sha256": {
+    "native/advanced.cpp": "43e42de0dfe6be4c23f33c880bf23313733d29097b2be694a9c5e6e543c515dc",
+    "native/drawing.cpp": "4009a78eaabcacac1c7a5dc37b738103ca8fdf272a0a0d188d22483506f9b06e",
+    "native/generic.cpp": "08546520363c75901bc1d0804b8f396b2f182ed61d44b7170b140204af420356",
+    "native/geometry.cpp": "efa17458e160f59fe7f3a119593f6f8f84845e5fe9d94398d46a1234242a0132",
+    "native/loft_mode.cpp": "a6af1e750730cc8ac46f98d9e8dca120ee3d11d5d4ea17e2b69d8b5bd1eb6ef5",
+    "native/loft_seed.cpp": "4730826ac5c1d90e0ea2fdb26f1f7f28fb4b35bc8a0bf240b2676dcadf61bf28",
+    "native/surfaces.cpp": "6e8ce0e79d8f80e7763a5f979d4c14ae4db0f618ae4dda1a34de97e494779016",
+    "native/third_party/json.hpp": "aaf127c04cb31c406e5b04a63f1ae89369fccde6d8fa7cdda1ed4f32dfc5de63",
+    "native/udf.cpp": "46d0024f5a2a27dc732e2a25305aef44abaca0c6b92004cef6e7bafbb785b938",
+    "native/worker.cpp": "4e5c314e51007792c943d4270129f218cc64f9fe8b0d215ec3ef21e14100bed8"
+  },
+  "native_worker_sha256": "0b46c4cec83bd27344272307e10a2660d4a3b4de5644ba4a8e2f4e9dae2ecb62"
+}

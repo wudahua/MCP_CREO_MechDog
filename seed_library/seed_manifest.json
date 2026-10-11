@@ -1,0 +1,41 @@
+{
+  "name": "MCP_CREO_MechDog reference seed library",
+  "compatible_server_version": "0.2.4",
+  "tested_creo": "10.0.0.0",
+  "source_package_includes_this_library": false,
+  "target_computer_runtime_validation_required": true,
+  "seeds": [
+    {
+      "name": "two_straight",
+      "relative_path": "seeds/two_straight/mechdog_loft_reference.prt.5",
+      "section_count": 2,
+      "interpolation": "straight",
+      "seed_feature_id": 60,
+      "units": "mm",
+      "sha256": "7d2dbeb4f3bea4839b6501e311105753bfc752a0033f72039f8230b6aa61f5f2",
+      "validation_report": "validation/validation_loft_seed.json"
+    },
+    {
+      "name": "two_smooth",
+      "relative_path": "seeds/two_smooth/mechdog_smooth_reference.prt.4",
+      "section_count": 2,
+      "interpolation": "smooth",
+      "seed_feature_id": 60,
+      "units": "mm",
+      "sha256": "865204bea18f5098342e97a5fadb670e27cdd10a174cb7c45e2192e6c14b0518",
+      "validation_report": "validation/validation_loft_smooth.json"
+    },
+    {
+      "name": "five_smooth",
+      "relative_path": "seeds/five_smooth/mechdog_multi5_reference.prt.1",
+      "section_count": 5,
+      "interpolation": "smooth",
+      "seed_feature_id": 93,
+      "units": "mm",
+      "sha256": "818c1e8c364725aeb1a37e6e1f9ff6424baf4a3b16e2b75cc7a93c4c3c9148b5",
+      "validation_report": "validation/validation_multisection.json"
+    }
+  ],
+  "project_contributions_license": "MIT",
+  "license_scope": "Project-authored geometry, scripts, manifest and documentation; no PTC software or license rights are granted"
+}
