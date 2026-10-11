@@ -1,5 +1,7 @@
 # 平滑混合：MCP 调用与验收
 
+**2026-10-11 增量**：源码内附 `two_smooth`、`five_smooth`，安装时自动注册、调用时自动匹配，用户不必填写路径和内部 ID。新翼型参数及定位流程见 [增量说明](PORTABLE_MODELING_2026-10-11.md)。
+
 使用 `creo_new_loft_part`，传入 `interpolation: "smooth"`。从 **0.2.4** 起支持匹配种子的多截面工作流；五截面方形与样条翼型已通过实机验收。步骤见 [MULTISECTION_BLEND.md](MULTISECTION_BLEND.md)，两截面示例见 [loft_smooth_seed.json](../examples/loft_smooth_seed.json)。
 
 独立发布的 [种子库](SEED_LIBRARY.md) 提供 `two_smooth` 与 `five_smooth` 原始 PRT，可直接复制到其他电脑使用，调用时更新本机路径并沿用对应清单 ID。迁移与客户端配置见 [MIGRATION.md](MIGRATION.md)。

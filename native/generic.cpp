@@ -153,7 +153,8 @@ static void sketch(const J& op){
  std::map<std::string,ProSecdimType> dt={{"length",PRO_TK_DIM_LINE},{"radius",PRO_TK_DIM_RAD},{"diameter",PRO_TK_DIM_DIA},{"distance",PRO_TK_DIM_PNT_PNT},{"horizontal",PRO_TK_DIM_PNT_PNT_HORIZ},{"vertical",PRO_TK_DIM_PNT_PNT_VERT},{"line_distance",PRO_TK_DIM_LINE_LINE},{"angle",PRO_TK_DIM_LINES_ANGLE},{"arc_angle",PRO_TK_DIM_ARC_ANGLE},{"ellipse_x_radius",PRO_TK_DIM_ELLIPSE_X_RADIUS},{"ellipse_y_radius",PRO_TK_DIM_ELLIPSE_Y_RADIUS}};J dims=J::object();
  for(auto d:op.value("dimensions",J::array())){std::vector<int> ids;std::vector<ProSectionPointType> senses;for(auto r:d["refs"]){ids.push_back(entities.at(r["entity"].get<std::string>()));senses.push_back(point_type(r.value("point","whole")));}double place[2];project(d["position"],place);int id;CK(ProSecdimCreate(section,ids.data(),senses.data(),(int)ids.size(),dt.at(d["type"]),place,&id));CK(ProSecdimValueSet(section,id,d["value"]));dims[d["name"].get<std::string>()]=id;}
  CK(ProSectionEpsilonSet(section,0.0001));ProWSecerror secerr=nullptr;CK(ProSecerrorAlloc(&secerr));if(op["plane"].is_object()){CK(ProSectionIntentManagerModeSet(section,PRO_B_TRUE));log("INTENT_SOLVE=%d\n",ProSectionSolve(section,&secerr));CK(ProSectionIntentManagerModeSet(section,PRO_B_FALSE));}log("SKETCH_SOLVE=%d\n",ProSectionSolve(section,&secerr));int solve_errors=0;ProSecerrorCount(&secerr,&solve_errors);for(int i=0;i<solve_errors;i++){ProMsg msg;ProSecerrorMsgGet(secerr,i,msg);log("SOLVE_ERROR=%ls\n",msg);}ProError solved=ProSectionAutodim(section,&secerr);if(solved){int count=0;ProSecerrorCount(&secerr,&count);for(int i=0;i<count;i++){ProMsg msg;ProSecerrorMsgGet(secerr,i,msg);log("SKETCH_ERROR=%ls\n",msg);}}check(solved,"AutodimensionSketch");CK(ProSectionRegenerate(section,&secerr));CK(ProSecerrorFree(&secerr));CK(ProElementSpecialvalueSet(sk,(ProAppData)section));redefine(&f,root);CK(ProFeatureElemtreeFree(&f,root));ProSelectionFree(&plane_ref);ProSelectionFree(&orient);
- J ids=J::object();for(auto item:entities)ids[item.first]=item.second;remember(op,f,{{"entity_ids",ids},{"dimension_ids",dims},{"normal",frame.n},{"origin",frame.origin},{"u_axis",frame.u},{"v_axis",frame.v},{"section_normal_sign",dot(V{loc[2][0],loc[2][1],loc[2][2]},frame.n)>0?1:-1}});
+ J ids=J::object();for(auto item:entities)ids[item.first]=item.second;remember(op,f,{{"entity_ids",ids},{"dimension_ids",dims},{"geometry",op["entities"]},{"normal",frame.n},{"origin",frame.origin},{"u_axis",frame.u},{"v_axis",frame.v},{"section_normal_sign",dot(V{loc[2][0],loc[2][1],loc[2][2]},frame.n)>0?1:-1}});
+ if(op.contains("profile"))aliases[op["label"].get<std::string>()]["airfoil"]=op["profile"];
 }
 static void extrude_or_revolve(const J& op,bool revolve){
  ProFeature sketch_f=feature(op.at("sketch"));ProSelection s=selection(sketch_f.id,PRO_FEATURE);std::string mode=op.value("mode","add"),direction=op.value("direction","positive");ProElement root=node(nullptr,PRO_E_FEATURE_TREE);integer(root,PRO_E_FEATURE_TYPE,mode=="cut"?PRO_FEAT_CUT:mode=="surface"?PRO_FEAT_DATUM_SURF:PRO_FEAT_PROTRUSION);integer(root,PRO_E_FEATURE_FORM,revolve?PRO_REVOLVE:PRO_EXTRUDE);integer(root,PRO_E_EXT_SURF_CUT_SOLID_TYPE,mode=="surface"?PRO_EXT_FEAT_TYPE_SURFACE:PRO_EXT_FEAT_TYPE_SOLID);integer(root,PRO_E_REMOVE_MATERIAL,mode=="cut"?PRO_EXT_MATERIAL_REMOVE:PRO_EXT_MATERIAL_ADD);text(root,PRO_E_STD_FEATURE_NAME,wide(op.at("label")).c_str());ref(node(root,PRO_E_STD_SECTION),PRO_E_SEC_USE_SKETCH,s);ProSelectionFree(&s);if(mode!="surface")body_options(root,op);
@@ -218,9 +219,17 @@ static J populate_profile(ProSection section,const J& op){
 #include "udf.cpp"
 #include "loft_mode.cpp"
 #include "loft_seed.cpp"
+#include "sketch_edit.cpp"
+#include "placement.cpp"
 static void execute_operation(const J& op){
  std::string kind=op.at("op");log("PHASE=%s%s%s\n",kind.c_str(),op.contains("label")?":":"",op.value("label","").c_str());
- if(kind=="sketch")sketch(op);
+ if(kind=="sketch"||kind=="airfoil_sketch")sketch(op);
+ else if(kind=="update_sketch_geometry"||kind=="update_airfoil")generic_sketch_edit(op);
+ else if(kind=="feature_group")generic_group(op);
+ else if(kind=="reorder_features")generic_reorder(op);
+ else if(kind=="axis_pattern")generic_axis_pattern(op);
+ else if(kind=="geometry_transform")generic_transform(op);
+ else if(kind=="set_geometry_transform")generic_transform_update(op);
  else if(kind=="extrude"||kind=="revolve")extrude_or_revolve(op,kind=="revolve");
  else if(kind=="hole")generic_hole(op);
  else if(kind=="round"||kind=="chamfer")generic_round(op,kind=="chamfer");

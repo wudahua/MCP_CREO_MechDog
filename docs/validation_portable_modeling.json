@@ -1,0 +1,226 @@
+{
+  "version": "0.2.4",
+  "increment": "portable-modeling-20261011",
+  "date": "2026-10-11",
+  "status": "passed",
+  "environment": {
+    "os": "Windows x64",
+    "creo": "10.0.0.0",
+    "python": "3.12 x64",
+    "compiler": "VS 2022 C++ Build Tools"
+  },
+  "tool_count": 80,
+  "enabled_tool_count": 79,
+  "unit_tests": {
+    "passed": 44,
+    "failed": 0
+  },
+  "mcp_protocols": [
+    {
+      "client_mode": "auto",
+      "tool_count": 80,
+      "protocol_version": "2026-07-28"
+    },
+    {
+      "client_mode": "legacy",
+      "tool_count": 80,
+      "protocol_version": "2025-11-25"
+    }
+  ],
+  "migration_validation": {
+    "fresh_source_directory": true,
+    "new_mcp_clients": true,
+    "no_prior_registry_models_or_binary": true,
+    "reused_same_host_python_and_environment_config": true,
+    "another_physical_computer_tested": false
+  },
+  "seed_library": {
+    "automatic_selection_without_path_or_id": true,
+    "seeds": [
+      {
+        "name": "two_straight",
+        "section_count": 2,
+        "interpolation": "straight",
+        "sha256": "7d2dbeb4f3bea4839b6501e311105753bfc752a0033f72039f8230b6aa61f5f2",
+        "available": true
+      },
+      {
+        "name": "two_smooth",
+        "section_count": 2,
+        "interpolation": "smooth",
+        "sha256": "865204bea18f5098342e97a5fadb670e27cdd10a174cb7c45e2192e6c14b0518",
+        "available": true
+      },
+      {
+        "name": "five_smooth",
+        "section_count": 5,
+        "interpolation": "smooth",
+        "sha256": "818c1e8c364725aeb1a37e6e1f9ff6424baf4a3b16e2b75cc7a93c4c3c9148b5",
+        "available": true
+      }
+    ]
+  },
+  "airfoil": {
+    "native_type": "ordinary solid smooth Blend and independent native sketch splines",
+    "station_count": 5,
+    "parameter_edit_sequence": [
+      {
+        "chord": 32,
+        "thickness_ratio": 0.15,
+        "twist_deg": 12
+      },
+      {
+        "twist_deg": 16,
+        "origin": [
+          1,
+          0
+        ]
+      },
+      {
+        "chord": 34,
+        "twist_deg": 17,
+        "after_group_pattern": true
+      }
+    ],
+    "initial_volume_mm3": 4637.179972746234,
+    "edited_volume_mm3": 5972.138233474372,
+    "original_feature_ids_preserved": {
+      "blade_blend": true,
+      "blade_section_1": true,
+      "blade_section_2": true,
+      "blade_section_3": true,
+      "blade_section_4": true,
+      "blade_section_5": true
+    },
+    "actual_stl_section": {
+      "z_mm": 55,
+      "point_count": 310,
+      "max_nearest_profile_deviation_mm": 0.043161041839151336,
+      "tolerance_mm": 0.15
+    }
+  },
+  "feature_organization": {
+    "reorder": true,
+    "native_local_group": true,
+    "native_axis_group_pattern": {
+      "count": 2,
+      "increment_deg": 180
+    },
+    "patterned_volume_mm3": 13518.522001899153,
+    "edited_after_pattern_volume_mm3": 14426.45295155746,
+    "active_body_count": 1
+  },
+  "body_transform": {
+    "native_type": "attached FlexMove",
+    "rotation_deg": [
+      0,
+      0,
+      90
+    ],
+    "translation_mm": [
+      10,
+      20,
+      30
+    ],
+    "bbox_after_transform_mm": [
+      [
+        4.0,
+        20.0,
+        30.0
+      ],
+      [
+        10.0,
+        30.0,
+        32.0
+      ]
+    ],
+    "edited_rotation_deg": [
+      0,
+      0,
+      0
+    ],
+    "edited_translation_mm": [
+      12,
+      20,
+      30
+    ],
+    "bbox_after_edit_mm": [
+      [
+        12.0,
+        20.0,
+        30.0
+      ],
+      [
+        22.0,
+        26.0,
+        32.0
+      ]
+    ],
+    "volume_mm3": 120,
+    "feature_id_preserved": true
+  },
+  "quilt_transform": {
+    "native_type": "Move with coordinate-system-bound support points and axes",
+    "rotation_deg": [
+      90,
+      0,
+      0
+    ],
+    "translation_mm": [
+      0,
+      3,
+      8
+    ],
+    "downstream_symmetric_thickness_mm": 2,
+    "bbox_after_thicken_mm": [
+      [
+        0.0,
+        1.9999999999999998,
+        8.0
+      ],
+      [
+        20.0,
+        4.0,
+        18.0
+      ]
+    ],
+    "edited_translation_mm": [
+      5,
+      3,
+      8
+    ],
+    "bbox_after_edit_mm": [
+      [
+        5.0,
+        1.9999999999999998,
+        8.0
+      ],
+      [
+        25.0,
+        4.0,
+        18.0
+      ]
+    ],
+    "volume_mm3": 399.99999999999994,
+    "feature_id_preserved": true
+  },
+  "saved_erased_reloaded_verified": true,
+  "successful_mcp_mutation_jobs": 23,
+  "implementation_sha256": {
+    "server.py": "b0ff3e19f4b1ec30df9c2ae125ca4154cefc035942c5858cbf2ff6fecd54e0cb",
+    "schema.py": "42c207b79e4dc794beb859dea7150988c4dd2c716f0cbc29244b42e300d61527",
+    "seeds.py": "54b4c19463e864f9f28164314f363fe29ccbb7d3e82e24a47cd6f5ffd3ca896a",
+    "airfoil.py": "92432a354ccd19060370fd4a19bf184a785af34ac5b46ec058ce17790428403f",
+    "generic_bridge.py": "8f42fa4ce1095b2cff79f510c824f17f3e2b07bd85a21240f462d6cf4d83f6bb",
+    "capabilities.py": "ddcc7d16fb3bc3a6425380f0ad8982dc763bced9c3b49ab6e6711e7369388745",
+    "native/generic.cpp": "70ca77917051d50144be48f682a62aa9110e43ddb148975e064ba809bb6258c3",
+    "native/sketch_edit.cpp": "08fb9e2c7e62747c38a0835ef958ca17375cbd3b67432d251394bc295e4ce2a8",
+    "native/placement.cpp": "87b732b85a0a0581e2a07d82c7c893f17756d90d8869bdd41b2608db031d325d"
+  },
+  "limitations": [
+    "Automatic seeds: 2/straight, 2/smooth, 5/smooth; no count/mode conversion or unseeded Blend creation",
+    "NACA 00xx symmetric profiles; MCP metadata-driven sketch redefinition, not native relation-driven airfoil dimensions",
+    "Body/quilt move-original branches verified; copies, multiple bodies, custom frames and other geometry combinations require local validation",
+    "VSS, Swept Blend, Boundary Blend and complete Creo coverage remain outside this increment"
+  ]
+}

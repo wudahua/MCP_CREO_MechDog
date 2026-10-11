@@ -22,22 +22,22 @@ MCP_CREO_MechDog 0.2.4 在安装 Creo 的 Windows 电脑上运行，通过本地
 ## 换到另一台电脑
 
 1. 在目标 Windows x64 电脑准备 Creo 10、匹配 Toolkit SDK、MSVC x64 / Windows SDK、Python 3.12+ x64 和可用的 Toolkit 运行许可。本机实测使用 Creo 10.0.0.0。
-2. 下载 v0.2.4 源码包；普通混合用户另下载种子库包。源码解压到例如 `C:\MCP_CREO_MechDog`，执行：
+2. 下载包含 2026-10-11 建模增量的 0.2.4 源码包，内附 `seed_library/`。源码解压到例如 `C:\MCP_CREO_MechDog`，执行：
 
    ```powershell
    .\setup.ps1 -CreoRoot 'C:\Program Files\PTC\Creo 10.0.0.0'
    ```
 
    填写目标机真实的 Creo 路径；其他程序路径选项见 [INSTALL.md](INSTALL.md)。重新生成本机环境、执行器和客户端配置，不直接复制原电脑的 `.venv`、二进制、`config.json` 或会话 ID。
-3. 把种子库原文件复制到本机任意可读目录。使用 `resolve_seed.py` 核对原文件并输出本机路径，清单 ID 可复用；步骤见 [SEED_LIBRARY.md](SEED_LIBRARY.md)。
+3. 安装器自动验证并注册随源码的种子库。调用 `creo_list_seeds` 确认可用数量为 3。若另有原始库目录，可用 `creo_install_seed_library(directory=...)` 注册；无需向 Agent 提供种子内部 ID。步骤见 [SEED_LIBRARY.md](SEED_LIBRARY.md)。
 4. 将新生成的 `client-config.json` 配置到目标 Agent，打开一个 Creo 会话。
 5. 调用 `creo_capabilities` 确认 `version == "0.2.4"`，检查 `creo_check_environment` 和 `creo_session_status`。再创建一个小零件，核对任务成功、原生特征树和保存重载，验证目标机实际运行条件。
 
 新 Agent 可以使用如下提示词，方括号内容必须替换为本机实际位置：
 
-> 使用 MCP_CREO_MechDog 0.2.4。先检查能力、环境及 Creo 会话。普通混合种子库位于［本机种子库目录］，清单为 seed_manifest.json。需要五截面平滑混合时使用 five_smooth 原始 PRT、清单中的内部 ID 与本机绝对路径。先按示例生成五截面方形测试件；只提交一次，查询到完成，并核对原生混合保留、参数修改及保存重载。
+> 使用 MCP_CREO_MechDog 0.2.4 的 2026-10-11 建模增量。先检查能力、环境及 Creo 会话，调用 creo_list_seeds 确认自动种子库。需要五截面平滑翼型时使用 creo_new_airfoil_blade，截面数量和模式由本机库自动匹配。只提交一次，查询到完成，再修改一个截面的弦长及扭转，核对原生混合保留和保存重载。
 
-若 Agent 没有文件读取或命令执行工具，直接把解析器输出的三个种子参数及所需截面数告诉它；此版 MCP 不会自行扫描本机种子目录。
+Agent 通过上述 MCP 工具即可查询和使用随包种子，无需读取本机文件或执行解析脚本。自动搜索配置目录、随包目录和已注册目录，不扫描整个硬盘。
 
 ## 云端 Agent 与既有模型
 

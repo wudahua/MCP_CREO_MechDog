@@ -1,5 +1,7 @@
 # 多截面原生实体混合
 
+**2026-10-11 增量**：随包种子自动匹配，五截面平滑可省略种子路径和 ID；`creo_new_airfoil_blade` 可直接生成可修改弦长/厚度/扭转的 NACA 00xx 原生翼型。下文显式种子调用继续兼容；当前步骤见 [增量说明](PORTABLE_MODELING_2026-10-11.md)。
+
 从 0.2.4 起，`creo_new_loft_part` 接收 **2～20 张** Z 偏移严格递增的 XY 草图。**种子的截面数与直线/平滑模式必须匹配输入**；执行器依次替换原生 Blend 的截面参照，不会给两截面种子自动增加截面。
 
 本机 Creo 10.0.0.0 已验证五截面平滑方形混合和 NACA 0012 样条翼型。输入数量上限不代表每个数量与轮廓均经过验证。公开结果见 [validation_multisection.json](validation_multisection.json)。

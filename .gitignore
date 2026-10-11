@@ -8,6 +8,7 @@ jobs/
 
 models/
 config.json
+seed_registry.json
 client-config.json
 native/constants.inc
 *.zip

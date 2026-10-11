@@ -93,6 +93,10 @@ try {
     & $projectPython -m pip install -r (Join-Path $PSScriptRoot 'requirements.lock.txt')
     if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed. Check internet/PyPI access and requirements.lock.txt.' }
     $completed += $stage
+    $stage = 'native Blend seed library'
+    & $projectPython (Join-Path $PSScriptRoot 'seeds.py') --install
+    if ($LASTEXITCODE -ne 0) { throw 'Seed library verification failed. Restore the packaged seed_library, or register the original published library.' }
+    $completed += $stage
     $stage = 'SDK constants and native worker'
     & $projectPython (Join-Path $PSScriptRoot 'bridge.py') build
     if ($LASTEXITCODE -ne 0) { throw 'Toolkit worker build failed; inspect build\generate_constants.log and build\build.log.' }

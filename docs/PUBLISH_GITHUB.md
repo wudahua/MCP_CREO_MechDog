@@ -2,7 +2,11 @@
 
 本项目已提供 MIT 许可证及第三方声明。公开内容为本项目源码、安装脚本、说明、示例和测试；使用者在自己的 Windows 电脑安装和运行。
 
-## 当前开发版 0.2.4
+## 2026-10-11 建模增量
+
+版本暂沿用 0.2.4，本次增量的公开源码包包含 `seed_library/` 下三个项目原创 MIT PRT。更新仓库时把完整上传目录的内容放入仓库根目录，包括 `seeds.py`、`airfoil.py`、`native/placement.cpp`、`native/sketch_edit.cpp`、新测试及说明。使用本次新命名 ZIP 和校验码，保留旧发布附件和标签。新 Release 的标签/版本由维护者决定，不自动改写旧标签；当前能力见 [增量说明](PORTABLE_MODELING_2026-10-11.md)。
+
+## 原始 0.2.4 发布流程（历史）
 
 `MCP_CREO_MechDog-0.2.4-source.zip` 收录当前源码，包括2～20 张平行 XY 截面的原生实体混合种子复用工具，种子数量和模式须匹配，详见 [LOFT_SEED.md](LOFT_SEED.md)。已发布的旧 `MCP_CREO_MechDog-0.22-source.zip` 和 GitHub v0.22 保留为历史版本。
 
@@ -27,7 +31,7 @@
 4. 在空仓库页面点击 **uploading an existing file**；已有仓库使用 **Add file → Upload files**。拖入该文件夹里面的文件和子文件夹，确保它们进入仓库根目录，避免多套一层 `MCP_CREO_MechDog/`。特别确认 `.gitignore` 也被上传。
 5. 提交说明填写 `Add 0.21 modeling tools`，点击 **Commit changes**。检查仓库主页能显示 README，并且 LICENSE 被识别为 MIT。
 
-浏览器上传有单文件大小和每批数量限制；本版源码包在相应限制内。[GitHub 官方上传说明](https://docs.github.com/en/repositories/working-with-files/managing-files/adding-a-file-to-a-repository)
+浏览器上传有单文件大小和每批数量限制；本次完整目录为 113 个文件，网页上传应分批，或使用 Git/GitHub Desktop 上传完整目录。[GitHub 官方上传说明](https://docs.github.com/en/repositories/working-with-files/managing-files/adding-a-file-to-a-repository)
 
 仅上传上述公开包中的内容。工作环境的 `config.json`、`client-config.json`、`.venv/`、`build/`、`jobs/`、`models/`、生成的 `native/constants.inc` 不在公开包内。不要使用早期未清理的 ZIP。
 

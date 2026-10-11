@@ -12,7 +12,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 import bridge
 import generic_bridge as general
-from schema import Entity, SketchDimension, SketchConstraint, SketchOp, Operation
+import seeds
+from schema import Entity, SketchDimension, SketchConstraint, SketchOp, Operation, AirfoilProfile, AirfoilValues, AirfoilStation, AirfoilSketchOp
 from typing import Literal
 from version import VERSION
 from capabilities import families,UNAVAILABLE_OPERATIONS,REGISTERED_OPERATIONS
@@ -101,7 +102,9 @@ async def creo_capabilities() -> dict[str, Any]:
     loft_evidence = bridge.ROOT / "docs/validation_loft_seed.json"
     smooth_evidence = bridge.ROOT / "docs/validation_loft_smooth.json"
     multisection_evidence = bridge.ROOT / "docs/validation_multisection.json"
-    verified = {"scope":"Historical feature suites were not rerun for the loft addition",
+    portable_evidence = bridge.ROOT / 'docs/validation_portable_modeling.json'
+    verified = {"scope":"Historical suites are retained separately from the 2026-10-11 modeling increment",
+                "portable_modeling":bridge.read_json(portable_evidence) if portable_evidence.is_file() else {"status":"No portable modeling summary yet"},
                 "historical_features":verified,
                 "loft_seed":bridge.read_json(loft_evidence) if loft_evidence.is_file() else {"status":"No loft integration summary yet"},
                 "loft_smooth":bridge.read_json(smooth_evidence) if smooth_evidence.is_file() else {"status":"No smooth Blend integration summary yet"},
@@ -127,6 +130,7 @@ async def creo_capabilities() -> dict[str, Any]:
         "workflow":"submit once -> poll get_job -> inspect model -> choose references -> append using expected_revision",
         "scope":"MCP-owned native part, sheetmetal, assembly and drawing models. Tool availability does not prove every option or Creo operation is supported; consult validation evidence and coverage documentation.",
         "complete_creo_coverage":False,
+        "seed_library": await invoke(seeds.list_seeds),
         "release_status":"pre-release candidate; requested complete coverage has not been achieved",
         "families":families(),
         "unavailable_operations":UNAVAILABLE_OPERATIONS,
@@ -142,13 +146,15 @@ async def creo_new_part(model_name: str | None = None) -> dict[str, Any]:
 
 
 @mcp.tool(annotations=CREATE)
-async def creo_new_loft_part(seed_file: str, seed_feature_id: int, sections: Annotated[list[SketchOp],Field(min_length=2,max_length=20)],
+async def creo_new_loft_part(sections: Annotated[list[SketchOp | AirfoilSketchOp],Field(min_length=2,max_length=20)], seed_file: str | None=None, seed_feature_id: int | None=None,
                              label: str="loft", model_name: str | None=None,
                              assertions: dict[str,Any] | None=None,
                              interpolation: Literal["straight","smooth"]="straight") -> dict[str,Any]:
     """Create a NEW part with a native ordinary Blend by rebinding a saved seed.
 
-    Supply a local .prt/.prt.N containing one solid Blend with exactly the same
+    Omit seed_file and seed_feature_id to automatically select a hash-verified
+    installed seed matching section count and interpolation. Alternatively supply
+    both explicit values for a local .prt/.prt.N containing one solid Blend with exactly the same
     number of independent XY sketch sections, created and selected low Z first,
     plus its native feature ID. interpolation must match the saved seed's
     straight/smooth setting: it validates the mode, never converts the seed.
@@ -167,6 +173,24 @@ async def creo_new_loft_part(seed_file: str, seed_feature_id: int, sections: Ann
                         [s.model_dump(exclude_none=True) for s in sections],label,model_name,assertions,interpolation)
 
 
+@mcp.tool(annotations=READ)
+async def creo_list_seeds() -> dict[str, Any]:
+    """Discover bundled/registered native Blend seeds and verify their SHA256. No manual paths/feature IDs are needed for auto-selected lofts."""
+    return await invoke(seeds.list_seeds)
+
+
+@mcp.tool(annotations=READ)
+async def creo_validate_seed(seed_name: str) -> dict[str, Any]:
+    """Verify a seed's file hash and manifest metadata; actual native type/count/mode are additionally checked on every loft creation."""
+    return await invoke(seeds.validate_seed, seed_name)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_install_seed_library(directory: str | None=None, archive_file: str | None=None) -> dict[str, Any]:
+    """Register a local verified library, install its original ZIP, or verify the bundled library. Preserves existing files; never downloads or executes code."""
+    return await invoke(seeds.install_seed_library, directory, archive_file)
+
+
 @mcp.tool(annotations=CREATE)
 async def creo_execute_plan(operations: list[Operation], model_id: str | None = None,
                             model_name: str | None = None, expected_revision: int | None = None,
@@ -179,6 +203,91 @@ async def creo_execute_plan(operations: list[Operation], model_id: str | None = 
     roll back to their saved checkpoint. assertions supports require_solid and volume_mm3.
     """
     return await invoke(general.submit,[op.model_dump(exclude_none=True) for op in operations],model_id,model_name,expected_revision,assertions,model_type=model_type)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_create_airfoil_section(model_id: str, expected_revision: int, label: str,
+                                     profile: AirfoilProfile, plane: Literal['XY','XZ','YZ'] | dict[str, Any]='XY',
+                                     offset: float=0) -> dict[str, Any]:
+    """Create a native symmetric NACA 00xx spline sketch. chord/origin are mm, twist is degrees about pivot_fraction of chord; finite trailing edge. Parameters can later be updated in place."""
+    return await invoke(general.submit, [dict(op='airfoil_sketch', label=label, plane=plane,
+                        offset=offset, profile=profile.model_dump())], model_id, None, expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_new_airfoil_blade(stations: Annotated[list[AirfoilStation], Field(min_length=2,max_length=20)],
+                                model_name: str | None=None, label: str='blade_blend',
+                                interpolation: Literal['straight','smooth']='smooth') -> dict[str, Any]:
+    """Create a new native Blend from varying chord/thickness/twist NACA 00xx sections. Offset is span along +Z, sections lie on XY. Automatically selects a verified matching seed; 2 straight/smooth and 5 smooth are packaged."""
+    sections = []
+    for index, station in enumerate(stations):
+        profile = station.model_dump()
+        offset = profile.pop('offset')
+        sections.append(dict(op='airfoil_sketch',label=f'blade_section_{index+1}',plane='XY',offset=offset,profile=profile))
+    return await invoke(general.new_loft_part, None, None, sections, label, model_name,
+                        {'require_solid': True}, interpolation)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_set_airfoil_parameters(model_id: str, expected_revision: int, sketch: str,
+                                      values: AirfoilValues) -> dict[str, Any]:
+    """Update an existing airfoil's chord, thickness_ratio, twist_deg, origin or pivot_fraction. Redefines the original native sketch and regenerates its dependents; does not recreate the Blend."""
+    return await invoke(general.submit, [dict(op='update_airfoil',sketch=sketch,
+                        values=values.model_dump(exclude_none=True))],model_id,None,expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_update_sketch_geometry(model_id: str, expected_revision: int, sketch: str,
+                                      entities: list[Entity]) -> dict[str, Any]:
+    """Replace a native sketch's geometry in place, preserving sketch feature ID. Expanded entity names/types must match. Replaces dimensions/constraints with automatic dimensions; named dimension aliases are cleared."""
+    return await invoke(general.submit,[dict(op='update_sketch_geometry',sketch=sketch,
+                        entities=[e.model_dump() for e in entities])],model_id,None,expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_group_features(model_id: str, expected_revision: int, label: str,
+                              features: list[str | int], include_between: bool=False,
+                              include_support_planes: bool=True) -> dict[str, Any]:
+    """Create a native local feature group. Members must be contiguous; include_between explicitly includes intervening features. Can include the selected sketches' automatically created support planes."""
+    return await invoke(general.submit,[dict(op='feature_group',label=label,features=features,
+                        include_between=include_between,include_support_planes=include_support_planes)],model_id,None,expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_reorder_features(model_id: str, expected_revision: int, features: list[str | int],
+                                before: str | int | None=None, after: str | int | None=None) -> dict[str, Any]:
+    """Reorder owned native features before or after an anchor; dependency conflicts fail and restore the saved checkpoint."""
+    return await invoke(general.submit,[dict(op='reorder_features',features=features,
+                        **{k:v for k,v in {'before':before,'after':after}.items() if v is not None})],model_id,None,expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_axis_pattern(model_id: str, expected_revision: int, label: str, leader: str | int,
+                            axis: dict[str, Any], count: int=2, increment_deg: float=180) -> dict[str, Any]:
+    """Create a native angular pattern of a feature or MCP feature group. Axis must precede the leader; use an independent datum axis and creo_reorder_features if necessary."""
+    return await invoke(general.submit,[dict(op='axis_pattern',label=label,leader=leader,axis=axis,
+                        count=count,increment_deg=increment_deg)],model_id,None,expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_transform_geometry(model_id: str, expected_revision: int, label: str,
+                                  references: list[dict[str, Any]], translation: list[float] | None=None,
+                                  rotation: list[float] | None=None, coordinate_system: dict[str, Any] | None=None,
+                                  keep_original: bool=False) -> dict[str, Any]:
+    """Create a native rigid transform of whole solid bodies or quilts/datums/curves. Rotation X,Y,Z precedes translation, about fixed supplied csys axes. Body moves use FlexMove and may require Flexible Modeling license. Does not rotate the camera."""
+    return await invoke(general.submit,[dict(op='geometry_transform',label=label,references=references,
+                        translation=[0,0,0] if translation is None else translation,
+                        rotation=[0,0,0] if rotation is None else rotation,
+                        coordinate_system={'kind':'default_csys'} if coordinate_system is None else coordinate_system,
+                        keep_original=keep_original)],model_id,None,expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_set_geometry_transform(model_id: str, expected_revision: int, feature: str,
+                                      translation: list[float], rotation: list[float]) -> dict[str, Any]:
+    """Change a native transform's translation and rotation in place; preserves its feature ID and regenerates downstream geometry."""
+    return await invoke(general.submit,[dict(op='set_geometry_transform',feature=feature,
+                        translation=translation,rotation=rotation)],model_id,None,expected_revision)
 
 
 @mcp.tool(annotations=CREATE)

@@ -1,0 +1,13 @@
+{
+  "tool": "creo_new_airfoil_blade",
+  "arguments": {
+    "interpolation": "smooth",
+    "stations": [
+      {"offset": 5, "chord": 8, "thickness_ratio": 0.12, "twist_deg": 30},
+      {"offset": 24, "chord": 23, "thickness_ratio": 0.12, "twist_deg": 25},
+      {"offset": 55, "chord": 28, "thickness_ratio": 0.12, "twist_deg": 18},
+      {"offset": 90, "chord": 20, "thickness_ratio": 0.12, "twist_deg": 12},
+      {"offset": 120, "chord": 9, "thickness_ratio": 0.12, "twist_deg": 7}
+    ]
+  }
+}

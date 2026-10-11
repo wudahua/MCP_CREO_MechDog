@@ -47,16 +47,22 @@ def component_graph(source: dict, target_id: str, seen: set[str] | None=None) ->
         if child: result.update(component_graph(model_info(child),target_id,seen))
     return result
 
-def new_loft_part(seed_file: str, seed_feature_id: int, sections: list[dict], label: str="loft",
+def new_loft_part(seed_file: str | None, seed_feature_id: int | None, sections: list[dict], label: str="loft",
                   model_name: str | None=None, assertions: dict | None=None, interpolation: str="straight") -> dict:
     """Create a new part by rebinding a native Blend seed with matching section count."""
     sections=validate_operations(sections)
-    if not 2<=len(sections)<=20 or any(s['op']!='sketch' for s in sections):
+    if not 2<=len(sections)<=20 or any(s['op'] not in ('sketch', 'airfoil_sketch') for s in sections):
         raise ValueError('Between 2 and 20 sketch operations are required')
     if any(s['plane']!='XY' for s in sections) or any(a['offset']>=b['offset'] for a,b in zip(sections,sections[1:])):
         raise ValueError('This workflow requires XY sketches with strictly increasing Z offsets')
     binding=LoftOp.model_validate({'op':'loft','label':label,'sections':[s['label'] for s in sections],'interpolation':interpolation}).model_dump()
     if label in binding['sections']: raise ValueError('Loft and sketch labels must be distinct')
+    if (seed_file is None) != (seed_feature_id is None):
+        raise ValueError('Supply both seed_file and seed_feature_id, or omit both for automatic selection')
+    if seed_file is None:
+        import seeds
+        selected = seeds.select_seed(len(sections), interpolation)
+        seed_file, seed_feature_id = selected['seed_file'], selected['seed_feature_id']
     if isinstance(seed_feature_id,bool) or not isinstance(seed_feature_id,int) or not 0<=seed_feature_id<=2147483647:
         raise ValueError('seed_feature_id must be a nonnegative 32-bit native feature ID')
     source=Path(seed_file).expanduser()
@@ -112,6 +118,8 @@ def submit(operations: list[dict], model_id: str | None=None, model_name: str | 
                     raise ValueError("Nested assembly copying is not yet supported; insert owned part/sheetmetal models")
         duplicate=set(model["aliases"]).intersection(op["label"] for op in operations if "label" in op)
         if duplicate: raise ValueError(f"Feature labels already exist: {sorted(duplicate)}")
+        import airfoil
+        operations = airfoil.prepare(operations, model['aliases'])
         # Initialize from a solid template. Native first-wall conversion creates
         # the sheetmetal body; the stock empty SMT body breaks attached walls.
         templates={"part":"mmns_part_solid_abs.prt","sheetmetal":"mmns_part_solid_abs.prt","assembly":"mmns_asm_design_abs.asm","drawing":"a4_drawing.drw"}

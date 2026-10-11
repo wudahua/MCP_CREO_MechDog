@@ -104,6 +104,129 @@ class SketchOp(StrictModel):
         if len({d.name for d in self.dimensions})!=len(self.dimensions): raise ValueError("Dimension names must be unique")
         return self
 
+class AirfoilProfile(StrictModel):
+    chord: Positive
+    thickness_ratio: Annotated[float, Field(ge=0.01, le=0.4)] = 0.12
+    twist_deg: Annotated[float, Field(ge=-180, le=180)] = 0
+    origin: Point2 = [0, 0]
+    pivot_fraction: Annotated[float, Field(ge=0, le=1)] = 0.25
+    points_per_side: Annotated[int, Field(ge=9, le=100)] = 41
+
+
+class AirfoilValues(StrictModel):
+    chord: Positive | None = None
+    thickness_ratio: Annotated[float, Field(ge=0.01, le=0.4)] | None = None
+    twist_deg: Annotated[float, Field(ge=-180, le=180)] | None = None
+    origin: Point2 | None = None
+    pivot_fraction: Annotated[float, Field(ge=0, le=1)] | None = None
+
+
+class AirfoilStation(AirfoilProfile):
+    offset: float
+
+
+class AirfoilSketchOp(StrictModel):
+    op: Literal['airfoil_sketch']
+    label: Label
+    plane: Literal['XY', 'XZ', 'YZ'] | dict[str, Any] = 'XY'
+    offset: float = 0
+    profile: AirfoilProfile
+
+
+class AirfoilUpdateOp(StrictModel):
+    op: Literal['update_airfoil']
+    sketch: Label
+    values: AirfoilValues
+    @model_validator(mode='after')
+    def nonempty(self):
+        if not self.values.model_dump(exclude_none=True):
+            raise ValueError('At least one airfoil parameter must be supplied')
+        return self
+
+
+class SketchGeometryOp(StrictModel):
+    op: Literal['update_sketch_geometry']
+    sketch: Label
+    entities: Annotated[list[Entity], Field(min_length=1, max_length=500)]
+    @model_validator(mode='after')
+    def supported_entities(self):
+        if any(e.type not in {'line','polyline','rectangle','circle','spline'} for e in self.entities):
+            raise ValueError('In-place geometry editing supports line, polyline, rectangle, circle and spline')
+        return self
+
+
+class FeatureGroupOp(StrictModel):
+    op: Literal['feature_group']
+    label: Label
+    features: Annotated[list[str | int], Field(min_length=1, max_length=200)]
+    include_between: bool = False
+    include_support_planes: bool = True
+
+
+class ReorderOp(StrictModel):
+    op: Literal['reorder_features']
+    features: Annotated[list[str | int], Field(min_length=1, max_length=200)]
+    before: str | int | None = None
+    after: str | int | None = None
+    @model_validator(mode='after')
+    def one_position(self):
+        if (self.before is None) == (self.after is None):
+            raise ValueError('Supply exactly one of before or after')
+        return self
+
+
+class AxisPatternOp(StrictModel):
+    op: Literal['axis_pattern']
+    label: Label
+    leader: str | int
+    axis: dict[str, Any]
+    count: Annotated[int, Field(ge=2, le=360)] = 2
+    increment_deg: Annotated[float, Field(gt=-360, le=360)] = 180
+    @model_validator(mode='after')
+    def nonzero_angle(self):
+        if abs(self.increment_deg) < 1e-8:
+            raise ValueError('Pattern angular increment must be nonzero')
+        if self.axis.get('kind') not in ('axis', 'datum_axis_feature'):
+            raise ValueError('Pattern requires an axis reference')
+        return self
+
+
+class GeometryTransformOp(StrictModel):
+    op: Literal['geometry_transform']
+    label: Label
+    references: Annotated[list[dict[str, Any]], Field(min_length=1, max_length=100)]
+    translation: Point3 = [0, 0, 0]
+    rotation: Point3 = [0, 0, 0]
+    coordinate_system: dict[str, Any] = {'kind': 'default_csys'}
+    keep_original: bool = False
+    @model_validator(mode='after')
+    def valid_transform(self):
+        if all(abs(v)<1e-9 for v in self.translation+self.rotation):
+            raise ValueError('At least one translation/rotation must be nonzero')
+        kinds={r.get('kind') for r in self.references}
+        if 'body' in kinds and kinds != {'body'}:
+            raise ValueError('Body and quilt/datum transformations cannot be mixed')
+        if not kinds <= {'body','quilt','quilt_feature','curve','axis','point','csys','datum_feature','datum_axis_feature','datum_csys_feature','datum_point_feature'}:
+            raise ValueError('Transform accepts whole bodies or supported quilts/datums/curves')
+        if self.coordinate_system.get('kind') not in {'default_csys','csys','datum_csys_feature'}:
+            raise ValueError('Transformation frame must be a coordinate system')
+        if any(abs(v)>100000 for v in self.translation) or any(abs(v)>360 for v in self.rotation):
+            raise ValueError('Translation/rotation is outside the supported range')
+        return self
+
+
+class TransformUpdateOp(StrictModel):
+    op: Literal['set_geometry_transform']
+    feature: Label
+    translation: Point3
+    rotation: Point3
+    @model_validator(mode='after')
+    def bounded_values(self):
+        if any(abs(v)>100000 for v in self.translation) or any(abs(v)>360 for v in self.rotation):
+            raise ValueError('Translation/rotation is outside the supported range')
+        return self
+
+
 class ExtrudeOp(StrictModel):
     op: Literal["extrude"]
     label: Label
@@ -555,7 +678,7 @@ class RibOp(StrictModel):
     side: Literal['positive','negative','symmetric'] = 'symmetric'
     flip: bool = False
 
-Operation=Annotated[Union[UdfInspectOp,UdfCreateOp,SketchOp,ExtrudeOp,RevolveOp,HoleOp,RoundOp,PlaneOp,AxisOp,ShellOp,DimensionsOp,SketchDimensionsOp,ParametersOp,RelationsOp,PatternOp,MirrorOp,SweepOp,LoftOp,DraftOp,SheetmetalWallOp,SheetmetalFlangeOp,SheetmetalUnbendOp,AssembleOp,ComponentPlacementOp,ComponentConstraintsOp,RemoveComponentOp,GenericFeatureOp,SimpleOp,ExportOp,DumpTreeOp,DrawingModelOp,DrawingSheetOp,DrawingViewOp,DrawingProjectionOp,DrawingViewUpdateOp,DrawingNoteOp,DrawingNoteUpdateOp,DrawingTableOp,DrawingTableCellOp,DrawingDimensionOp,DrawingDeleteOp,CsysOp,PointsOp,FillOp,ThickenOp,SolidifyOp,BooleanOp,RibOp],Field(discriminator="op")]
+Operation=Annotated[Union[FeatureGroupOp,ReorderOp,AxisPatternOp,GeometryTransformOp,TransformUpdateOp,AirfoilSketchOp,AirfoilUpdateOp,SketchGeometryOp,UdfInspectOp,UdfCreateOp,SketchOp,ExtrudeOp,RevolveOp,HoleOp,RoundOp,PlaneOp,AxisOp,ShellOp,DimensionsOp,SketchDimensionsOp,ParametersOp,RelationsOp,PatternOp,MirrorOp,SweepOp,LoftOp,DraftOp,SheetmetalWallOp,SheetmetalFlangeOp,SheetmetalUnbendOp,AssembleOp,ComponentPlacementOp,ComponentConstraintsOp,RemoveComponentOp,GenericFeatureOp,SimpleOp,ExportOp,DumpTreeOp,DrawingModelOp,DrawingSheetOp,DrawingViewOp,DrawingProjectionOp,DrawingViewUpdateOp,DrawingNoteOp,DrawingNoteUpdateOp,DrawingTableOp,DrawingTableCellOp,DrawingDimensionOp,DrawingDeleteOp,CsysOp,PointsOp,FillOp,ThickenOp,SolidifyOp,BooleanOp,RibOp],Field(discriminator="op")]
 OPERATIONS=TypeAdapter(list[Operation])
 
 def validate_operations(operations: list[dict]) -> list[dict]:

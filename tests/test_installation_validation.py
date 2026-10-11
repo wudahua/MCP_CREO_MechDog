@@ -135,8 +135,12 @@ class InstallationValidation(unittest.TestCase):
     def test_installer_native_failure_leaves_client_config_and_resume_instructions(self):
         includes = self.sdk()
         (self.root / 'tools').mkdir()
-        for name in ('setup.ps1', 'bridge.py', 'capabilities.py', 'version.py'):
+        for name in ('setup.ps1', 'bridge.py', 'capabilities.py', 'version.py', 'seeds.py'):
             shutil.copy2(ROOT / name, self.root / name)
+        shutil.copy2(ROOT / 'LICENSE', self.root / 'LICENSE')
+        (self.root / 'docs').mkdir()
+        shutil.copy2(ROOT / 'docs/seed_manifest.json', self.root / 'docs/seed_manifest.json')
+        shutil.copytree(ROOT / 'seed_library', self.root / 'seed_library')
         for name in ('generate_constants.py', 'compiler_preflight.py'):
             shutil.copy2(ROOT / 'tools' / name, self.root / 'tools' / name)
         (self.root / 'requirements.lock.txt').write_text('')

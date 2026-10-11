@@ -3,6 +3,8 @@ from __future__ import annotations
 from version import VERSION
 
 REGISTERED_OPERATIONS = (
+    'airfoil_sketch', 'update_airfoil', 'update_sketch_geometry', 'feature_group',
+    'reorder_features', 'axis_pattern', 'geometry_transform', 'set_geometry_transform',
     "sketch", "extrude", "revolve", "hole", "round", "chamfer", "datum_plane", "datum_axis",
     "shell", "dimension_pattern", "mirror", "sweep", "loft", "draft", "sheetmetal_wall",
     "sheetmetal_flange", "sheetmetal_unbend", "sheetmetal_flat_pattern", "sheetmetal_bend_back",
@@ -26,6 +28,17 @@ def require_available(operations: list[dict]) -> None:
 
 def families() -> dict:
     return {
+        'seed_library': {'enabled': True, 'scope': 'MIT native seeds bundled with source; SHA256 validation, local registration and automatic count/mode selection',
+                         'automatic_pairs': ['2/straight','2/smooth','5/smooth'],
+                         'limits': 'no automatic download, arbitrary seed generation or mode/count conversion'},
+        'airfoil': {'enabled': True, 'scope': 'symmetric NACA 00xx native sketch splines; chord/thickness/twist/origin/pivot edits preserve sketch and Blend IDs',
+                    'native_test': 'five smooth stations, two sequential middle-section edits and edit after a native group axis pattern; STL section comparison',
+                    'limits': 'no camber; metadata driven MCP edits, not Creo relation-driven airfoil dimensions; creation-time sample count is fixed'},
+        'sketch_geometry_edit': {'enabled': True, 'scope': 'in-place line/polyline/rectangle/circle/spline replacement; entity names/types/counts retained',
+                                'limits': 'replaces dimensions/constraints with automatic dimensions and clears named dimension/airfoil metadata'},
+        'placement': {'enabled': True, 'scope': 'native body FlexMove or quilt/geometry Move, in-place translation/rotation edits, local feature groups, reorder and axis patterns',
+                      'native_test': 'body rotate/translate/edit with true solid bounding boxes; quilt rotate/translate/thicken/edit; five-section blade group pattern and later airfoil edit; save/erase/reload',
+                      'limits': 'body branch can require Flexible Modeling license; copy-original, multiple bodies, custom csys, complex quilts and datum/curve combinations require local validation'},
         'drawing': {'enabled': True, 'scope': 'native DRW sheets, general/projected views, driving dimensions, notes, tables, edits, deletion and PDF',
                     'limits': 'owned part/sheetmetal snapshots; no live source update, assembly drawings, sections, detail views, GD&T or automatic BOM'},
         'datums': {'enabled': True, 'scope': 'coordinate systems and dimensioned point arrays in addition to planes and axes',
@@ -48,7 +61,7 @@ def families() -> dict:
         'loft': {'enabled': False, 'reason': UNAVAILABLE_OPERATIONS['loft'],
                  'alternative_tool': 'creo_new_loft_part'},
         'loft_seed': {'enabled': True, 'tool': 'creo_new_loft_part',
-                      'scope': 'new native part by rebinding a user-supplied ordinary Blend seed to 2 to 20 new XY sketches with matching section count',
+                      'scope': 'new native part by rebinding an automatically selected bundled seed or explicit compatible seed to new XY sketch/airfoil sections',
                       'section_count_input_range': [2, 20],
                       'seed_section_count_must_match': True,
                       'interpolation': ['straight', 'smooth'],

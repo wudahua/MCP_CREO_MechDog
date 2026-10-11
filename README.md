@@ -2,13 +2,13 @@
 
 本地 Windows MCP 服务，连接已打开的 Creo Parametric 10，通过官方 C/C++ Toolkit 创建、查询和修改**原生参数化特征**。建模由任意支持的草图轮廓及顺序特征组成：新建零件 → 草图 → 拉伸/旋转 → 切除/孔 → 后续特征。原先的底板接口保留为快捷工具。
 
-**本版为源码预发布候选版，尚未完成所有 Creo 操作的覆盖。** 当前本地开发版注册 **68 个工具，其中 67 个启用**。新增多截面原生混合种子复用工具 `creo_new_loft_part`；直接创建接口 `creo_loft` 仍禁用。使用官方 Python MCP SDK 2.3.0、stdio 传输，采用 [MIT 许可证](LICENSE)。每位使用者在自己的 Windows 电脑上安装依赖并编译 Toolkit 执行器，由本地 AI 客户端调用。
+**本版为源码预发布候选版，尚未完成所有 Creo 操作的覆盖。** 当前本地开发版注册 **80 个工具，其中 79 个启用**。支持多截面原生混合种子自动匹配、翼型截面参数、原生几何定位、分组和轴阵列；直接创建接口 `creo_loft` 仍禁用。使用官方 Python MCP SDK 2.3.0、stdio 传输，采用 [MIT 许可证](LICENSE)。每位使用者在自己的 Windows 电脑上安装依赖并编译 Toolkit 执行器，由本地 AI 客户端调用。
 
 开发版包括工程图、坐标系/点、填充曲面、加厚、实体化、多实体布尔、筋和 UDF 库工具。当前版本为 **0.2.4**，使用方法和边界见 [版本说明](docs/RELEASE_NOTES_0.2.4.md)。多截面增量见 [多截面说明](docs/MULTISECTION_BLEND.md)、[验证摘要](docs/validation_multisection.json)；两截面普通放样见 [调用说明](docs/LOFT_SEED.md)、[直线验证摘要](docs/validation_loft_seed.json) 与 [平滑混合说明](docs/SMOOTH_BLEND.md)、[平滑验证摘要](docs/validation_loft_smooth.json)；其他模块的 [历史验证摘要](docs/validation_development.json) 单独保留。已发布的 GitHub v0.22 和旧源码包不会自动包含这些增量，0.2.4 需单独发布，已发布的 v0.2.3 不会自动更新。
 
 **2026-10-10 安装与普通混合修复**：修正活动模型上下文、空尺寸矩形意外依赖种子实体、SDK 常量更新和构建缓存、许可失效路径回退、安装中断恢复及 Windows SDK 构建诊断。版本号仍为 0.2.4；这是已发布 v0.2.4 之后的源码修复，旧下载包不会自动变化。逐项结论与验证见 [修复报告](docs/INSTALL_FIX_2026-10-10.md)。
 
-另提供 **0.2.4 原生混合种子库**：两截面直线、两截面平滑、五截面平滑。项目原创模型及配套文件采用 MIT，作为独立 Release 附件提供，源码 ZIP 不含 PRT。普通混合用户应同时下载源码和 `MCP_CREO_MechDog-0.2.4-seed-library.zip`；详见 [种子库说明](docs/SEED_LIBRARY.md) 和 [换电脑、换 Agent](docs/MIGRATION.md)。安装器当前不会自动下载或注册种子库。
+**2026-10-11 建模增量**：源码内附 MIT 原生混合种子库，安装时验证和注册，调用时自动匹配数量/模式。新增 NACA 00xx 原生截面、弦长/厚度/扭转原位修改，以及通用实体/quilt 定位、分组、重排和轴阵列。版本仍为 0.2.4；见 [使用及验收说明](docs/PORTABLE_MODELING_2026-10-11.md)。旧发布包不含这些修改。种子库及迁移见 [种子库说明](docs/SEED_LIBRARY.md) 和 [换电脑、换 Agent](docs/MIGRATION.md)。
 
 已发布 0.21 的历史验证见 [validation_0.21.json](docs/validation_0.21.json)，历史范围见 [COVERAGE_0.21.md](docs/COVERAGE_0.21.md)。测试环境为 Windows x64、Creo 10.0.0.0、Python 3.12、Visual Studio 2022 C++ Build Tools。0.2.0 的 41 个成功任务及 11 项输入验证单独保留为历史记录。这些摘要不能代替使用者自己机器的许可与运行验证。
 
@@ -49,7 +49,9 @@
 | 新增基准 | `creo_datum_csys`、`creo_datum_points` |
 | 原生工程图 | `creo_new_drawing`；图纸、一般/投影视图、尺寸显示、注释、表格及编辑/删除；原生 DRW 与 PDF 输出 |
 | UDF 特征库 | `creo_inspect_udf`、`creo_create_udf`：查询并复用用户的 .gph，保留组内原生参数特征 |
-| 普通混合种子复用 | `creo_new_loft_part`：按 2～20 张新 XY 草图创建新零件，支持 `straight` 和 `smooth`，要求种子数量和模式与请求一致；已验证五截面方形及样条翼型、中间尺寸/位置修改及保存重载；[调用说明](docs/LOFT_SEED.md) |
+| 普通混合种子复用 | `creo_new_loft_part`：按新 XY 截面和模式自动选择随包种子；自动匹配 2/straight、2/smooth、5/smooth，其他数量仍需显式种子；`creo_list_seeds`、`creo_validate_seed`、`creo_install_seed_library` |
+| 翼型与几何编辑 | `creo_create_airfoil_section`、`creo_new_airfoil_blade`、`creo_set_airfoil_parameters`、`creo_update_sketch_geometry`；原生草图和 Blend，弦长/厚度/扭转/原点参数 |
+| 定位及特征组织 | `creo_transform_geometry`、`creo_set_geometry_transform`、`creo_group_features`、`creo_reorder_features`、`creo_axis_pattern`；完整实体/quilt 原生定位、原生局部组和轴阵列 |
 | 未完成的保留接口 | `creo_loft`：任务入队前明确拒绝，不作为可用功能 |
 | 参数化修改 | `creo_set_dimensions`、`creo_set_sketch_dimensions`、`creo_set_parameters`、`creo_set_relations`：编辑特征尺寸/草图尺寸、零件参数、简单算术关系式，重新生成依赖特征 |
 | 特征树与拓扑查询 | `creo_inspect_model`、`creo_refresh_model`、`creo_list_models`：特征 ID、名称、类型、状态、尺寸、草图尺寸、几何引用 ID、面/边/实体、体积、包围盒、参数和版本 |
@@ -145,8 +147,8 @@
 
 - 持续修改只支持本服务创建、登记的零件、钣金模型和装配；未提供直接接管用户现有模型的接口。
 - 各类尺寸/约束的复杂组合、极端几何及外部人工修改的自动接管仍需后续扩展。
-- 孔为直孔，尚未封装螺纹、沉头、沉孔标准孔；倒角为等距，阵列为一方向尺寸阵列。
-- 普通放样支持 2～20 张平行 XY 截面的种子复用；仍需用户提供截面数及直线/平滑模式匹配的种子。五截面平滑方形与翼型已实测，数量上限不代表所有数量均已验证。不支持自动增减种子截面、转换连接模式、向已有零件追加、非平行截面或端点相切/曲率控制。`creo_loft` 直接创建路径仍禁用。
+- 孔为直孔，尚未封装螺纹、沉头、沉孔标准孔；倒角为等距，阵列支持一方向尺寸阵列和原生轴阵列。
+- 普通放样支持平行 XY 截面的种子复用；随包自动匹配两截面直线/平滑与五截面平滑，其他数量需显式兼容种子。数量上限不代表所有数量均已验证。不支持自动增减种子截面、转换连接模式、向已有零件追加、非平行截面或端点相切/曲率控制。`creo_loft` 直接创建路径仍禁用。新零件整体可用原生定位特征移动或旋转。
 - 钣金已验证首壁、90° 法兰、高度编辑、展开、折弯回去和平展；其他形状和折弯规则未全部验证。镜像、扫掠、拔模、装配、筋和工程图各自具有明确范围，见开发版说明；复杂自由曲面及专业模块仍未完整封装。
 - 装配插入源模型的版本快照，源模型后续修改不更新组件；子装配复制尚未开放。
 - `creo_create_feature_tree` 可扩展符合本机 SDK 的特征结构，但无法保证所有 PTC 特征类型和选项均可创建。
@@ -156,7 +158,7 @@
 
 ## 开发与测试
 
-安装脚本创建虚拟环境、安装锁定依赖、读取本机 SDK 生成常量表、编译执行器并生成客户端配置。首次运行或原生源码改变时也会自动重新编译。`native/constants.inc` 由本机 SDK 生成；不随源码分发。源码包不含 Creo SDK 库、许可内容、虚拟环境、编译二进制或测试零件。第三方 JSON 头文件附带其原始 MIT 许可。
+安装脚本创建虚拟环境、安装锁定依赖、验证/注册随包种子库、读取本机 SDK 生成常量表、编译执行器并生成客户端配置。首次运行或原生源码改变时也会自动重新编译。`native/constants.inc` 由本机 SDK 生成；不随源码分发。源码包含三个项目原创 MIT 种子 PRT，不含 Creo SDK 库、许可内容、虚拟环境、编译二进制或其他本机测试模型。第三方 JSON 头文件附带其原始 MIT 许可。
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
