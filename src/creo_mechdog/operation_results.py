@@ -103,6 +103,7 @@ def annotate_native_result(
     )
     if inputs is not None:
         annotate_profiles(result, inputs)
+        annotate_arc_geometry(result, inputs)
         annotate_feature_state(result, inputs)
     return result
 
@@ -138,6 +139,7 @@ def _profile_summary(entities: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "source": "input",
         "analysis": report["analysis"],
+        "arc_geometry": report.get("arc_geometry", []),
         "entity_count": report["entity_count"],
         "contour_count": report["contour_count"],
         "closed_contour_count": report["closed_contour_count"],
@@ -145,6 +147,29 @@ def _profile_summary(entities: list[dict[str, Any]]) -> dict[str, Any]:
         "material_area_mm2": report["material_area_mm2"],
         "categories": {name: entry["count"] for name, entry in report["categories"].items()},
     }
+
+
+def _source_for(
+    operation: dict[str, Any], inputs: list[dict[str, Any]], position: int
+) -> dict[str, Any] | None:
+    """Locate the input record behind one operation result, if it is unambiguous."""
+
+    def same_label(item: dict[str, Any]) -> bool:
+        # Geometry updates carry no label on either side while the native
+        # record reports the empty string (FEAT-034/T02).
+        return str(item.get("label") or "") == str(operation.get("label") or "")
+
+    source = inputs[position] if position < len(inputs) else None
+    if not (
+        isinstance(source, dict) and source.get("op") == operation.get("op") and same_label(source)
+    ):
+        matches = [
+            item
+            for item in inputs
+            if isinstance(item, dict) and item.get("op") == operation.get("op") and same_label(item)
+        ]
+        source = matches[0] if len(matches) == 1 else None
+    return source if isinstance(source, dict) else None
 
 
 def annotate_profiles(result: dict[str, Any], inputs: list[dict[str, Any]]) -> dict[str, Any]:
@@ -159,20 +184,7 @@ def annotate_profiles(result: dict[str, Any], inputs: list[dict[str, Any]]) -> d
     for position, operation in enumerate(operations):
         if not isinstance(operation, dict) or operation.get("op") != "sketch":
             continue
-        source = inputs[position] if position < len(inputs) else None
-        if not (
-            isinstance(source, dict)
-            and source.get("op") == "sketch"
-            and source.get("label") == operation.get("label")
-        ):
-            matches = [
-                item
-                for item in inputs
-                if isinstance(item, dict)
-                and item.get("op") == "sketch"
-                and item.get("label") == operation.get("label")
-            ]
-            source = matches[0] if len(matches) == 1 else None
+        source = _source_for(operation, inputs, position)
         entities = source.get("entities") if isinstance(source, dict) else None
         if not isinstance(entities, list) or not entities:
             continue
@@ -182,4 +194,80 @@ def annotate_profiles(result: dict[str, Any], inputs: list[dict[str, Any]]) -> d
             # Diagnostics must never turn a delivered native result into a
             # failure; record that the input report is unavailable instead.
             operation["profile"] = {"source": "input", "analysis": "unavailable"}
+    return result
+
+
+_ARC_ACTUAL_FIELDS = (
+    "query_code",
+    "frame",
+    "start_uv",
+    "end_uv",
+    "start_tangent_uv",
+    "end_tangent_uv",
+    "dir",
+    "sweep_deg",
+)
+_ARC_MEASURED_FIELDS = (
+    "start_uv",
+    "end_uv",
+    "start_tangent_uv",
+    "end_tangent_uv",
+    "dir",
+    "sweep_deg",
+)
+
+
+def _unknown_arc_actual(query_code: Any = None) -> dict[str, Any]:
+    entry: dict[str, Any] = {"source": "unknown", "query_code": query_code, "frame": None}
+    entry.update({key: None for key in _ARC_ACTUAL_FIELDS if key not in entry})
+    return entry
+
+
+def project_arc_echo(entities: list[dict[str, Any]], measured: Any) -> list[dict[str, Any]]:
+    """Project the executor's measured arc geometry onto the input arcs (FEAT-034).
+
+    Reported values are only ever the executor's own query result (``source=
+    "native"``) or explicitly unknown with the raw query code. Requested input
+    values are never echoed here as measured geometry.
+    """
+    by_name: dict[str, dict[str, Any]] = {}
+    if isinstance(measured, list):
+        for item in measured:
+            if isinstance(item, dict) and isinstance(item.get("name"), str):
+                by_name[item["name"]] = item
+    projection: list[dict[str, Any]] = []
+    for entity in entities:
+        if not isinstance(entity, dict) or entity.get("type") != "arc":
+            continue
+        name = str(entity.get("name"))
+        record = by_name.get(name)
+        if isinstance(record, dict) and record.get("source") in ("native", "unknown"):
+            entry = {"name": name, "source": record["source"]}
+            entry.update({key: record.get(key) for key in _ARC_ACTUAL_FIELDS})
+            if entry["source"] == "native" and any(
+                entry[key] is None for key in _ARC_MEASURED_FIELDS
+            ):
+                entry = {"name": name, **_unknown_arc_actual(record.get("query_code"))}
+            projection.append(entry)
+        else:
+            projection.append({"name": name, **_unknown_arc_actual()})
+    return projection
+
+
+def annotate_arc_geometry(result: dict[str, Any], inputs: list[dict[str, Any]]) -> dict[str, Any]:
+    """Attach the measured arc echo to sketch creation and update records."""
+    operations = result.get("operations")
+    if not isinstance(operations, list) or not isinstance(inputs, list):
+        return result
+    for position, operation in enumerate(operations):
+        if not isinstance(operation, dict) or operation.get("op") not in (
+            "sketch",
+            "update_sketch_geometry",
+        ):
+            continue
+        source = _source_for(operation, inputs, position)
+        entities = source.get("entities") if isinstance(source, dict) else None
+        if not isinstance(entities, list) or not entities:
+            continue
+        operation["arc_geometry"] = project_arc_echo(entities, operation.get("arc_geometry"))
     return result

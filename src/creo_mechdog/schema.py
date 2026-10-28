@@ -136,15 +136,39 @@ class Circle(StrictModel):
     construction: bool = False
 
 
+def _strict_arc_dir(value: Any) -> int:
+    # FEAT-034/T02: dir is one strict integer field. True/False, 1.0, "1" and
+    # null are not directions; the validated value is the only contract.
+    if type(value) is not int or value not in (-1, 1):
+        raise ValueError(
+            "Arc dir must be the strict integer +1 (counterclockwise) or -1 (clockwise)"
+        )
+    return value
+
+
 class Arc(Circle):
     type: Literal["arc"]
     start_angle: float
     end_angle: float
+    # FEAT-034/T02: +1 sweeps counterclockwise from start_angle to end_angle in
+    # the sketch-local frame (the legacy start/end meaning); -1 sweeps
+    # clockwise. The default keeps every legacy request's geometry unchanged.
+    dir: Annotated[int, BeforeValidator(_strict_arc_dir)] = 1
 
     @model_validator(mode="after")
     def span(self):
-        if abs((self.end_angle - self.start_angle) % 360) < 1e-10:
-            raise ValueError("Arc requires distinct endpoints; use circle for a complete circle")
+        if not math.isfinite(self.start_angle) or not math.isfinite(self.end_angle):
+            raise ValueError("Arc angles must be finite degrees")
+        sweep = (
+            (self.end_angle - self.start_angle) % 360
+            if self.dir > 0
+            else (self.start_angle - self.end_angle) % 360
+        )
+        if sweep < 1e-10:
+            raise ValueError(
+                "Arc sweep must be strictly between 0 and 360 degrees; "
+                "use circle for a complete circle"
+            )
         return self
 
 

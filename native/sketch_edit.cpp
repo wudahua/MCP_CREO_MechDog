@@ -119,6 +119,7 @@ static void generic_sketch_edit(const J &op) {
     CK(ProSectionIntentManagerModeSet(section, PRO_B_FALSE));
     ProMatrix loc;
     CK(ProSectionLocationGet(section, loc));
+    const bool mirrored = meta.value("section_normal_sign", 1) < 0;
     // Plain vector form of the section x axis for the lambdas below; the
     // MSVC legacy lambda processor (std:c++17) mis-registers captures whose
     // first reference sits deep inside a long branch chain (C2065), so the
@@ -142,6 +143,45 @@ static void generic_sketch_edit(const J &op) {
         project(p, expected);
         return close_enough(expected[0], actual[0]) && close_enough(expected[1], actual[1]);
     };
+    // FEAT-034/T02: one dir/mirror normalization shared by the match check, the
+    // rebuild and the logical endpoint bookkeeping, so a swapped stored
+    // representation never detaches the user's start/end names or references.
+    auto arc_rep = [&](const J &e) {
+        // Referenced up front for the same MSVC lambda capture reason as
+        // section_x above: a first reference inside the return expression
+        // leaves the capture unregistered (C2065).
+        const bool use_mirrored = mirrored;
+        double radius = e["radius"];
+        J center = e["center"];
+        double center_xy[2], angles[2];
+        project(center, center_xy);
+        for (int i = 0; i < 2; ++i) {
+            double angle = e[i ? "end_angle" : "start_angle"].get<double>() * acos(-1.0) / 180;
+            double xy[2];
+            project(J::array({center[0].get<double>() + radius * cos(angle),
+                              center[1].get<double>() + radius * sin(angle)}),
+                    xy);
+            angles[i] = atan2(xy[1] - center_xy[1], xy[0] - center_xy[0]);
+        }
+        return arc_representation(angles[0], angles[1], arc_direction(e), use_mirrored);
+    };
+    // FEAT-034/T02: record each named arc's logical endpoint swap for this edit,
+    // rebuilt or not, so names, start/end references and dimensions stay on the
+    // user's own endpoints. A degenerate request fails here, before any
+    // mutation.
+    std::map<std::string, int> named_ids;
+    arc_endpoint_swapped.clear();
+    arc_logical_swapped.clear();
+    for (auto it = meta["entity_ids"].begin(); it != meta["entity_ids"].end(); ++it)
+        named_ids[it.key()] = it.value();
+    for (auto e : geometry) {
+        if (e["type"] != "arc")
+            continue;
+        std::string arc_name = e["name"];
+        bool swapped = arc_rep(e).swapped;
+        arc_logical_swapped[arc_name] = swapped;
+        arc_endpoint_swapped[named_ids.at(arc_name)] = swapped;
+    }
     // Compares a stored section entity against a requested entity description.
     // Shared by the unchanged shortcut and the rewrite path (to skip entities
     // whose geometry already matches).
@@ -195,21 +235,14 @@ static void generic_sketch_edit(const J &op) {
             double radius = e["radius"];
             if (!point_matches(e["center"], arc->center) || !close(radius, arc->radius))
                 return false;
-            double center[2], angles[2];
-            project(e["center"], center);
-            for (int i = 0; i < 2; ++i) {
-                double angle = e[i ? "end_angle" : "start_angle"].get<double>() * acos(-1.0) / 180;
-                double xy[2];
-                project(J::array({e["center"][0].get<double>() + radius * cos(angle),
-                                  e["center"][1].get<double>() + radius * sin(angle)}),
-                        xy);
-                angles[i] = atan2(xy[1] - center[1], xy[0] - center[0]);
-            }
-            if (meta.value("section_normal_sign", 1) < 0)
-                std::swap(angles[0], angles[1]);
-            if (radius * fabs(remainder(angles[0] - arc->start_angle, 2 * acos(-1.0))) >
+            // FEAT-034/T02: compare against the stored representation the same
+            // way it was built; a representation mismatch changes the logical
+            // endpoints even when the curve itself coincides.
+            ArcRepresentation rep = arc_rep(e);
+            if (radius * fabs(remainder(rep.start_angle - arc->start_angle, 2 * acos(-1.0))) >
                     tolerance ||
-                radius * fabs(remainder(angles[1] - arc->end_angle, 2 * acos(-1.0))) > tolerance)
+                radius * fabs(remainder(rep.end_angle - arc->end_angle, 2 * acos(-1.0))) >
+                    tolerance)
                 return false;
         } else if (type == "ellipse") {
             if (def->type != PRO_2D_ELLIPSE)
@@ -287,12 +320,21 @@ static void generic_sketch_edit(const J &op) {
     if (identical_payload && geometry_matches()) {
         meta["geometry_stale"] = false;
         meta["last_dimensioning"] = requested;
+        // FEAT-034/T02: measure before the section handle goes away.
+        J unchanged = {{"op", op["op"]},
+                       {"sketch", label},
+                       {"preserved_feature_id", f.id},
+                       {"unchanged", true},
+                       {"native_geometry_verified", true}};
+        unchanged["frame"] = {{"origin", meta["origin"]},
+                              {"u_axis", meta["u_axis"]},
+                              {"v_axis", meta["v_axis"]},
+                              {"normal", meta.value("normal", J())}};
+        unchanged["arc_geometry"] =
+            arc_geometry_report(section, PRO_TK_NO_ERROR, geometry, named_ids, vec(meta["origin"]),
+                                vec(meta["u_axis"]), vec(meta["v_axis"]), loc, mirrored);
         CK(ProFeatureElemtreeFree(&f, root));
-        stage_operation_result({{"op", op["op"]},
-                                {"sketch", label},
-                                {"preserved_feature_id", f.id},
-                                {"unchanged", true},
-                                {"native_geometry_verified", true}});
+        stage_operation_result(unchanged);
         return;
     }
     trace_section_ids(section, "before_delete");
@@ -360,29 +402,12 @@ static void generic_sketch_edit(const J &op) {
             project(e["center"], value.center);
             double radius = e["radius"];
             value.radius = radius;
-            double xy[2], a = e["start_angle"].get<double>() * acos(-1.0) / 180,
-                          b = e["end_angle"].get<double>() * acos(-1.0) / 180;
-            J center = e["center"];
-            project(J::array({center[0].get<double>() + radius * cos(a),
-                              center[1].get<double>() + radius * sin(a)}),
-                    xy);
-            value.start_angle = atan2(xy[1] - value.center[1], xy[0] - value.center[0]);
-            project(J::array({center[0].get<double>() + radius * cos(b),
-                              center[1].get<double>() + radius * sin(b)}),
-                    xy);
-            value.end_angle = atan2(xy[1] - value.center[1], xy[0] - value.center[0]);
-            if (meta.value("section_normal_sign", 1) < 0)
-                std::swap(value.start_angle, value.end_angle);
-            double turn = 2 * acos(-1.0);
-            value.start_angle = fmod(value.start_angle + turn, turn);
-            value.end_angle = fmod(value.end_angle + turn, turn);
-            if (fabs(value.start_angle) < 1e-12)
-                value.start_angle = 0;
-            if (fabs(value.end_angle) < 1e-12)
-                value.end_angle = 0;
-            if (value.end_angle <= value.start_angle)
-                value.end_angle += turn;
+            ArcRepresentation rep = arc_rep(e);
+            value.start_angle = rep.start_angle;
+            value.end_angle = rep.end_angle;
             CK(ProSectionEntityAdd(section, (Pro2dEntdef *)&value, &replacement));
+            arc_endpoint_swapped[replacement] = rep.swapped;
+            arc_logical_swapped[name] = rep.swapped;
         } else if (type == "ellipse") {
             if (original != PRO_2D_ELLIPSE)
                 throw std::runtime_error("Entity type cannot change during an in-place edit");
@@ -557,5 +582,19 @@ static void generic_sketch_edit(const J &op) {
                        {"parameters", meta.value("airfoil", J::object())}};
     if (identical_payload)
         sketch_result["verification_probe"] = verification_probe_result;
+    sketch_result["frame"] = {{"origin", meta["origin"]},
+                              {"u_axis", meta["u_axis"]},
+                              {"v_axis", meta["v_axis"]},
+                              {"normal", meta.value("normal", J())}};
+    {
+        // FEAT-034/T02: measure the rebuilt section in the user's own frame.
+        ProSection saved = nullptr;
+        ProError copy_code = ProFeatureSectionCopy(&f, 0, &saved);
+        sketch_result["arc_geometry"] = arc_geometry_report(
+            copy_code ? nullptr : saved, copy_code, geometry, named_ids, vec(meta["origin"]),
+            vec(meta["u_axis"]), vec(meta["v_axis"]), loc, mirrored);
+        if (!copy_code)
+            CK(ProSectionFree(&saved));
+    }
     stage_operation_result(sketch_result);
 }

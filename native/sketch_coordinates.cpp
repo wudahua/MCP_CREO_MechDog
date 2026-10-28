@@ -164,7 +164,12 @@ static J coordinate_dimensions(ProSection section, int origin,
             CK(ProSecdimValueSet(section, dim, row["radius"]));
             dimensions[prefix + "_radius"] = dim;
         }
-        if (row.contains("angles"))
+        if (row.contains("angles")) {
+            // FEAT-034/T02: the dimension names follow the user's logical
+            // endpoints, so a swapped representation labels the stored start
+            // point as the logical end and keeps its value on that endpoint.
+            auto swapped_entry = arc_logical_swapped.find(row["name"].get<std::string>());
+            bool swapped = swapped_entry != arc_logical_swapped.end() && swapped_entry->second;
             for (int i = 0; i < 2; i++) {
                 int ids[] = {entity, entity}, dim;
                 ProSectionPointType points[] = {PRO_ENT_CENTER, i ? PRO_ENT_END : PRO_ENT_START};
@@ -179,8 +184,12 @@ static J coordinate_dimensions(ProSection section, int origin,
                     throw std::runtime_error(
                         "Native polar dimension does not match the supplied arc angle");
                 CK(ProSecdimValueSet(section, dim, degrees));
-                dimensions[prefix + (i ? "_end_angle" : "_start_angle")] = dim;
+                std::string key = i ? "end_angle" : "start_angle";
+                if (swapped)
+                    key = i ? "start_angle" : "end_angle";
+                dimensions[prefix + "_" + key] = dim;
             }
+        }
     }
     return {{"dimension_ids", dimensions}, {"targets", snapshot}, {"origin_id", origin}};
 }

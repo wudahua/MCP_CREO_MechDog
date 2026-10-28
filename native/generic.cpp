@@ -944,10 +944,72 @@ static ProSectionPointType point_type(const std::string &s) {
            : s == "center" ? PRO_ENT_CENTER
                            : PRO_ENT_WHOLE;
 }
+// FEAT-034/T02: one explicit direction field. dir=+1 sweeps counterclockwise
+// from the logical start to the logical end in the user's sketch frame (the
+// legacy meaning of start/end); dir=-1 sweeps clockwise. A stored Pro2dArcdef
+// is always counterclockwise, so a clockwise arc or a mirrored section frame
+// stores the two angles swapped; the swap map keeps the user's logical
+// endpoints under their own names and start/end dimension references.
+static std::map<int, bool> arc_endpoint_swapped;
+static std::map<std::string, bool> arc_logical_swapped;
+static int arc_direction(const J &e) {
+    if (!e.contains("dir"))
+        return 1;
+    const J &value = e.at("dir");
+    if (!value.is_number_integer())
+        throw std::runtime_error(
+            "Arc dir must be the strict integer +1 (counterclockwise) or -1 (clockwise)");
+    int dir = value.get<int>();
+    if (dir != 1 && dir != -1)
+        throw std::runtime_error(
+            "Arc dir must be the strict integer +1 (counterclockwise) or -1 (clockwise)");
+    return dir;
+}
+struct ArcRepresentation {
+    double start_angle, end_angle; // section frame, counterclockwise, end > start
+    bool swapped;                  // the stored start angle is the logical end
+};
+static ArcRepresentation arc_representation(double logical_start, double logical_end, int dir,
+                                            bool mirrored) {
+    double start = logical_start, end = logical_end;
+    bool swapped = false;
+    if (dir == -1) {
+        std::swap(start, end);
+        swapped = !swapped;
+    }
+    if (mirrored) {
+        std::swap(start, end);
+        swapped = !swapped;
+    }
+    double turn = 2 * acos(-1.0);
+    if (fabs(remainder(end - start, turn)) < 1e-12)
+        throw std::runtime_error("Arc sweep must be strictly between 0 and 360 degrees; "
+                                 "use circle for a complete circle");
+    start = fmod(start + turn, turn);
+    end = fmod(end + turn, turn);
+    if (fabs(start) < 1e-12)
+        start = 0;
+    if (fabs(end) < 1e-12)
+        end = 0;
+    if (end <= start)
+        end += turn;
+    return {start, end, swapped};
+}
+// FEAT-034/T02: a user start/end reference must stay on the user's own
+// endpoint even when the stored representation is swapped.
+static ProSectionPointType logical_point(int entity, ProSectionPointType type) {
+    if (type != PRO_ENT_START && type != PRO_ENT_END)
+        return type;
+    auto swapped = arc_endpoint_swapped.find(entity);
+    if (swapped != arc_endpoint_swapped.end() && swapped->second)
+        return type == PRO_ENT_START ? PRO_ENT_END : PRO_ENT_START;
+    return type;
+}
 // Constraint references need a real location on the referenced entity; the
 // section origin degenerates with arcs centered there (BUG-068) and idx_pnt
 // must stay unused for non-spline entities per the Toolkit contract.
 static ProSelection selected(ProSection section, int id, ProSectionPointType type) {
+    type = logical_point(id, type);
     Pro2dEntdef *def = nullptr;
     CK(ProSectionEntityGet(section, id, &def));
     Pro2dPnt p;
@@ -1205,6 +1267,78 @@ static J section_profile_summary(ProSection section, const char *phase) {
         ProArrayFree((ProArray *)&ids);
     return summary;
 }
+// FEAT-034/T02: report the stored section arc geometry as the user's logical
+// start/end, tangents, direction and sweep in the sketch-local frame. A failed
+// query keeps its raw code and null values; requested input values are never
+// echoed as a measured result.
+static J arc_geometry_report(ProSection section, ProError unavailable_code, const J &entity_specs,
+                             const std::map<std::string, int> &entities, const V &origin,
+                             const V &u, const V &v, const ProMatrix &loc, bool mirrored) {
+    J report = J::array();
+    auto to_user = [&](const std::array<double, 2> &xy) {
+        V w = {loc[3][0] + xy[0] * loc[0][0] + xy[1] * loc[1][0],
+               loc[3][1] + xy[0] * loc[0][1] + xy[1] * loc[1][1],
+               loc[3][2] + xy[0] * loc[0][2] + xy[1] * loc[1][2]};
+        V offset = add(w, scale(origin, -1));
+        return J::array({dot(offset, u), dot(offset, v)});
+    };
+    for (auto e : entity_specs) {
+        if (!e.is_object() || e.value("type", "") != "arc")
+            continue;
+        std::string name = e.value("name", "");
+        J entry = {{"name", name},
+                   {"source", "unknown"},
+                   {"query_code", nullptr},
+                   {"frame", nullptr},
+                   {"start_uv", nullptr},
+                   {"end_uv", nullptr},
+                   {"start_tangent_uv", nullptr},
+                   {"end_tangent_uv", nullptr},
+                   {"dir", nullptr},
+                   {"sweep_deg", nullptr}};
+        auto known = entities.find(name);
+        Pro2dEntdef *def = nullptr;
+        ProError code = PRO_TK_E_NOT_FOUND;
+        if (known != entities.end())
+            code = section ? ProSectionEntityGet(section, known->second, &def) : unavailable_code;
+        else
+            code = unavailable_code;
+        if (code == PRO_TK_NO_ERROR && def && def->type == PRO_2D_ARC) {
+            auto arc = (Pro2dArcdef *)def;
+            auto swapped_entry = arc_logical_swapped.find(name);
+            bool flip = swapped_entry != arc_logical_swapped.end() && swapped_entry->second;
+            auto at = [&](double angle) {
+                return std::array<double, 2>{arc->center[0] + arc->radius * cos(angle),
+                                             arc->center[1] + arc->radius * sin(angle)};
+            };
+            std::array<double, 2> s = flip ? at(arc->end_angle) : at(arc->start_angle),
+                                  t = flip ? at(arc->start_angle) : at(arc->end_angle);
+            J start_uv = to_user(s), end_uv = to_user(t),
+              center = to_user({arc->center[0], arc->center[1]});
+            double a0 = atan2(start_uv[1].get<double>() - center[1].get<double>(),
+                              start_uv[0].get<double>() - center[0].get<double>()),
+                   a1 = atan2(end_uv[1].get<double>() - center[1].get<double>(),
+                              end_uv[0].get<double>() - center[0].get<double>());
+            int dir = (flip ? -1 : 1) * (mirrored ? -1 : 1);
+            auto tangent = [&](double angle) {
+                return J::array(
+                    {dir > 0 ? -sin(angle) : sin(angle), dir > 0 ? cos(angle) : -cos(angle)});
+            };
+            entry["source"] = "native";
+            entry["query_code"] = 0;
+            entry["frame"] = "sketch_local";
+            entry["start_uv"] = start_uv;
+            entry["end_uv"] = end_uv;
+            entry["start_tangent_uv"] = tangent(a0);
+            entry["end_tangent_uv"] = tangent(a1);
+            entry["dir"] = dir;
+            entry["sweep_deg"] = (arc->end_angle - arc->start_angle) * 180 / acos(-1.0);
+        } else
+            entry["query_code"] = code;
+        report.push_back(entry);
+    }
+    return report;
+}
 static J sketch(const J &op) {
     Frame frame = sketch_frame(op);
     ProSelection plane_ref = selection(frame.surface, PRO_SURFACE),
@@ -1290,6 +1424,9 @@ static J sketch(const J &op) {
     for (int row = 0; row < 4; row++)
         log("SECTION_MATRIX_%d=%.9f,%.9f,%.9f,%.9f\n", row, loc[row][0], loc[row][1], loc[row][2],
             loc[row][3]);
+    const bool mirrored = dot(V{loc[2][0], loc[2][1], loc[2][2]}, frame.n) < 0;
+    arc_endpoint_swapped.clear();
+    arc_logical_swapped.clear();
     auto project = [&](const J &p, double *out) {
         V w = add(frame.origin, add(scale(frame.u, p.at(0).get<double>()),
                                     scale(frame.v, p.at(1).get<double>())));
@@ -1361,20 +1498,14 @@ static J sketch(const J &op) {
             project(J::array({center[0].get<double>() + a.radius * cos(end),
                               center[1].get<double>() + a.radius * sin(end)}),
                     q);
-            a.start_angle = atan2(p[1] - a.center[1], p[0] - a.center[0]);
-            a.end_angle = atan2(q[1] - a.center[1], q[0] - a.center[0]);
-            if (dot(V{loc[2][0], loc[2][1], loc[2][2]}, frame.n) < 0)
-                std::swap(a.start_angle, a.end_angle);
-            double turn = 2 * acos(-1.0);
-            a.start_angle = fmod(a.start_angle + turn, turn);
-            a.end_angle = fmod(a.end_angle + turn, turn);
-            if (fabs(a.start_angle) < 1e-12)
-                a.start_angle = 0;
-            if (fabs(a.end_angle) < 1e-12)
-                a.end_angle = 0;
-            if (a.end_angle <= a.start_angle)
-                a.end_angle += turn;
+            ArcRepresentation rep = arc_representation(
+                atan2(p[1] - a.center[1], p[0] - a.center[0]),
+                atan2(q[1] - a.center[1], q[0] - a.center[0]), arc_direction(e), mirrored);
+            a.start_angle = rep.start_angle;
+            a.end_angle = rep.end_angle;
             CK(ProSectionEntityAdd(section, (Pro2dEntdef *)&a, &id));
+            arc_endpoint_swapped[id] = rep.swapped;
+            arc_logical_swapped[name] = rep.swapped;
         } else if (type == "spline") {
             auto points = e["points"];
             std::vector<std::array<double, 2>> xy(points.size());
@@ -1473,7 +1604,7 @@ static J sketch(const J &op) {
         std::vector<ProSectionPointType> senses;
         for (auto r : d["refs"]) {
             ids.push_back(entities.at(r["entity"].get<std::string>()));
-            senses.push_back(point_type(r.value("point", "whole")));
+            senses.push_back(logical_point(ids.back(), point_type(r.value("point", "whole"))));
         }
         double place[2];
         project(d["position"], place);
@@ -1496,9 +1627,12 @@ static J sketch(const J &op) {
     ProSection saved = nullptr;
     ProError copy_code = ProFeatureSectionCopy(&f, 0, &saved);
     J native_section = {{"available", false}, {"query_code", copy_code}};
+    J arc_geometry = J::array();
     if (!copy_code) {
         try {
             native_section = section_profile_summary(saved, "sketch");
+            arc_geometry = arc_geometry_report(saved, copy_code, op["entities"], entities,
+                                               frame.origin, frame.u, frame.v, loc, mirrored);
             if (!coordinate_plan.is_null())
                 solver_info["coordinate_geometry_after_creation"] = verify_coordinate_plan(
                     saved, coordinate_plan["targets"], coordinate_plan["origin_id"]);
@@ -1511,6 +1645,9 @@ static J sketch(const J &op) {
         check(copy_code, "CopySketchSection");
     else
         log("SECTION_PROFILE_UNAVAILABLE phase=sketch copy_code=%d\n", copy_code);
+    if (arc_geometry.empty())
+        arc_geometry = arc_geometry_report(nullptr, copy_code, op["entities"], entities,
+                                           frame.origin, frame.u, frame.v, loc, mirrored);
     solver_info["native_section"] = native_section;
     J ids = J::object();
     for (auto item : entities)
@@ -1533,7 +1670,8 @@ static J sketch(const J &op) {
         aliases[op["label"].get<std::string>()]["airfoil"] = op["profile"];
     return {{"surface_id", frame.surface}, {"origin", frame.origin},
             {"normal", frame.n},           {"u_axis", frame.u},
-            {"v_axis", frame.v},           {"native_section", native_section}};
+            {"v_axis", frame.v},           {"native_section", native_section},
+            {"arc_geometry", arc_geometry}};
 }
 // ProFeatureWithoptionsCreate reports an invalid section only as a bare code;
 // Toolkit validation stays authoritative. Report the native section counts
@@ -2095,6 +2233,9 @@ static J populate_profile(ProSection section, const J &op) {
     frame.n = {0, 0, 1};
     frame.u = {1, 0, 0};
     ProMatrix loc = {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}};
+    const bool mirrored = dot(V{loc[2][0], loc[2][1], loc[2][2]}, frame.n) < 0;
+    arc_endpoint_swapped.clear();
+    arc_logical_swapped.clear();
     auto project = [](const J &p, double *out) {
         out[0] = p.at(0).get<double>();
         out[1] = p.at(1).get<double>();
@@ -2163,20 +2304,14 @@ static J populate_profile(ProSection section, const J &op) {
             project(J::array({center[0].get<double>() + a.radius * cos(end),
                               center[1].get<double>() + a.radius * sin(end)}),
                     q);
-            a.start_angle = atan2(p[1] - a.center[1], p[0] - a.center[0]);
-            a.end_angle = atan2(q[1] - a.center[1], q[0] - a.center[0]);
-            if (dot(V{loc[2][0], loc[2][1], loc[2][2]}, frame.n) < 0)
-                std::swap(a.start_angle, a.end_angle);
-            double turn = 2 * acos(-1.0);
-            a.start_angle = fmod(a.start_angle + turn, turn);
-            a.end_angle = fmod(a.end_angle + turn, turn);
-            if (fabs(a.start_angle) < 1e-12)
-                a.start_angle = 0;
-            if (fabs(a.end_angle) < 1e-12)
-                a.end_angle = 0;
-            if (a.end_angle <= a.start_angle)
-                a.end_angle += turn;
+            ArcRepresentation rep = arc_representation(
+                atan2(p[1] - a.center[1], p[0] - a.center[0]),
+                atan2(q[1] - a.center[1], q[0] - a.center[0]), arc_direction(e), mirrored);
+            a.start_angle = rep.start_angle;
+            a.end_angle = rep.end_angle;
             CK(ProSectionEntityAdd(section, (Pro2dEntdef *)&a, &id));
+            arc_endpoint_swapped[id] = rep.swapped;
+            arc_logical_swapped[name] = rep.swapped;
         } else if (type == "spline") {
             auto points = e["points"];
             std::vector<std::array<double, 2>> xy(points.size());
@@ -2255,7 +2390,7 @@ static J populate_profile(ProSection section, const J &op) {
         std::vector<ProSectionPointType> senses;
         for (auto r : d["refs"]) {
             ids.push_back(entities.at(r["entity"].get<std::string>()));
-            senses.push_back(point_type(r.value("point", "whole")));
+            senses.push_back(logical_point(ids.back(), point_type(r.value("point", "whole"))));
         }
         double place[2];
         project(d["position"], place);

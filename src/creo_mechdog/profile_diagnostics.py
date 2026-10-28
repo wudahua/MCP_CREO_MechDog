@@ -61,6 +61,17 @@ def _on_circle(center: Point, radius: float, angle: float) -> Point:
     return (center[0] + radius * math.cos(angle), center[1] + radius * math.sin(angle))
 
 
+def _arc_direction(entity: dict) -> int:
+    # FEAT-034/T02: the analyzer consumes the same strict dir contract as the
+    # schema. Payloads without the field keep the legacy counterclockwise +1.
+    value = entity.get("dir", 1)
+    if type(value) is not int or value not in (-1, 1):
+        raise ValueError(
+            "Arc dir must be the strict integer +1 (counterclockwise) or -1 (clockwise)"
+        )
+    return value
+
+
 def _distance(a: Point, b: Point) -> float:
     return math.hypot(a[0] - b[0], a[1] - b[1])
 
@@ -90,11 +101,24 @@ def _expand(entities: list[dict]) -> tuple[list[Curve], list[str]]:
         elif kind == "arc":
             center = _point(entity["center"])
             radius = float(entity["radius"])
-            start = math.radians(float(entity["start_angle"]))
-            end = math.radians(float(entity["end_angle"]))
-            sweep = (end - start) % _TWO_PI
-            if sweep <= EXACT_TOLERANCE_MM:
-                sweep = _TWO_PI
+            start_deg = float(entity["start_angle"])
+            end_deg = float(entity["end_angle"])
+            direction = _arc_direction(entity)
+            if not math.isfinite(start_deg) or not math.isfinite(end_deg):
+                raise ValueError("Arc angles must be finite degrees")
+            start = math.radians(start_deg)
+            # Signed sweep: positive runs counterclockwise from the logical
+            # start, negative clockwise (FEAT-034/T02). A zero sweep or a
+            # complete circle belongs to the circle entity.
+            magnitude = (
+                (end_deg - start_deg) % 360 if direction > 0 else (start_deg - end_deg) % 360
+            )
+            if magnitude <= 1e-9:
+                raise ValueError(
+                    "Arc sweep must be strictly between 0 and 360 degrees; "
+                    "use circle for a complete circle"
+                )
+            sweep = direction * math.radians(magnitude)
             curves.append(
                 Curve(
                     name,
@@ -376,7 +400,10 @@ def _circle_circle(c1: Point, r1: float, c2: Point, r2: float) -> list[tuple[str
 def _in_arc(curve: Curve, point: Point) -> bool:
     angle = math.atan2(point[1] - curve.center[1], point[0] - curve.center[0])
     offset = (angle - curve.start_angle) % _TWO_PI
-    return offset <= curve.sweep + 1e-9 or offset >= _TWO_PI - 1e-9
+    if curve.sweep >= 0:
+        return offset <= curve.sweep + 1e-9 or offset >= _TWO_PI - 1e-9
+    # Clockwise arc: the covered band ends at the logical start angle.
+    return offset >= _TWO_PI + curve.sweep - 1e-9 or offset <= 1e-9
 
 
 def _intersections(first: Curve, second: Curve) -> list[tuple[str, Point]]:
@@ -405,6 +432,32 @@ def _intersections(first: Curve, second: Curve) -> list[tuple[str, Point]]:
 
 def _item(kind: str, names: list[str], **extra) -> dict:
     return {"category": kind, "entities": names, **extra}
+
+
+def _arc_echo(curve: Curve) -> dict:
+    # FEAT-034/T02: logical start/end, tangents, direction and sweep of one arc
+    # in the sketch-local frame. This block describes the supplied input only
+    # (source="input"); measured kernel geometry never enters this report and
+    # input values are never presented as a native result.
+    direction = 1 if curve.sweep >= 0 else -1
+
+    def tangent(angle: float) -> list[float]:
+        if direction > 0:
+            return [-math.sin(angle), math.cos(angle)]
+        return [math.sin(angle), -math.cos(angle)]
+
+    return {
+        "name": curve.name,
+        "source": "input",
+        "query_code": None,
+        "frame": "sketch_local",
+        "start_uv": [curve.start[0], curve.start[1]],
+        "end_uv": [curve.end[0], curve.end[1]],
+        "start_tangent_uv": tangent(curve.start_angle),
+        "end_tangent_uv": tangent(curve.start_angle + curve.sweep),
+        "dir": direction,
+        "sweep_deg": math.degrees(abs(curve.sweep)),
+    }
 
 
 def analyze_profile(entities: list[dict], tolerance: float = CLOSURE_TOLERANCE_MM) -> dict:
@@ -573,6 +626,7 @@ def analyze_profile(entities: list[dict], tolerance: float = CLOSURE_TOLERANCE_M
         "analysis": "partial" if unsupported else "complete",
         "closure_tolerance_mm": tolerance,
         "exact_tolerance_mm": EXACT_TOLERANCE_MM,
+        "arc_geometry": [_arc_echo(curve) for curve in curves if curve.kind == "arc"],
         "entity_count": len(curves),
         "contour_count": len(contours),
         "closed_contour_count": len(closed),
