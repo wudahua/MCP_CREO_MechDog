@@ -27,6 +27,7 @@ from creo_mechdog.references import (
     validate_planar_reference,
     validate_sketch_plane_frame,
 )
+from creo_mechdog.sheetmetal import first_wall_section_problem
 
 
 class StrictModel(BaseModel):
@@ -773,6 +774,11 @@ class DraftOp(StrictModel):
 
 
 class SheetmetalWallOp(StrictModel):
+    # DEV-051 T03 / BUG-032 contract: the first wall is one open straight line
+    # of length L. `thickness` is the sheet thickness and becomes the in-plane
+    # width of the thin section; `depth` is the extrusion distance along the
+    # sketch normal. The native wall keeps volume = L x thickness x depth and
+    # rejects sections it cannot drive (see creo_mechdog.sheetmetal).
     op: Literal["sheetmetal_wall"]
     label: Label
     sketch: SketchRef
@@ -1354,4 +1360,13 @@ def validate_operations(operations: list[dict]) -> list[dict]:
                     )
                 except ValueError as error:
                     raise ValueError(f"operations[{index}]: {error}") from error
+        # DEV-051 T03 / BUG-032: the sheetmetal first wall is defined by one open
+        # straight line only. A section from an earlier job is enforced by the
+        # native operation; a same-plan section is rejected before modelling.
+        if operation["op"] == "sheetmetal_wall" and isinstance(operation.get("sketch"), str):
+            source = sketches.get(operation["sketch"])
+            if source:
+                problem = first_wall_section_problem(source["entities"])
+                if problem:
+                    raise ValueError(f"operations[{index}]: {problem}")
     return dumped

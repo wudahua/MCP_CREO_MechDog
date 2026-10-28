@@ -165,12 +165,75 @@ static void generic_sweep(const J &op) {
     extra["section_path"] = path;
     remember(op, f, extra);
 }
+// T03/BUG-032: the first wall is one thin extrusion of one open straight line,
+// converted into a native sheetmetal wall. The conversion re-drives the body from
+// a single driving face, so a closed contour, an arc or a chain has no defined
+// depth/thickness geometry and its depth would be silently replaced by the
+// thickness (the reported closed rectangle kept one volume for depth 1 and 30).
+// Reject those sections before any feature is created; the independent tool and
+// execute_plan share this native path.
+static double first_wall_line_length(ProFeature sketch) {
+    ProSection section = nullptr;
+    ProError code = ProFeatureSectionCopy(&sketch, 0, &section);
+    if (code)
+        throw std::runtime_error("sheetmetal_wall could not read the first wall sketch section "
+                                 "(code " +
+                                 std::to_string(code) + ")");
+    ProIntlist ids = nullptr;
+    int count = 0;
+    code = ProSectionEntityIdsGet(section, &ids, &count);
+    std::string problem;
+    if (code)
+        problem = "sheetmetal_wall could not list the first wall section entities (code " +
+                  std::to_string(code) + ")";
+    int curves = 0, lines = 0;
+    double length = 0;
+    for (int index = 0; problem.empty() && index < count; index++) {
+        ProBoolean construction = PRO_B_FALSE, projection = PRO_B_FALSE;
+        if (!ProSectionEntityIsConstruction(section, ids[index], &construction) && construction)
+            continue;
+        if (!ProSectionEntityIsProjection(section, ids[index], &projection) && projection)
+            continue;
+        Pro2dEntdef *def = nullptr;
+        if (ProSectionEntityGet(section, ids[index], &def) || !def) {
+            problem = "sheetmetal_wall could not read first wall section entity " +
+                      std::to_string(ids[index]);
+            break;
+        }
+        if (def->type == PRO_2D_CENTER_LINE)
+            continue;
+        curves++;
+        if (def->type != PRO_2D_LINE)
+            continue;
+        auto line = (Pro2dLinedef *)def;
+        lines++;
+        length = hypot(line->end2[0] - line->end1[0], line->end2[1] - line->end1[1]);
+    }
+    if (ids)
+        ProArrayFree((ProArray *)&ids);
+    ProSectionFree(&section);
+    if (problem.empty() && (curves != 1 || lines != 1))
+        problem = "sheetmetal_wall creates the first wall from exactly one open straight line; "
+                  "the section has " +
+                  std::to_string(curves) + " drawing entities (" + std::to_string(lines) +
+                  " straight lines). Closed contours, arcs, splines and multi-entity chains are "
+                  "not supported for the first wall";
+    if (problem.empty() && !(length > 0))
+        problem = "sheetmetal_wall requires a straight line with a nonzero length";
+    if (!problem.empty())
+        throw std::runtime_error(problem);
+    log("SHEETMETAL_WALL_LINE_LENGTH_MM=%.12f\n", length);
+    return length;
+}
 static void generic_sheetmetal_wall(const J &op) {
     // Preserve the editable driving sketch, then convert its thin native extrusion.
     J state = inspection();
     if (state["has_solid"].get<bool>())
         throw std::runtime_error(
             "sheetmetal_wall creates the first wall; attach later walls with sheetmetal_flange");
+    double thickness = op["thickness"].get<double>();
+    double depth = op["depth"].get<double>();
+    double line_length = first_wall_line_length(feature(op["sketch"]));
     std::string base = "b_" + op["label"].get<std::string>().substr(0, 25);
     J extrude = {{"op", "extrude"},
                  {"label", base},
@@ -190,22 +253,61 @@ static void generic_sheetmetal_wall(const J &op) {
     if (active < 0)
         throw std::runtime_error("No active thin body");
     ProSelection body = selection(active, PRO_BODY);
+    // The conversion re-thickens the body along the driving face normal with
+    // PRO_E_STD_SMT_THICKNESS. Driving from the largest face replaced the requested
+    // depth with the thickness whenever thickness > depth (185x232x1 became
+    // 185x232x232 = 9957440 mm3, BUG-032), so the driving face must be normal to
+    // the sheet thickness axis and let the conversion keep the thin section.
+    J body_box;
+    for (auto item : state["bodies"])
+        if (item["id"].get<int>() == active && item.contains("bbox"))
+            body_box = item["bbox"];
+    if (!body_box.is_array() || body_box.size() != 2)
+        throw std::runtime_error("Sheetmetal conversion needs the new wall body outline");
+    V extent = {}, low = vec(body_box[0]), high = vec(body_box[1]);
+    for (int i = 0; i < 3; i++)
+        extent[i] = fabs(high[i] - low[i]);
+    int axis = -1;
+    double closest = 1e9;
+    for (int i = 0; i < 3; i++) {
+        double relative = fabs(extent[i] - thickness) / thickness;
+        if (relative < closest) {
+            closest = relative;
+            axis = i;
+        }
+    }
+    if (axis < 0 || closest > 0.02)
+        throw std::runtime_error(
+            "Sheetmetal conversion could not identify the sheet thickness axis of the new wall; "
+            "the body extents do not contain the requested thickness " +
+            std::to_string(thickness) +
+            " mm, so the wall cannot keep the requested depth and thickness");
     J face;
     double best = -1;
-    for (auto surf : state["surfaces"])
-        if (surf.contains("normal")) {
-            V a = vec(surf["bbox"][1]), b = vec(surf["bbox"][0]),
-              d = {a[0] - b[0], a[1] - b[1], a[2] - b[2]};
-            std::array<double, 3> e = {fabs(d[0]), fabs(d[1]), fabs(d[2])};
-            std::sort(e.begin(), e.end());
-            double area = e[1] * e[2];
-            if (area > best) {
-                best = area;
-                face = surf;
-            }
+    for (auto surf : state["surfaces"]) {
+        if (!surf.contains("normal"))
+            continue;
+        V normal = vec(surf["normal"]);
+        if (fabs(normal[axis]) < 0.999)
+            continue;
+        V a = vec(surf["bbox"][1]), b = vec(surf["bbox"][0]);
+        if (fabs(a[axis] - b[axis]) > 1e-6)
+            continue; // Only faces bounding the body on the thickness axis.
+        double area = 1;
+        for (int i = 0; i < 3; i++)
+            if (i != axis)
+                area *= fabs(a[i] - b[i]);
+        if (area > best) {
+            best = area;
+            face = surf;
         }
+    }
     if (face.is_null())
-        throw std::runtime_error("Sheetmetal conversion needs a planar driving face");
+        throw std::runtime_error("Sheetmetal conversion needs a planar driving face normal to "
+                                 "the sheet thickness axis");
+    log("SHEETMETAL_WALL_DRIVING_FACE id=%d axis=%d normal=%.9f,%.9f,%.9f area_mm2=%.9f\n",
+        face["id"].get<int>(), axis, vec(face["normal"])[0], vec(face["normal"])[1],
+        vec(face["normal"])[2], best);
     ProSelection drive = selection(face["id"], PRO_SURFACE);
     ProElement root = node(nullptr, PRO_E_FEATURE_TREE);
     integer(root, PRO_E_FEATURE_TYPE, PRO_FEAT_DATUM_SURF);
@@ -222,9 +324,6 @@ static void generic_sheetmetal_wall(const J &op) {
     ProElementFree(&root);
     ProSelectionFree(&body);
     ProSelectionFree(&drive);
-    remember(op, f,
-             {{"base_feature", base},
-              {"construction", "thin_extrude_then_native_sheetmetal_conversion"}});
     state = inspection();
     bool native_smt = false;
     ProSolidBody *bodies = nullptr;
@@ -239,6 +338,28 @@ static void generic_sheetmetal_wall(const J &op) {
     ProArrayFree((ProArray *)&bodies);
     if (!native_smt)
         throw std::runtime_error("No native sheetmetal body was produced");
+    // Supported first walls keep the declared parameters: one straight line of
+    // length L, thin width = thickness, extrusion depth = depth, so the wall is
+    // L x thickness x depth. Anything else means the conversion traded one
+    // parameter for another, which must not surface as a silent success.
+    double expected = line_length * thickness * depth, measured = volume();
+    log("SHEETMETAL_WALL_VOLUME line_mm=%.9f thickness_mm=%.9f depth_mm=%.9f expected_mm3=%.9f "
+        "measured_mm3=%.9f\n",
+        line_length, thickness, depth, expected, measured);
+    if (fabs(measured - expected) > std::max(0.01, expected * 1e-3))
+        throw std::runtime_error(
+            "Sheetmetal wall volume " + std::to_string(measured) +
+            " mm3 does not match line length x thickness x depth (" + std::to_string(expected) +
+            " mm3); the native conversion changed the requested depth or thickness");
+    remember(op, f,
+             {{"base_feature", base},
+              {"construction", "thin_extrude_then_native_sheetmetal_conversion"},
+              {"wall_contract",
+               {{"line_length_mm", line_length},
+                {"expected_volume_mm3", expected},
+                {"measured_volume_mm3", measured},
+                {"driving_face_id", face["id"]},
+                {"driving_axis", axis}}}});
 }
 static void generic_sheetmetal_unbend(const J &op) {
     bool back = op["op"] == "sheetmetal_bend_back", flat = op["op"] == "sheetmetal_flat_pattern";
