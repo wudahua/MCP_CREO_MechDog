@@ -230,6 +230,13 @@ def section_records(model: dict[str, Any], section: str) -> list[Any] | None:
     values = state.get(section)
     if not isinstance(values, list):
         return None
+    if section == "components":
+        # FEAT-023/T09A: project business labels and source identity onto the
+        # physical-copy records at query time (join key: model identity plus
+        # feature_id). Stored inspection payloads are never rewritten.
+        from creo_mechdog import component_identity
+
+        return component_identity.decorate_component_records(model, values)
     if section == "features":
         # Large nested collections have their own independently paginated sections.
         return [
@@ -297,6 +304,19 @@ def inspect_page(
             resolved = aliases_of(model)
             if isinstance(resolved, dict):
                 whole["aliases"] = resolved
+        # The paged components section serves identity-decorated records; the
+        # whole fast path must serve the same shape (T08 feature_state
+        # precedent), so the two full shapes cannot disagree on labels.
+        payload = whole.get("inspection")
+        if isinstance(payload, dict) and isinstance(payload.get("components"), list):
+            from creo_mechdog import component_identity
+
+            whole["inspection"] = {
+                **payload,
+                "components": component_identity.decorate_component_records(
+                    model, payload["components"]
+                ),
+            }
         # The T08 registries ride in model_summary; the whole fast path serves
         # the same bounded feature_state section the paged shape serves, so the
         # two full shapes cannot disagree about tombstones/suppressions.

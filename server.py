@@ -1724,15 +1724,23 @@ async def creo_remove_component(
 @mcp.tool(annotations=READ)
 async def creo_list_components(model_id: str) -> dict[str, Any]:
     """Read the last verified assembly component list, native transforms and placement status."""
-    from creo_mechdog import model_registry
+    from creo_mechdog import component_identity, model_registry
 
     model = await invoke(general.model_info, model_id)
     if model.get("model_type") != "assembly":
         raise ToolError("Assembly model required")
+    # FEAT-023/T09A: business labels and source identity are projected onto the
+    # component records by model identity + feature_id; the physical c_<job>
+    # copy names stay as reported by the native inspection.
+    projection = component_identity.project_component_identities(
+        model, (model_registry.inspection_of(model) or {}).get("components", [])
+    )
     return {
         "model_id": model_id,
         "revision": model["revision"],
-        "components": (model_registry.inspection_of(model) or {}).get("components", []),
+        "components": projection["components"],
+        "deleted_identities": projection["deleted_identities"],
+        "identity_key": projection["identity_key"],
         "aliases": model_registry.aliases_of(model),
     }
 

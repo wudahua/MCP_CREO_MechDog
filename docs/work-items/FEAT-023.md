@@ -49,3 +49,12 @@ capabilities摘要/分页已随0.4.2交付、0.4.4补验收闭环；0.4.5的READ
 ## 2026-10-23 外部 Creo 9 证据补录（第八轮，2026-10-25 归档登记）
 
 - 外部第八轮确认：capabilities 104KB 问题已修（compact 摘要 + 分节），外部按 compact/detail 正常消费。归档见 [feedback-0.5.0-0.5.1-2026-10-23](../validation/feedback-0.5.0-0.5.1-2026-10-23/manifest.json)。
+
+## 2026-10-28 DEV-051 T09A：组件清单内联业务 label 与源件身份（离线实现）
+
+本卡剩余范围中的“组件清单内联业务 label 及 source_model_id/source_revision”已按 [0.7.0 派发表](../development/0.7.0-FEEDBACK-TASKS-2026-10-28.md) T09A 离线实现（FEAT-023/008）：
+
+- 关联键固定为**模型身份（model_id）+ feature_id**，label 不作身份；多标签以 label_state="multi" + bindings 表达，已删除身份以 deleted_identities（reason=feature_id_not_in_verified_components）独立表达，旧引用不会误指重插后的新组件。
+- 查询投影实现于包内 `src/creo_mechdog/component_identity.py`，接入 `creo_list_components`（组件记录内联 label/labels/label_state/source_model_id/source_revision/bindings，顶层新增 deleted_identities/identity_key）与 `creo_inspect_model` 的 components 节/整页快照；不修改 C_<job> 物理副本命名，不改写存储载荷。
+- 离线证据：`tests/unit/test_component_identity.py` 16 项 + 既有 86 项定向回归通过；compact 不展开、full 分页与整页一致、aliases_ref 详情引用解析、40 组件分页全程 ≤ 32 KiB。详见[验收记录](../development/DEV051-T09A-ACCEPTANCE.md)。
+- 未关闭本卡其余体积议题（jobs compact 日志、翼型/履带请求体量、union 校验错误）；实机跨作业装配查询/保存重载与大装配体量验证待统一安排，工具描述/README 补充由 T01 收口。
