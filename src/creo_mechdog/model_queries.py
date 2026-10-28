@@ -10,6 +10,11 @@ from typing import Any
 
 RESPONSE_BUDGET = 32 * 1024
 COUNT_KEYS = ("features", "surfaces", "edges", "bodies", "components")
+# BUG-040: counts.bodies is the number of body *objects* (records), which
+# includes non-active records that hold no material. The native body_counts
+# block carries the separated numbers; it is projected only when present, and
+# unknown values stay null instead of being recomputed from the records here.
+BODY_COUNT_KEYS = ("objects", "records", "active", "with_material", "without_material")
 SECTIONS = (
     "features",
     "dimensions",
@@ -53,7 +58,34 @@ def full_inspection_of_model(model: dict[str, Any]) -> dict[str, Any]:
     return full_inspection(model) or {}
 
 
+def body_counts(value: Any) -> dict[str, Any] | None:
+    # None means "not reported" (an assembly, or a pre-T08B result). A single
+    # None means the native side could not query that number. Nothing is
+    # derived from the records here: that would silently reintroduce the
+    # two-meanings-in-one-field defect this block exists to remove.
+    if not isinstance(value, dict):
+        return None
+    counts: dict[str, Any] = {}
+    for key in BODY_COUNT_KEYS:
+        item = value.get(key)
+        counts[key] = item if type(item) is int and item >= 0 else None
+    meaning = value.get("counts_meaning")
+    if isinstance(meaning, dict):
+        counts["counts_meaning"] = {
+            key: text
+            for key, text in meaning.items()
+            if isinstance(key, str) and isinstance(text, str)
+        }
+    return counts
+
+
 def inspection_summary(inspection: Any) -> dict[str, Any]:
+    """Summarize an inspection payload without changing its meaning.
+
+    ``counts`` keeps its historical meaning: the number of records per
+    section (``bodies`` counts body objects, not material bodies). The native
+    ``body_counts`` block is the separated view and is passed through as-is.
+    """
     state = inspection if isinstance(inspection, dict) else {}
     supplied = state.get("counts") or {}
     counts = {}
@@ -86,6 +118,7 @@ def inspection_summary(inspection: Any) -> dict[str, Any]:
             if key in state
         },
         "counts": counts,
+        "body_counts": body_counts(state.get("body_counts")),
         "inspection_available": bool(state) and state.get("inspection_available", True),
     }
 

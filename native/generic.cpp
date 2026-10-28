@@ -474,6 +474,27 @@ static bool assembly_model() {
     CK(ProMdlTypeGet(board, &t));
     return t == PRO_MDL_ASSEMBLY;
 }
+// Body state names as declared in ProSolidBody.h; the numeric value is kept
+// beside the name so a consumer never has to map the magic number itself
+// (BUG-040). An unlisted value is reported as "unknown", never guessed.
+static const char *body_state_name(ProSolidBodyState state) {
+    switch (state) {
+    case PRO_BODY_STATE_ACTIVE:
+        return "active";
+    case PRO_BODY_STATE_NO_GEOMETRY:
+        return "no_geometry";
+    case PRO_BODY_STATE_NO_CONTR_FEAT:
+        return "no_contributing_feature";
+    case PRO_BODY_STATE_CONSUMED:
+        return "consumed";
+    case PRO_BODY_STATE_MISSING:
+        return "missing";
+    case PRO_BODY_STATE_NONE:
+        return "none";
+    }
+    return "unknown";
+}
+
 static J inspection(bool require_healthy = true) {
     gfeatures = J::array();
     gsurfaces = J::array();
@@ -557,21 +578,39 @@ static J inspection(bool require_healthy = true) {
         CK(ProSolidBodiesCollect((ProSolid)board, &list));
         CK(ProArraySizeGet((ProArray)list, &n));
     }
+    int active_bodies = 0, material_bodies = 0;
     for (int i = 0; i < n; i++) {
         ProSolidBodyState state;
         CK(ProSolidBodyStateGet(&list[i], &state));
-        J b = {{"id", list[i].id}, {"state", (int)state}};
+        J b = {{"id", list[i].id}, {"state", (int)state}, {"state_name", body_state_name(state)}};
         if (state == PRO_BODY_STATE_ACTIVE) {
+            active_bodies++;
             size_t previous_surfaces = gsurfaces.size();
             CK(ProSolidBodySurfaceVisit(&list[i], inspect_surface,
                                         (ProAppData)(intptr_t)list[i].id));
-            b["has_geometry"] = gsurfaces.size() > previous_surfaces;
-            if (b["has_geometry"].get<bool>()) {
+            size_t surfaces = gsurfaces.size() - previous_surfaces;
+            b["surface_count"] = surfaces;
+            b["has_geometry"] = surfaces > 0;
+            // Material membership is defined, not guessed: only an active body
+            // that contributed at least one surface carries material.
+            b["material"] = surfaces > 0;
+            if (surfaces > 0) {
                 solid = true;
+                material_bodies++;
                 Pro3dPnt bounds[2];
                 CK(ProSolidBodyOutlineGet(&list[i], bounds));
                 b["bbox"] = J::array({xyz(bounds[0]), xyz(bounds[1])});
+                b["bbox_query_code"] = PRO_TK_NO_ERROR;
+            } else {
+                b["bbox"] = nullptr;
+                b["bbox_query_code"] = nullptr;
             }
+        } else {
+            // Non-active records keep their object and ID but hold no material.
+            // Their geometry is not visited, so presence stays unknown (null)
+            // instead of being reported as measured empty (BUG-040).
+            b["has_geometry"] = nullptr;
+            b["material"] = false;
         }
         bodies.push_back(b);
     }
@@ -586,10 +625,27 @@ static J inspection(bool require_healthy = true) {
     // Coordinates/dimensions retain model units. Do not label native in^3 as mm^3.
     J units = length_units.code || !length_units.length.name[0] ? J(nullptr)
                                                                 : J(utf8(length_units.length.name));
+    // Two different counts, kept apart (BUG-040): `bodies` / `counts.bodies` is
+    // the number of enumerated body objects, including non-active records that
+    // hold no material; `body_counts` separates objects, active bodies and the
+    // ones that actually carry material. Assemblies have no part bodies, so the
+    // block is null instead of a zero that would look like an empty solid.
+    J body_counts = nullptr;
+    if (!isasm) {
+        body_counts = {
+            {"objects", n},
+            {"records", (int)bodies.size()},
+            {"active", active_bodies},
+            {"with_material", material_bodies},
+            {"without_material", (int)bodies.size() - material_bodies},
+            {"counts_meaning",
+             {{"bodies", "body_objects"}, {"with_material", "active_bodies_with_surfaces"}}}};
+    }
     J result = {{"features", gfeatures},
                 {"surfaces", gsurfaces},
                 {"edges", gedges},
                 {"bodies", bodies},
+                {"body_counts", body_counts},
                 {"healthy", healthy},
                 {"units", units},
                 {"units_query_code", length_units.code},
