@@ -325,6 +325,10 @@ class Acceptance:
             "failed_step": preview.get("failed_step"),
             "failed_code": preview.get("failed_code"),
             "file_verified": preview.get("file_verified"),
+            # BUG-088: keep the filesystem stage beside the raster code so a
+            # missing file can be told apart from a failed raster call.
+            "file_check": preview.get("file_check"),
+            "verification_error": preview.get("verification_error"),
         }
         # Raw codes are the evidence. A zero raster code alone does not mean the
         # picture is correct, so the image is retained for human review.

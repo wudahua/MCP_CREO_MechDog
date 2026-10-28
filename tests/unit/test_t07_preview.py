@@ -109,6 +109,46 @@ class NativeSharedStep(unittest.TestCase):
             with self.subTest(step=step):
                 self.assertIn(f'"{step}"', shared)
 
+    def test_the_confirmation_stage_records_the_real_filesystem_error(self):
+        # BUG-088: after a zero raster code the probe must publish the path
+        # shape, existence, size and the actual std::error_code.
+        shared = native_source("preview.h")
+        for token in (
+            "preview_confirm_file",
+            "file_check_absolute",
+            "file_check_parent_exists",
+            "file_check_exists",
+            "file_check_regular",
+            "file_check_code",
+            "error.category().name()",
+            "error.message()",
+            "is_regular_file",
+            "is_directory",
+            '"file_check"',
+            '"after_raster"',
+        ):
+            with self.subTest(token=token):
+                self.assertIn(token, shared)
+
+    def test_only_a_missing_path_maps_to_not_found(self):
+        shared = native_source("preview.h")
+        block = region(shared, "if (error || outcome.file_bytes <= 0) {", "// One capture attempt.")
+        self.assertIn("preview_is_missing(error)", block)
+        self.assertIn("PRO_TK_E_NOT_FOUND", block)
+        self.assertIn("PRO_TK_GENERAL_ERROR", block)
+        # The previous blanket mapping reported every filesystem failure as a
+        # missing file.
+        self.assertNotIn("error ? PRO_TK_E_NOT_FOUND", shared)
+
+    def test_the_probe_does_not_retry_the_capture_or_the_job(self):
+        shared = native_source("preview.h")
+        probe = region(shared, "static void preview_confirm_file", "// One capture attempt.")
+        self.assertNotIn("ProRasterFileWrite", probe)
+        self.assertNotIn("sleep", probe)
+        self.assertLess(
+            shared.index("code = ProRasterFileWrite"), shared.index("preview_confirm_file(outcome)")
+        )
+
     def test_the_step_checks_the_target_window_and_file_size(self):
         shared = native_source("preview.h")
         for token in (
@@ -252,6 +292,130 @@ class PreviewProjection(unittest.TestCase):
         self.assertEqual(compact["result"]["operations"][0]["preview_code"], 0)
         self.assertEqual(compact["result"]["preview_status"], "written")
         self.assertEqual(compact["result"]["preview"]["codes"]["raster"], 0)
+
+
+class PreviewFileConfirmation(unittest.TestCase):
+    """BUG-088: the raster stage and the filesystem stage stay distinguishable.
+
+    Every fixture is isolated: a private temporary directory, no Creo, no job.
+    A zero raster code is never enough on its own to report written.
+    """
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix="t08a_preview_")
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        (self.root / "output").mkdir()
+        self.image = self.root / "output" / "preview.jpg"
+
+    def native(self, **overrides) -> dict:
+        block = {
+            "status": "written",
+            "path": str(self.image),
+            "bytes": 16,
+            "codes": {"display": 0, "refit": 0, "repaint": 0, "raster": 0},
+            "failed_step": None,
+            "failed_code": None,
+            "file_check": {
+                "stage": "after_raster",
+                "absolute": True,
+                "parent_exists": True,
+                "exists": True,
+                "is_file": True,
+                "size": 16,
+                "error_code": 0,
+                "error_category": None,
+                "error_message": None,
+            },
+        }
+        block.update(overrides)
+        return block
+
+    def test_raster_failure_never_reports_a_file_check(self):
+        # Stage 1 fails: there is no file to confirm, so the block stays null.
+        result = {
+            "success": True,
+            "preview_code": -5,
+            "preview": self.native(
+                status="failed",
+                bytes=-1,
+                failed_step="raster",
+                failed_code=-5,
+                file_check=None,
+                codes={"display": 0, "refit": 0, "repaint": 0, "raster": -5},
+            ),
+        }
+        block = normalize_preview(result, directory=self.root)
+        self.assertEqual(block["status"], "failed")
+        self.assertEqual(block["failed_step"], "raster")
+        self.assertEqual(block["failed_code"], -5)
+        self.assertIsNone(block["file_check"])
+
+    def test_missing_file_after_a_zero_raster_code_keeps_the_real_error(self):
+        check = {
+            "stage": "after_raster",
+            "absolute": True,
+            "parent_exists": True,
+            "exists": False,
+            "is_file": False,
+            "size": -1,
+            "error_code": 2,
+            "error_category": "system",
+            "error_message": "The system cannot find the file specified.",
+        }
+        preview = self.native(
+            status="failed", bytes=-1, failed_step="output_file", failed_code=-4, file_check=check
+        )
+        block = normalize_preview({"success": True, "preview": preview}, directory=self.root)
+        self.assertEqual(block["status"], "failed")
+        self.assertEqual(block["failed_step"], "output_file")
+        self.assertEqual(block["failed_code"], -4)
+        self.assertEqual(block["file_check"]["error_code"], 2)
+        self.assertEqual(block["file_check"]["error_category"], "system")
+        self.assertFalse(block["file_check"]["exists"])
+        self.assertEqual(block["verification_error"], "FileNotFoundError")
+
+    def test_empty_file_is_failed_even_though_the_path_exists(self):
+        self.image.write_bytes(b"")
+        preview = self.native(bytes=0, failed_step="output_file", failed_code=-1)
+        block = normalize_preview({"success": True, "preview": preview}, directory=self.root)
+        self.assertEqual(block["status"], "failed")
+        self.assertEqual(block["bytes"], 0)
+        # The native size claim is preserved; it is not rewritten by the probe.
+        self.assertEqual(block["file_check"]["size"], 16)
+        self.assertFalse(block["file_verified"])
+        self.assertIsNone(block["verification_error"])
+
+    def test_a_failed_stat_is_reported_without_an_invented_code(self):
+        check = self.native()["file_check"] | {
+            "exists": False,
+            "size": -1,
+            "error_code": 5,
+            "error_category": "system",
+            "error_message": "Access is denied.",
+        }
+        preview = self.native(file_check=check)
+        with patch.object(Path, "stat", side_effect=PermissionError(13, "Access is denied")):
+            block = normalize_preview({"success": True, "preview": preview}, directory=self.root)
+        # The native says written but the file cannot be confirmed: the
+        # projection downgrades it and reports the probe failure instead of a
+        # code borrowed from the raster call.
+        self.assertEqual(block["status"], "failed")
+        self.assertEqual(block["failed_step"], "output_file_verification")
+        self.assertIsNone(block["failed_code"])
+        self.assertEqual(block["file_check"]["error_code"], 5)
+        self.assertEqual(block["verification_error"], "PermissionError")
+
+    def test_a_confirmed_file_stays_written_and_keeps_the_probe(self):
+        self.image.write_bytes(b"confirmed preview bytes")
+        preview = self.native()
+        block = normalize_preview(
+            {"success": True, "preview_code": 0, "preview": preview}, directory=self.root
+        )
+        self.assertEqual(block["status"], "written")
+        self.assertTrue(block["file_verified"])
+        self.assertEqual(block["file_check"]["stage"], "after_raster")
+        self.assertIsNone(block["verification_error"])
 
 
 class JobLevelDecoupling(unittest.TestCase):

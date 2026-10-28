@@ -4,7 +4,10 @@ The native executor captures every raster image through one shared step
 (``native/preview.h``) and publishes the raw Toolkit return codes of each step.
 This module projects that evidence onto the persisted job result without ever
 upgrading an outcome: a capture is only ``written`` when the raster call
-returned zero *and* the file on disk is non-empty.
+returned zero *and* the file on disk is non-empty. The native ``file_check``
+block is the filesystem stage that follows the raster call; it is passed
+through unchanged so a failed confirmation keeps the real error code instead of
+borrowing the raster code (BUG-088).
 
 Preview failure is deliberately independent of the model save. The projection
 does not touch ``success``, ``saved_file_reloaded_and_verified``, ``sha256`` or
@@ -32,17 +35,33 @@ PREVIEW_CODE_KEYS = (
     "repaint",
     "raster",
 )
+FILE_CHECK_KEYS = (
+    "stage",
+    "absolute",
+    "parent_exists",
+    "exists",
+    "is_file",
+    "size",
+    "error_code",
+    "error_category",
+    "error_message",
+)
 
 
-def _file_state(path: Path | None) -> tuple[bool, int | None]:
-    """Return (verified, bytes) without turning a probe into an exception."""
+def _file_state(path: Path | None) -> tuple[bool, int | None, str | None]:
+    """Return (verified, bytes, error type) without turning a probe into an exception.
+
+    The error is kept as its type name only. No numeric code is invented here:
+    the real filesystem code comes from the native confirmation stage and must
+    stay traceable to the call that produced it.
+    """
     if path is None:
-        return False, None
+        return False, None, None
     try:
         size = path.stat().st_size
-    except OSError:
-        return False, None
-    return size > 0, size
+    except OSError as exc:
+        return False, None, type(exc).__name__
+    return size > 0, size, None
 
 
 def _candidate_path(
@@ -92,10 +111,16 @@ def normalize_preview(
     folder = Path(directory) if directory is not None else None
     path = _candidate_path(native, result.get("preview_file"), folder)
     codes = _codes(native, legacy_code)
-    verified, size = _file_state(path)
+    verified, size, stat_error = _file_state(path)
     file_bytes = native.get("bytes") if isinstance(native, dict) else None
     if not isinstance(file_bytes, int):
         file_bytes = size
+    raw_check = native.get("file_check") if isinstance(native, dict) else None
+    file_check = (
+        {key: raw_check[key] for key in FILE_CHECK_KEYS if key in raw_check}
+        if isinstance(raw_check, dict)
+        else None
+    )
 
     reported = native.get("status") if isinstance(native, dict) else None
     failed_step = native.get("failed_step") if isinstance(native, dict) else None
@@ -115,8 +140,13 @@ def normalize_preview(
         # A capture is never upgraded from a claimed success. An empty or
         # missing file means the image does not exist for a reviewer.
         status = "failed"
-        failed_step = "output_file_verification"
-        failed_code = codes.get("raster") if codes.get("raster") not in (None, 0) else -1
+        # A native failed_step is evidence and stays; only a claim without one
+        # gets the projection's own verification step name.
+        if not isinstance(failed_step, str):
+            failed_step = "output_file_verification"
+        # The raster code is not a filesystem code; leave failed_code unknown
+        # rather than borrowing one (BUG-088). The native file_check block and
+        # verification_error carry the real evidence.
 
     block: dict[str, Any] = {
         "status": status,
@@ -127,6 +157,8 @@ def normalize_preview(
         "codes": codes,
         "failed_step": failed_step if isinstance(failed_step, str) else None,
         "failed_code": failed_code if isinstance(failed_code, int) else None,
+        "file_check": file_check,
+        "verification_error": stat_error,
     }
     for key in (
         "window",

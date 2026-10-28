@@ -21,6 +21,7 @@
 #include <cstring>
 #include <filesystem>
 #include <string>
+#include <system_error>
 
 // Canonical 3/4 view used by every preview and export. Each row is unit length
 // and the rows are orthogonal, which the SDK view-matrix setter requires.
@@ -50,6 +51,18 @@ struct PreviewStepOutcome {
     bool current_window_matches = false;
     bool view_matrix_matches = false;
     long long file_bytes = -1;
+    // Filesystem confirmation of the raster output, recorded separately from
+    // the raster code: a zero return only says Creo accepted the request, and a
+    // failed confirmation must show its own real error instead of a single
+    // borrowed "not found" code (BUG-088).
+    bool file_check_absolute = false;
+    bool file_check_parent_exists = false;
+    bool file_check_exists = false;
+    bool file_check_regular = false;
+    long long file_check_size = -1;
+    int file_check_code = 0;
+    std::string file_check_category;
+    std::string file_check_message;
     std::string failed_step;
     int failed_code = 0;
 };
@@ -72,12 +85,71 @@ static void preview_record(PreviewStepOutcome &outcome, const char *step, int co
     }
 }
 
+// Windows/localized system messages can be long; the diagnostic keeps its
+// first characters so the response budget is not spent on one string.
+static std::string preview_truncate(const std::string &value, size_t limit = 160) {
+    if (value.size() <= limit)
+        return value;
+    return value.substr(0, limit);
+}
+
+// "Nothing at that path" is a specific filesystem outcome, not every failure.
+// Comparison covers both the generic and the Windows system category because
+// std::filesystem reports ENOENT either way depending on the call.
+static bool preview_is_missing(const std::error_code &error) {
+    if (!error)
+        return true;
+    return error == std::errc::no_such_file_or_directory || error.value() == ERROR_FILE_NOT_FOUND ||
+           error.value() == ERROR_PATH_NOT_FOUND;
+}
+
 static bool preview_rotation_matches(const ProMatrix actual) {
     for (int row = 0; row < 3; row++)
         for (int column = 0; column < 3; column++)
             if (std::fabs(actual[row][column] - preview_isometric_view[row][column]) > 1e-3)
                 return false;
     return true;
+}
+
+// Filesystem confirmation of the raster output (BUG-088). This is a separate
+// stage from the raster call: the probe records the target path shape, the
+// parent directory, existence, size and the real std::error_code, so a failed
+// confirmation shows why it failed instead of a single borrowed code. Nothing
+// here retries the capture or the modeling job.
+static void preview_confirm_file(PreviewStepOutcome &outcome) {
+    const std::filesystem::path target(outcome.path);
+    outcome.file_check_absolute = target.is_absolute();
+    std::error_code parent_error;
+    outcome.file_check_parent_exists =
+        std::filesystem::is_directory(target.parent_path(), parent_error);
+    std::error_code error;
+    bool exists = std::filesystem::exists(target, error);
+    outcome.file_check_exists = !error && exists;
+    if (!error) {
+        std::error_code size_error;
+        auto size = std::filesystem::file_size(target, size_error);
+        if (size_error) {
+            error = size_error;
+        } else {
+            outcome.file_bytes = static_cast<long long>(size);
+            outcome.file_check_size = outcome.file_bytes;
+            std::error_code type_error;
+            outcome.file_check_regular = std::filesystem::is_regular_file(target, type_error);
+        }
+    }
+    if (error) {
+        outcome.file_check_code = error.value();
+        outcome.file_check_category = error.category().name();
+        outcome.file_check_message = preview_truncate(error.message());
+    }
+    if (error || outcome.file_bytes <= 0) {
+        outcome.failed_step = "output_file";
+        // Only "nothing at that path" maps to NOT_FOUND. A sharing violation,
+        // access denial or I/O failure keeps its own code and message.
+        outcome.failed_code = (!error || preview_is_missing(error)) && !outcome.file_check_exists
+                                  ? PRO_TK_E_NOT_FOUND
+                                  : PRO_TK_GENERAL_ERROR;
+    }
 }
 
 // One capture attempt. apply_view_matrix is false for drawings, whose view is
@@ -188,13 +260,7 @@ static PreviewStepOutcome capture_preview(ProMdl model, const std::wstring &file
     if (code != PRO_TK_NO_ERROR)
         return outcome;
 
-    std::error_code error;
-    auto size = std::filesystem::file_size(std::filesystem::path(file), error);
-    outcome.file_bytes = error ? -1 : static_cast<long long>(size);
-    if (error || outcome.file_bytes <= 0) {
-        outcome.failed_step = "output_file";
-        outcome.failed_code = error ? PRO_TK_E_NOT_FOUND : PRO_TK_GENERAL_ERROR;
-    }
+    preview_confirm_file(outcome);
     return outcome;
 }
 
@@ -218,10 +284,28 @@ static nlohmann::json preview_outcome_json(const PreviewStepOutcome &outcome) {
                             {"refresh", outcome.refresh_code},
                             {"repaint", outcome.repaint_code},
                             {"raster", outcome.raster_code}};
+    // The filesystem stage is only meaningful after a zero raster code; before
+    // that there is no file to confirm and the block stays null.
+    nlohmann::json file_check = nullptr;
+    if (outcome.raster_code == PRO_TK_NO_ERROR)
+        file_check = {{"stage", "after_raster"},
+                      {"absolute", outcome.file_check_absolute},
+                      {"parent_exists", outcome.file_check_parent_exists},
+                      {"exists", outcome.file_check_exists},
+                      {"is_file", outcome.file_check_regular},
+                      {"size", outcome.file_check_size},
+                      {"error_code", outcome.file_check_code},
+                      {"error_category", outcome.file_check_category.empty()
+                                             ? nlohmann::json(nullptr)
+                                             : nlohmann::json(outcome.file_check_category)},
+                      {"error_message", outcome.file_check_message.empty()
+                                            ? nlohmann::json(nullptr)
+                                            : nlohmann::json(outcome.file_check_message)}};
     return {{"status", preview_written(outcome) ? "written" : "failed"},
             {"path", outcome.path.empty() ? nlohmann::json(nullptr)
                                           : nlohmann::json(preview_utf8(outcome.path))},
             {"bytes", outcome.file_bytes},
+            {"file_check", file_check},
             {"window", outcome.window},
             {"window_matches_model", outcome.window_matches_model},
             {"current_window_matches", outcome.current_window_matches},
