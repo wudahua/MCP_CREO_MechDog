@@ -1,0 +1,486 @@
+"""DEV-051 T04 offline driver for BUG-046: overlapping solid add on sheetmetal.
+
+Three-way comparison on the confirmed thin base plate 185 x 232 x 1 mm: a
+solid-part add, a sheetmetal add and a sheetmetal cut share one rectangle, one
+spatial position and one overlap volume (100 mm3), so only the base model kind
+and the extrude mode vary. The fixture, the negative contracts and the
+original bare -1 evidence come from tests.unit.test_sheetmetal_overlap (one
+source for driver and unit tests).
+
+The native source guard only audits the static facts of the single protrusion
+path (target body, parent reference, feature type/elements) and proves the
+committed contracts are present in the working tree. It is not native
+verification and it does not determine the root cause: the add/cut asymmetries
+can only be isolated against a live Creo session.
+
+Default is strictly offline: no MCP client is instantiated and no Toolkit
+connection is made. --live requires --confirm-session-usable and is refused
+here: the live native acceptance of BUG-046 runs as a separate integration
+step on the shared dev service, never from this driver.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import platform
+import subprocess
+import sys
+import time
+import unittest
+import uuid
+from pathlib import Path
+
+_SOURCE_ROOT = Path(__file__).resolve().parents[1]
+if str(_SOURCE_ROOT) not in sys.path:
+    sys.path.insert(0, str(_SOURCE_ROOT))
+
+from creo_mechdog.paths import SOURCE_PATHS  # noqa: E402
+from tests.unit import test_sheetmetal_overlap as fx  # noqa: E402
+
+ROOT = SOURCE_PATHS.resource_root
+
+
+# --- checks ---------------------------------------------------------------
+
+
+def check_three_way_contract() -> list[dict]:
+    from creo_mechdog.schema import validate_operations
+
+    routes = (
+        ("solid_add", "part", fx.route_solid_add(), fx.ROUTE_ADD_VOLUME_MM3),
+        ("sheetmetal_add", "sheetmetal", fx.route_sheetmetal_add(), fx.ROUTE_ADD_VOLUME_MM3),
+        ("sheetmetal_cut", "sheetmetal", fx.route_sheetmetal_cut(), fx.ROUTE_CUT_VOLUME_MM3),
+    )
+    rows = []
+    for name, model_kind, ops, expected_volume in routes:
+        validated = validate_operations(ops)
+        prism = validated[-1]
+        assert prism["sketch"] == "overlap_sketch", prism
+        assert prism["depth"] == fx.PRISM_HALF_DEPTH_MM, prism
+        assert prism["direction"] == "symmetric", prism
+        assert prism["mode"] == ops[-1]["mode"], prism
+        rows.append(
+            {
+                "route": name,
+                "base_model_kind": model_kind,
+                "mode": prism["mode"],
+                "validated_operations": validated,
+                "shared_input": {
+                    "rectangle_min": fx.OVERLAP_MIN,
+                    "rectangle_max": fx.OVERLAP_MAX,
+                    "sketch_plane": "XY",
+                    "prism_depth_mm": fx.PRISM_HALF_DEPTH_MM,
+                    "prism_direction": "symmetric",
+                    "note": "symmetric sweeps both sides; total swept height 5 mm",
+                },
+                "oracle": {
+                    "base_volume_mm3": fx.BASE_VOLUME_MM3,
+                    "prism_volume_mm3": fx.prism_volume_mm3(),
+                    "overlap_volume_mm3": fx.overlap_volume_mm3(),
+                    "expected_result_volume_mm3": expected_volume,
+                },
+                "native_result": "not_measured_offline",
+            }
+        )
+    return rows
+
+
+def check_shared_geometry() -> dict:
+    placements = []
+    block = (-fx.PRISM_HALF_DEPTH_MM, fx.PRISM_HALF_DEPTH_MM)
+    for low in (-1.0, -0.5, 0.0, 0.7):
+        plate = (low, low + fx.BASE_THICKNESS_MM)
+        crossed = max(0.0, min(plate[1], block[1]) - max(plate[0], block[0]))
+        assert abs(crossed - fx.BASE_THICKNESS_MM) < 1e-9, (plate, crossed)
+        placements.append(
+            {
+                "plate_z_interval_mm": list(plate),
+                "crossed_thickness_mm": crossed,
+                "overlap_volume_mm3": fx.PRISM_SIDE_MM * fx.PRISM_SIDE_MM * crossed,
+            }
+        )
+    for lo in fx.OVERLAP_MIN:
+        assert lo >= 0.0
+    assert fx.OVERLAP_MAX[0] <= fx.BASE_LENGTH_MM
+    assert fx.OVERLAP_MAX[1] <= fx.BASE_WIDTH_MM
+    return {
+        "footprint_inside_plate": True,
+        "overlap_invariant_across_plate_z_placements": placements,
+        "note": (
+            "The straddling block spans any 1 mm plate placement near the sketch plane, "
+            "so the overlap stays 100 mm3 while the first-wall Z sign is still an "
+            "unverified live item (DEV-051 T03 card)."
+        ),
+    }
+
+
+def check_negative_contracts() -> dict:
+    from creo_mechdog.schema import validate_operations
+
+    cases = []
+
+    def rejected(name, operations, reason):
+        try:
+            validate_operations(operations)
+        except ValueError as error:
+            message = str(error)
+            assert reason in message, (name, message)
+            cases.append({"case": name, "rejected": True, "message": message})
+        else:
+            raise AssertionError(f"{name} was accepted")
+
+    broken = fx.overlap_sketch()
+    broken["entities"][0]["max"] = list(fx.OVERLAP_MIN)
+    rejected(
+        "through_all_add",
+        [fx.overlap_sketch(), fx.prism_op("add", "boss_add", depth_type="through_all")],
+        "through_all is supported for cuts",
+    )
+    rejected(
+        "through_all_surface",
+        [fx.overlap_sketch(), fx.prism_op("surface", "surf_extrude", depth_type="through_all")],
+        "through_all is supported for cuts",
+    )
+    rejected(
+        "degenerate_overlap_rectangle",
+        [broken, fx.prism_op("add", "boss_add")],
+        "Rectangle max must exceed min",
+    )
+    rejected(
+        "nonpositive_prism_depth",
+        [fx.overlap_sketch(), fx.prism_op("add", "boss_add", depth=0.0)],
+        "greater than 0",
+    )
+    for name, operations in (
+        ("unknown_mode", [fx.overlap_sketch(), fx.prism_op("weld", "boss_add")]),
+        (
+            "unknown_direction",
+            [fx.overlap_sketch(), fx.prism_op("add", "boss_add", direction="up")],
+        ),
+    ):
+        try:
+            validate_operations(operations)
+        except ValueError as error:
+            cases.append({"case": name, "rejected": True, "message": str(error)})
+        else:
+            raise AssertionError(f"{name} was accepted")
+    return {
+        "rejected_before_modelling": cases,
+        "model_untouched": "rejected_before_native_modelling",
+        "not_a_rejection_rule": (
+            "solid add on a sheetmetal model is deliberately NOT pre-rejected here: its "
+            "support status is unconfirmed and a rejection would prejudge the live result"
+        ),
+    }
+
+
+def check_regression_guards() -> dict:
+    from creo_mechdog.schema import validate_operations
+
+    try:
+        validate_operations([fx.solid_plate_sketch(), fx.wall_base_op("plate_sketch")])
+    except ValueError as error:
+        message = str(error)
+        assert "exactly one open straight line" in message, message
+        closed_rejected = message
+    else:
+        raise AssertionError("closed rectangle first wall was accepted (T03 contract regressed)")
+    validated = validate_operations([fx.wall_sketch(), fx.wall_base_op()])
+    assert validated[1]["op"] == "sheetmetal_wall"
+    return {
+        "t03_first_wall_closed_still_rejected": closed_rejected,
+        "t03_first_wall_open_line_still_accepted": True,
+        "t02_arc_dir_fields_untouched_by_this_task": True,
+    }
+
+
+def check_original_evidence() -> dict:
+    hits = {
+        token: fx.archived_reports_containing(token)
+        for token in (
+            *fx.ORIGINAL_ADD_JOBS,
+            fx.ORIGINAL_CUT_JOB,
+            fx.ORIGINAL_ADD_MODEL,
+            fx.ORIGINAL_REPRO_MODEL,
+        )
+    }
+    for token, files in hits.items():
+        assert files, f"evidence token missing from archives: {token}"
+    return {
+        "source_reports": [
+            "docs/validation/feedback-2026-10-16 (0.3.1 S1, sheetmetal toolchain report)",
+            "docs/validation/FEEDBACK-0.3.2.md (A S1 regression)",
+        ],
+        "add_failures": {
+            "jobs": list(fx.ORIGINAL_ADD_JOBS),
+            "model": fx.ORIGINAL_ADD_MODEL,
+            "shape": "10x10x5 block overlapping the base, plus a 155x1x76.46 end wall add",
+            "raw_error": fx.ORIGINAL_ADD_ERROR,
+            "toolkit_code": fx.ORIGINAL_TOOLKIT_CODE,
+        },
+        "cut_control": {
+            "job": fx.ORIGINAL_CUT_JOB,
+            "model": fx.ORIGINAL_REPRO_MODEL,
+            "shape": "10x10 sketch extrude(mode='add', depth=5) failed on the same model where cut works",
+        },
+        "archive_cross_check": hits,
+        "replayed_here": False,
+        "note": "original inputs are evidence only; the three-way fixture is the fixed overlap case",
+    }
+
+
+def check_native_source() -> dict:
+    """Static audit of the single protrusion path; not native verification."""
+    generic = (ROOT / "native" / "generic.cpp").read_text(encoding="utf-8", errors="replace")
+    geometry = (ROOT / "native" / "geometry.cpp").read_text(encoding="utf-8", errors="replace")
+    advanced = (ROOT / "native" / "advanced.cpp").read_text(encoding="utf-8", errors="replace")
+    schema = (ROOT / "src" / "creo_mechdog" / "schema.py").read_text(
+        encoding="utf-8", errors="replace"
+    )
+    checks = {
+        "single_protrusion_path": generic.count("extrude_or_revolve") == 2,
+        "dispatch_shared_by_all_models": 'details = extrude_or_revolve(op, kind == "revolve");'
+        in generic,
+        "feature_type_add_vs_cut": "PRO_FEAT_PROTRUSION" in generic and "PRO_FEAT_CUT" in generic,
+        "material_add_vs_remove": "PRO_EXT_MATERIAL_ADD" in generic
+        and "PRO_EXT_MATERIAL_REMOVE" in generic,
+        "body_all_for_cut": "PRO_BODY_USE_ALL" in generic,
+        "body_selected_default_for_add": "PRO_BODY_USE_SELECTED" in generic
+        and "ProSolidDefaultBodyGet" in generic,
+        "parent_reference_is_model": "ProMdlToModelitem(board, &mi)" in geometry,
+        "create_options_no_opts": "PRO_FEAT_CR_NO_OPTS" in geometry,
+        "raw_minus_one_preserved": "ProFeatureWithoptionsCreate=" in generic,
+        "element_errors_preserved": "last_feature_errors" in generic,
+        "first_wall_native_gate_present": "first_wall_line_length" in advanced,
+        "first_wall_conversion_is_wall_not_protrusion": "PRO_DTM_SRF_AS_WALL" in advanced,
+        "t03_plan_admission_present": "first_wall_section_problem" in schema,
+    }
+    missing = [name for name, present in checks.items() if not present]
+    assert not missing, f"native source guard missing: {missing}"
+    return {
+        "static_source_assertions": checks,
+        "protrusion_paths_found": 1,
+        "element_tree": {
+            "creation_call": "ProFeatureWithoptionsCreate(model selection, tree, PRO_FEAT_CR_NO_OPTS)",
+            "common": [
+                "PRO_E_FEATURE_FORM=PRO_EXTRUDE",
+                "PRO_E_EXT_SURF_CUT_SOLID_TYPE=PRO_EXT_FEAT_TYPE_SOLID",
+                "PRO_E_STD_FEATURE_NAME=<label>",
+                "PRO_E_STD_SECTION/PRO_E_SEC_USE_SKETCH=<sketch feature>",
+                "PRO_E_STD_DIRECTION=+1/-1 (section normal sign x direction)",
+                "PRO_E_STD_EXT_DEPTH: FROM_NONE, TO_BLIND + value",
+            ],
+            "add_only": [
+                "PRO_E_FEATURE_TYPE=PRO_FEAT_PROTRUSION",
+                "PRO_E_REMOVE_MATERIAL=PRO_EXT_MATERIAL_ADD",
+                "PRO_E_BODY: PRO_BODY_USE_NEW (no solid / new_body) or "
+                "PRO_BODY_USE_SELECTED + default body (ProSolidDefaultBodyGet)",
+            ],
+            "cut_only": [
+                "PRO_E_FEATURE_TYPE=PRO_FEAT_CUT",
+                "PRO_E_REMOVE_MATERIAL=PRO_EXT_MATERIAL_REMOVE",
+                "PRO_E_BODY: PRO_BODY_USE_ALL",
+            ],
+        },
+        "asymmetries_add_vs_cut": [
+            "PRO_E_FEATURE_TYPE: PRO_FEAT_PROTRUSION vs PRO_FEAT_CUT",
+            "PRO_E_REMOVE_MATERIAL: PRO_EXT_MATERIAL_ADD vs PRO_EXT_MATERIAL_REMOVE",
+            "PRO_E_BODY: PRO_BODY_USE_SELECTED + default-body ref vs PRO_BODY_USE_ALL",
+        ],
+        "root_cause": "not_determined_statically",
+        "why": (
+            "each asymmetry, and any sheetmetal material-model restriction behind "
+            "ProFeatureWithoptionsCreate -1, can only be isolated against a live session"
+        ),
+        "production_change_this_stage": "none",
+        "note": "Source presence only; native geometry is unverified until the live stage.",
+    }
+
+
+def run_unit_module() -> dict:
+    from tests.unit import test_sheetmetal_overlap
+
+    suite = unittest.defaultTestLoader.loadTestsFromModule(test_sheetmetal_overlap)
+    result = unittest.TextTestRunner(stream=sys.stderr, verbosity=1).run(suite)
+    return {
+        "module": "tests.unit.test_sheetmetal_overlap",
+        "tests_run": result.testsRun,
+        "failures": len(result.failures),
+        "errors": len(result.errors),
+        "skipped": len(result.skipped),
+        "successful": result.wasSuccessful(),
+    }
+
+
+# --- provenance and report ------------------------------------------------
+
+
+def new_run_id() -> str:
+    return f"{time.strftime('%Y%m%dT%H%M%S')}_{uuid.uuid4().hex[:8]}"
+
+
+def resolve_output(output: Path | None, run_id: str) -> Path:
+    """Refuse to overwrite an existing report before anything else runs."""
+    path = (
+        Path(output)
+        if output is not None
+        else ROOT / "build" / "sheetmetal_overlap" / run_id / "report.json"
+    )
+    if path.exists():
+        raise ValueError(f"Refusing to overwrite an existing report: {path}")
+    return path
+
+
+def local_provenance() -> dict:
+    from version import VERSION
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", *args],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=15,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        ).stdout.strip()
+
+    names = set(
+        git("ls-files", "--", "*.py", "native/*.h", "native/*.hpp", "native/*.cpp").splitlines()
+    )
+    names.update(("tools/test_sheetmetal_overlap.py", "tests/unit/test_sheetmetal_overlap.py"))
+    hashes = {
+        name: hashlib.sha256((ROOT / name).read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+        for name in sorted(names)
+    }
+    return {
+        "version": VERSION,
+        "commit": git("rev-parse", "HEAD"),
+        "branch": git("branch", "--show-current"),
+        "dirty": bool(git("status", "--porcelain")),
+        "source_sha256": hashes,
+        "source_fingerprint": hashlib.sha256(
+            json.dumps(hashes, sort_keys=True).encode()
+        ).hexdigest(),
+        "environment": {
+            "system": platform.system(),
+            "machine": platform.machine(),
+            "python": platform.python_version(),
+        },
+        "auto_start_creo": False,
+        "human_session_confirmation": True,
+    }
+
+
+def write_offline_report(output: Path, run_id: str, results: dict) -> dict:
+    report = {
+        "task": "BUG-046 / DEV-051 T04",
+        "scope": (
+            "three-way overlap comparison (solid add / sheetmetal add / sheetmetal cut) "
+            "on the confirmed thin base plate; static audit of the protrusion path"
+        ),
+        "run_id": run_id,
+        "mode": "offline",
+        "live_run": False,
+        "native_acceptance": "not_run",
+        "statement": (
+            "Offline stage only: input contracts, negative contracts, regression guards "
+            "and the static path audit are validated. No Toolkit connection, no native "
+            "geometry, no root cause claimed."
+        ),
+        "oracle": {
+            "base_plate_mm": [fx.BASE_LENGTH_MM, fx.BASE_WIDTH_MM, fx.BASE_THICKNESS_MM],
+            "base_volume_mm3": fx.BASE_VOLUME_MM3,
+            "prism": "10x10x5 mm block centred on the sketch plane (symmetric, 2.5 each side)",
+            "overlap_volume_mm3": fx.overlap_volume_mm3(),
+            "route_add_volume_mm3": fx.ROUTE_ADD_VOLUME_MM3,
+            "route_cut_volume_mm3": fx.ROUTE_CUT_VOLUME_MM3,
+            "independent_of_production_normalization": True,
+        },
+        "checks": results,
+        "support_boundary": {
+            "solid_add_on_sheetmetal": "unconfirmed_offline",
+            "disclosure": (
+                "no pre-modeling rejection and no identifiable error code are added in this "
+                "stage: declaring the combination unsupported would prejudge the live result. "
+                "If live confirms it is unsupported, BUG-046 requires a clear boundary plus "
+                "viable-tool guidance (sheetmetal_wall / sheetmetal_flange) instead of a bare "
+                "-1; that change is intentionally not made here."
+            ),
+            "forbidden_shortcut": (
+                "converting the sheetmetal part to a solid part must never be reported as a "
+                "successful sheetmetal add"
+            ),
+        },
+        "thick_wall_branch": {
+            "status": "pending_t03_live_contract",
+            "note": (
+                "the thick base branch is listed for verification only; this stage sets no "
+                "geometry conclusion for it"
+            ),
+        },
+        "live_checklist": [
+            "run the three routes on fresh models with unique names; record job/model/revision",
+            "route A (solid add) must succeed with volume 43 320 mm3 and one merged body",
+            "route B (sheetmetal add) records the raw failure code and element errors, or the "
+            "real added volume 43 320 mm3 if supported",
+            "route C (sheetmetal cut) must remove 100 mm3 and keep sheetmetal identity",
+            "probe B2: non-overlapping sheetmetal add (discriminates overlap from add)",
+            "probe B3: exact original replay (depth 5 positive, as in the 0.3.2 repro)",
+            "isolate the three add/cut asymmetries (body element, feature type, remove flag)",
+            "negative case: a failing add must leave volume/aliases/revision unchanged and a "
+            "later legal cut must still work",
+            "unbend/bend_back after each successful add or cut; saved_file_reloaded_and_verified",
+            "thick-wall base branch after T03 fixes the real geometry contract",
+        ],
+        "unit_module": run_unit_module(),
+        "provenance": local_provenance(),
+    }
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    return report
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--live", action="store_true")
+    parser.add_argument("--confirm-session-usable", action="store_true")
+    parser.add_argument("--output", type=Path, default=None)
+    args = parser.parse_args(argv)
+
+    if args.live and not args.confirm_session_usable:
+        print("live runs require --confirm-session-usable", file=sys.stderr)
+        return 2
+    if args.live:
+        print(
+            "BUG-046 live native acceptance is a separate integration step on the shared "
+            "dev service; this driver never instantiates an MCP client or connects to Creo.",
+            file=sys.stderr,
+        )
+        return 2
+
+    run_id = new_run_id()
+    output = resolve_output(args.output, run_id)
+    results = {
+        "three_way_contract": check_three_way_contract(),
+        "shared_geometry": check_shared_geometry(),
+        "negative_contracts": check_negative_contracts(),
+        "regression_guards": check_regression_guards(),
+        "original_evidence": check_original_evidence(),
+        "native_source": check_native_source(),
+    }
+    report = write_offline_report(output, run_id, results)
+    digest = hashlib.sha256(output.read_bytes()).hexdigest()
+    checksum = output.with_name("report.sha256")
+    checksum.write_text(f"{digest}  {output.name}\n", encoding="utf-8")
+    print(f"report: {output}")
+    print(f"report_sha256: {digest}")
+    print(f"unit_module: {report['unit_module']}")
+    return 0 if report["unit_module"]["successful"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
