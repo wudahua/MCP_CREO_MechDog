@@ -133,9 +133,9 @@ saved_file_reloaded_and_verified, rolled_back_rebuild_required
 ## 依赖提交、受测身份与指纹
 
 - 依赖提交：`2726ca54715d547c71c7de61c24fb214ac7f6864`（T00）→ `a3c1f4b3e05668aa57d7225dc16394dd272abec9`（T02）→ `601b4bca` / `f10bee750d6c9d582839306b2ffc029997bfb339`（T03）→ `ffbffaad7d4d315fa3c7da37d32a5aaf447fc57b`（T04，本卡基线）。
-- 实现提交：本卡对应 T05 提交，提交号不能自指写入同一提交文件，以交接报告的 `git rev-parse HEAD` 为准。
-- 受测 commit：`ffbffaad7d4d315fa3c7da37d32a5aaf447fc57b` + 本批尚未提交的新增文件；`dirty=true`（同时含其他会话未提交的文档改动）。
-- `source_fingerprint`：见“命令与真实结果”第 2 行报告内的 `provenance.source_fingerprint`（算法与 T03/T04 驱动一致：全部已跟踪 `*.py` 与 `native/*.h|*.hpp|*.cpp` 的 CRLF 归一化 SHA256 清单哈希，另加本任务两个新增文件的显式路径）。提交后源码内容不变，指纹不变；换指纹后不得混用旧结论。
+- 实现提交：`71210e074f31574f72a8b5c2090882809b4b970a`（本卡首次提交；本节的指纹与报告为其后的同任务提交补正）。
+- 受测 commit：`71210e074f31574f72a8b5c2090882809b4b970a`；`dirty=true`（工作区仍有其他会话未提交的文档改动与本机产物，未纳入本批）。提交前同内容运行（HEAD=`ffbffaa` + 未提交本批新增）与提交后运行的源码指纹一致，说明指纹按文件内容计算，可跨提交比对。
+- `source_fingerprint`：`667ad6af8ef39b402519b1d9a347c58cbb286869065b44e8e828c144f7d8214b`（`tools/test_sheetmetal_flange.py` 的 provenance 算法，与 T03/T04 驱动同实现：全部已跟踪 `*.py` 与 `native/*.h|*.hpp|*.cpp` 的 CRLF 归一化 SHA256 清单哈希，另加本任务两个新增文件的显式路径；本次清单 264 个文件）。对应提交后报告 `build/sheetmetal_flange/20261028T221337_5ede0851/report.json`，SHA256 `1afa34b492a9032641a524efb7c99d9f7d12d9118e216c292fec3c4bd649db7c`。换指纹后不得混用旧结论。
 
 ## 环境
 
@@ -146,7 +146,7 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；pydantic 
 | # | 命令 | 真实结果 |
 | --- | --- | --- |
 | 1 | `./.venv/Scripts/python.exe -m unittest tests.unit.test_sheetmetal_flange -v` | exit 0，Ran 33 tests，OK（PowerShell 直接调用时 unittest 写 stderr 会被包装成 NativeCommandError，属调用伪影，以退出码为准） |
-| 2 | `./.venv/Scripts/python.exe tools/test_sheetmetal_flange.py` | exit 0；报告 `build/sheetmetal_flange/20261028T221132_793b8ff3/report.json`，SHA256 `f05895906e79ad6d29d04407ab36d9805b8530d2826c4e15a791422fb7c2a572`（另有同名 `report.sha256`）；`status=not_reproduced_offline / undetermined`；内置复跑 33/33 OK |
+| 2 | `./.venv/Scripts/python.exe tools/test_sheetmetal_flange.py` | exit 0；提交后报告 `build/sheetmetal_flange/20261028T221337_5ede0851/report.json`，SHA256 `1afa34b492a9032641a524efb7c99d9f7d12d9118e216c292fec3c4bd649db7c`（另有同名 `report.sha256`）；`provenance.commit=71210e0…`、`dirty=true`、指纹 `667ad6af…`；`status=not_reproduced_offline / undetermined`；内置复跑 33/33 OK。提交前同内容运行 `20261028T221132_793b8ff3`（SHA256 `f0589590…`）指纹相同，不覆盖、不复用其结论 |
 | 3 | `.venv\Scripts\python.exe tools/test_sheetmetal_flange.py --live` 与 `--live --confirm-session-usable` | 均 exit 2；第二条打印 `LIVE_REFUSAL`，指向唯一 dev 服务并要求在集成步骤中使用 |
 | 4 | `./.venv/Scripts/python.exe -m unittest discover -s tests` | exit 0，`Ran 1226 tests`，OK（259.5 s） |
 | 5 | `./.venv/Scripts/python.exe -m ruff format` / `-m ruff check`（两个新增文件） | 格式化后 `All checks passed!`，无新增诊断 |
