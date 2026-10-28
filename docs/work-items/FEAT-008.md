@@ -337,3 +337,12 @@ R1 §4.1能力摘要、§4.2成熟度、§3.3/§4.3 unchanged、§5五旧请求�
 ### T12 离线实现与验收
 
 按 T12 任务书新增批处理官方示例 `examples/dev047_t12_batch_append.json`（一次计划 6 特征、expected_revision、单次 revision、整作业回滚与 200 操作上限）与离线校验/门控实机驱动 `tools/test_t12_examples.py`；README 固定单位矩阵验收模板（毫米/英寸/混合/未知四场景分别取证、未知为 null）。示例输入全部经真实 `validate_operations` 校验、无模型/面 ID 硬编码。专项 6 项、全量 964 项、语言检查与 dev_check 通过，见 [T12 验收记录](../development/DEV047-T12-ACCEPTANCE-2026-10-26.md)。实机批处理与单位矩阵证据归 T13；整卡保持开放。
+
+### 2026-10-28 DEV-051 T09B：revolve 实际解析轴回显（离线实现）
+
+本卡“revolve 实际选轴回显”范围已按 [0.7.0 派发表](../development/0.7.0-FEEDBACK-TASKS-2026-10-28.md) T09B 离线实现（FEAT-008/BUG-083 关联，回应 0.7.0 反馈 R2 P7）：
+
+- `revolve` 操作结果新增 `revolve_axis` 块：`source`（explicit/internal_centerline）、`kind`（datum_axis/surface/section_centerline/unknown，按 `ProAxisSurfaceGet` 实测分类）、`id`、`origin`/`direction`（+`frame`，model 3D 或 sketch_local 2D，均来自实际轴或 section 中心线查询）、`length_unit`、`geometry_known` 与查询码（`query_code` + `resolution` 五个辅助码含 `section_centerline_count`）。未知一律 null+原码，不回填请求值。
+- 多中心线/无中心线以实测计数表达（用了哪根不可判则 `id=null`）；本次不收紧歧义、准入/回退兼容保持（`{kind:"axis",id}`/`datum_axis_feature`、省略=null=内部中心线、非法轴拒绝均不变），未来收紧须显式记录版本影响。
+- 实现：`native/generic.cpp`（`revolve_axis_report`/`classify_axis_provenance`）、`src/creo_mechdog/operation_results.py` 归一化投影（不一致实测字段降级 unknown）；离线证据 `tests/unit/test_revolve_axis_report.py` 16 项 + T02 弧/T07 多环/T08B 巡检回归 + `bridge.py build` 通过。详见[验收记录](../development/DEV051-T09B-ACCEPTANCE.md)。
+- 实机（解析轴几何/体积/revision/保存重载/回滚、surface 解析轴样例、无中心线失败消息）待统一安排；BUG-083 引用拒绝修复不等于本项完成；工具描述/REFERENCE_SYNTAX 补充由 T01 收口；整卡保持开放，首批底板 holes 等范围不变。

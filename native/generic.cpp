@@ -24,6 +24,7 @@
 #include <ProDtmCrv.h>
 #include <ProDtmPln.h>
 #include <ProDtmAxis.h>
+#include <ProAxis.h>
 #include <ProRevolve.h>
 #include <ProChamfer.h>
 #include <ProShell.h>
@@ -1791,6 +1792,149 @@ static void validate_revolve_axis(const J &op) {
             "axis feature first), {\"kind\":\"axis\",\"id\":N} from model inspection, or omit "
             "axis to revolve about the sketch centerline (one construction centerline required)");
 }
+// FEAT-008/T09B: classify the resolved axis by provenance. ProAxisSurfaceGet
+// reports the surface that owns the axis: an owning surface means the axis
+// resolves from surface geometry (a cylinder/hole axis), while a datum axis
+// has no owning surface. Unknown probes stay unknown.
+static std::string classify_axis_provenance(int axis_id, ProError &surface_code) {
+    ProAxis handle = nullptr;
+    ProError init_code = ProAxisInit((ProSolid)board, axis_id, &handle);
+    if (init_code) {
+        surface_code = init_code;
+        return "unknown";
+    }
+    ProSurface owner_surface = nullptr;
+    surface_code = ProAxisSurfaceGet(board, handle, &owner_surface);
+    if (surface_code == PRO_TK_NO_ERROR)
+        return "surface";
+    if (surface_code == PRO_TK_E_NOT_FOUND)
+        return "datum_axis";
+    return "unknown";
+}
+// FEAT-008/T09B: report the axis a revolve actually resolved to. Values come
+// only from the executor's own queries (the created feature's axis geomitem,
+// the explicit axis geomitem, ProAxisSurfaceGet provenance or the sketch
+// section centerline); request parameters are never echoed as measured
+// geometry and unknown stays null with raw query codes. Origin/direction are
+// model coordinates for frame="model" and sketch section (u,v) coordinates
+// for frame="sketch_local".
+static J revolve_axis_report(const J &op, ProFeature &created, ProFeature &sketch_f,
+                             int explicit_axis_id, ProError explicit_axis_code) {
+    bool explicit_source = op.contains("axis") && !op.at("axis").is_null();
+    J report = {{"source", explicit_source ? "explicit" : "internal_centerline"},
+                {"kind", "unknown"},
+                {"id", nullptr},
+                {"frame", nullptr},
+                {"origin", nullptr},
+                {"direction", nullptr},
+                {"geometry_known", false},
+                {"query_code", nullptr},
+                {"resolution",
+                 {{"feature_axis_query_code", nullptr},
+                  {"axis_item_query_code", nullptr},
+                  {"axis_surface_query_code", nullptr},
+                  {"section_centerline_count", nullptr},
+                  {"section_query_code", nullptr}}}};
+    auto units = inspect_length_units(board);
+    report["length_unit"] = length_unit_json(units, length_scale_to_mm(board, units));
+    // The created revolve feature's own axis geomitem is the most direct
+    // statement of the axis actually used.
+    J axes = feature_axes(&created);
+    report["resolution"]["feature_axis_query_code"] = axes["axes_query_code"];
+    const J *feature_axis = nullptr;
+    if (axes["datum_axes"].is_array() && axes["datum_axes"].size() == 1 &&
+        axes["datum_axes"][0].is_object())
+        feature_axis = &axes["datum_axes"][0];
+    bool feature_known = feature_axis && feature_axis->contains("geometry_known") &&
+                         (*feature_axis)["geometry_known"].is_boolean() &&
+                         (*feature_axis)["geometry_known"].get<bool>();
+    if (explicit_source) {
+        report["resolution"]["axis_item_query_code"] = explicit_axis_code;
+        if (explicit_axis_code || explicit_axis_id < 0)
+            return report; // resolution failed: honest unknown, raw code kept
+        report["id"] = explicit_axis_id;
+        ProError surface_code = PRO_TK_NO_ERROR;
+        report["kind"] = classify_axis_provenance(explicit_axis_id, surface_code);
+        report["resolution"]["axis_surface_query_code"] = surface_code;
+        ProGeomitem item = {};
+        ProError item_code = ProModelitemInit(board, explicit_axis_id, PRO_AXIS, &item);
+        AxisGeometry geometry;
+        if (!item_code)
+            geometry = inspect_axis_geometry(&item);
+        else
+            geometry.data_code = item_code;
+        if (geometry.known) {
+            report["origin"] = geometry.origin;
+            report["direction"] = geometry.direction;
+            report["frame"] = "model";
+            report["geometry_known"] = true;
+            report["query_code"] =
+                geometry.line_code ? J(*geometry.line_code) : J(geometry.data_code);
+        } else if (feature_known) {
+            report["origin"] = (*feature_axis)["origin"];
+            report["direction"] = (*feature_axis)["direction"];
+            report["frame"] = "model";
+            report["geometry_known"] = true;
+            report["query_code"] = (*feature_axis)["data_query_code"];
+        } else
+            report["query_code"] = geometry.data_code;
+        return report;
+    }
+    // Internal fallback: the axis decision came from the sketch's construction
+    // centerline. Count every centerline so a silent pick stays discoverable.
+    report["kind"] = "section_centerline";
+    ProSection saved = nullptr;
+    ProError copy_code = ProFeatureSectionCopy(&sketch_f, 0, &saved);
+    if (copy_code) {
+        report["resolution"]["section_query_code"] = copy_code;
+    } else {
+        ProIntlist ids = nullptr;
+        int count = 0;
+        ProError ids_code = ProSectionEntityIdsGet(saved, &ids, &count);
+        std::vector<int> centerlines;
+        std::array<double, 2> start = {}, end = {};
+        if (ids_code) {
+            report["resolution"]["section_query_code"] = ids_code;
+        } else {
+            for (int index = 0; index < count; index++) {
+                Pro2dEntdef *def = nullptr;
+                if (ProSectionEntityGet(saved, ids[index], &def))
+                    continue;
+                if (def->type != PRO_2D_CENTER_LINE)
+                    continue;
+                if (centerlines.empty()) {
+                    auto line = (Pro2dLinedef *)def;
+                    start = {line->end1[0], line->end1[1]};
+                    end = {line->end2[0], line->end2[1]};
+                }
+                centerlines.push_back(ids[index]);
+            }
+            report["resolution"]["section_centerline_count"] = (int)centerlines.size();
+        }
+        ProSectionFree(&saved);
+        if (centerlines.size() == 1)
+            report["id"] = centerlines[0];
+        if (!feature_known && centerlines.size() == 1) {
+            double dx = end[0] - start[0], dy = end[1] - start[1];
+            double length = std::hypot(dx, dy);
+            report["origin"] = J::array({start[0], start[1]});
+            report["frame"] = "sketch_local";
+            report["query_code"] = PRO_TK_NO_ERROR;
+            if (std::isfinite(length) && length > 1e-12) {
+                report["direction"] = J::array({dx / length, dy / length});
+                report["geometry_known"] = true;
+            }
+        }
+    }
+    if (feature_known) {
+        report["origin"] = (*feature_axis)["origin"];
+        report["direction"] = (*feature_axis)["direction"];
+        report["frame"] = "model";
+        report["geometry_known"] = true;
+        report["query_code"] = (*feature_axis)["data_query_code"];
+    }
+    return report;
+}
 static J extrude_or_revolve(const J &op, bool revolve) {
     if (revolve)
         validate_revolve_axis(op);
@@ -1830,10 +1974,17 @@ static J extrude_or_revolve(const J &op, bool revolve) {
         integer(root, PRO_E_STD_MATRLSIDE,
                 revolve ? PRO_REV_MATERIAL_BOTH_SIDES : PRO_EXT_MATERIAL_BOTH_SIDES);
     }
+    // FEAT-008/T09B: keep the resolved axis identity for the result report.
+    int revolve_axis_id = -1;
+    ProError revolve_axis_code = PRO_TK_NO_ERROR;
     if (revolve) {
         if (op.contains("axis")) {
             integer(root, PRO_E_REVOLVE_AXIS_OPT, PRO_REV_AXIS_EXT_REF);
             ProSelection a = resolve(op["axis"]);
+            ProModelitem axis_item = {};
+            revolve_axis_code = ProSelectionModelitemGet(a, &axis_item);
+            if (!revolve_axis_code && axis_item.type == PRO_AXIS)
+                revolve_axis_id = axis_item.id;
             ref(root, PRO_E_REVOLVE_AXIS, a);
             ProSelectionFree(&a);
         } else
@@ -1881,6 +2032,9 @@ static J extrude_or_revolve(const J &op, bool revolve) {
     CK(ProElementFree(&root));
     remember(op, f);
     J details = J::object();
+    if (revolve)
+        details["revolve_axis"] =
+            revolve_axis_report(op, f, sketch_f, revolve_axis_id, revolve_axis_code);
     if (cut) {
         CK(ProSolidRegenerate((ProSolid)board, PRO_REGEN_NO_FLAGS));
         double removed = before_volume - volume();

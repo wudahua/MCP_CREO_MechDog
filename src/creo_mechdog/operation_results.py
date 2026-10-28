@@ -12,6 +12,7 @@ that the transaction committed; ``effect_status`` carries that meaning.
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 EXECUTION_STATUSES = ("succeeded", "failed", "not_executed", "unknown")
@@ -101,6 +102,7 @@ def annotate_native_result(
         readonly=readonly,
         failed_index=failed_index if isinstance(failed_index, int) else None,
     )
+    annotate_revolve_axis(result)
     if inputs is not None:
         annotate_profiles(result, inputs)
         annotate_arc_geometry(result, inputs)
@@ -252,6 +254,103 @@ def project_arc_echo(entities: list[dict[str, Any]], measured: Any) -> list[dict
         else:
             projection.append({"name": name, **_unknown_arc_actual()})
     return projection
+
+
+_REVOLVE_AXIS_SOURCES = ("explicit", "internal_centerline", "unknown")
+_REVOLVE_AXIS_KINDS = ("datum_axis", "surface", "section_centerline", "unknown")
+_REVOLVE_AXIS_FRAMES = ("model", "sketch_local")
+_REVOLVE_AXIS_RESOLUTION_FIELDS = (
+    "feature_axis_query_code",
+    "axis_item_query_code",
+    "axis_surface_query_code",
+    "section_centerline_count",
+    "section_query_code",
+)
+
+
+def _finite_vector(value: Any, size: int) -> list[float] | None:
+    if not isinstance(value, list) or len(value) != size:
+        return None
+    if any(type(item) not in (int, float) or not math.isfinite(item) for item in value):
+        return None
+    return [float(item) for item in value]
+
+
+def _axis_code(value: Any) -> int | None:
+    return value if type(value) is int else None
+
+
+def _unknown_revolve_axis() -> dict[str, Any]:
+    return {
+        "source": "unknown",
+        "kind": "unknown",
+        "id": None,
+        "frame": None,
+        "origin": None,
+        "direction": None,
+        "length_unit": None,
+        "geometry_known": False,
+        "query_code": None,
+        "resolution": {key: None for key in _REVOLVE_AXIS_RESOLUTION_FIELDS},
+    }
+
+
+def normalize_revolve_axis(block: Any) -> dict[str, Any] | None:
+    """Validate the executor's resolved revolve-axis report (FEAT-008/T09B).
+
+    Values are only ever the executor's own query results; request parameters
+    are never echoed as measured geometry. A record whose measured fields
+    cannot be trusted degrades to explicit unknown (null values plus the raw
+    query codes) instead of keeping numbers of unclear provenance. A missing
+    block stays missing (legacy jobs) and is never fabricated from inputs.
+    """
+    if not isinstance(block, dict):
+        return _unknown_revolve_axis()
+    source = block.get("source")
+    kind = block.get("kind")
+    frame = block.get("frame")
+    entry = _unknown_revolve_axis()
+    entry["source"] = source if source in _REVOLVE_AXIS_SOURCES else "unknown"
+    entry["kind"] = kind if kind in _REVOLVE_AXIS_KINDS else "unknown"
+    feature_id = block.get("id")
+    entry["id"] = feature_id if type(feature_id) is int and feature_id >= 0 else None
+    entry["length_unit"] = (
+        block.get("length_unit") if isinstance(block.get("length_unit"), dict) else None
+    )
+    entry["query_code"] = _axis_code(block.get("query_code"))
+    resolution = block.get("resolution")
+    if isinstance(resolution, dict):
+        for key in _REVOLVE_AXIS_RESOLUTION_FIELDS:
+            entry["resolution"][key] = _axis_code(resolution.get(key))
+    frame_ok = frame in _REVOLVE_AXIS_FRAMES
+    size = 3 if frame == "model" else 2
+    origin = _finite_vector(block.get("origin"), size) if frame_ok else None
+    direction = _finite_vector(block.get("direction"), size) if frame_ok else None
+    known = block.get("geometry_known") is True
+    if known and frame_ok and origin is not None and direction is not None:
+        entry["frame"] = frame
+        entry["origin"] = origin
+        entry["direction"] = direction
+        entry["geometry_known"] = True
+    return entry
+
+
+def annotate_revolve_axis(result: dict[str, Any]) -> dict[str, Any]:
+    """Normalize the revolve_axis block on each revolve operation record.
+
+    The request's axis is never read here: an unreported or uninterpretable
+    axis stays unknown rather than being backfilled from the request.
+    """
+    operations = result.get("operations")
+    if not isinstance(operations, list):
+        return result
+    for operation in operations:
+        if not isinstance(operation, dict) or operation.get("op") != "revolve":
+            continue
+        if "revolve_axis" not in operation:
+            continue
+        operation["revolve_axis"] = normalize_revolve_axis(operation.get("revolve_axis"))
+    return result
 
 
 def annotate_arc_geometry(result: dict[str, Any], inputs: list[dict[str, Any]]) -> dict[str, Any]:
