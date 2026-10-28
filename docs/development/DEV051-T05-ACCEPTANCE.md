@@ -1,0 +1,175 @@
+# DEV-051 T05 验收卡：四壁折边失败定位（FEAT-014 / BUG-047，离线阶段）
+
+日期：2026-10-28（Asia/Shanghai）。阶段：**离线调查完成 / 未复现 / 根因未定**。分支：`codex/dev051-feedback070`；工作区：`E:/Projects/MCP_CREO_MechDog`。本次未连接 Creo、未提交任何 Toolkit 作业、未改版本、未合 main、未推标签、未 push、未发布、未实施 T11。本卡不得读作“折边缺陷已修复”或“四壁能力已具备”。
+
+## 输入与来源
+
+- 必读：[AGENTS.md](../../AGENTS.md)、[派发表](0.7.0-FEEDBACK-TASKS-2026-10-28.md)（共同交接契约与 T05 节）、[总计划](0.7.0-FEEDBACK-PLAN-2026-10-28.md)（T05 节）、[T00 验收](DEV051-T00-ACCEPTANCE.md)、[T03 验收](DEV051-T03-ACCEPTANCE.md)、[T04 验收](DEV051-T04-ACCEPTANCE.md)、[FEAT-014 工作卡](../work-items/FEAT-014.md)、[BUG-047 工作卡](../work-items/BUG-047.md)。
+- 反馈证据（原件只读，本次未重取、未重放）：0.7.0 R1 S3，job `f45415a90a0544bfad24fe1225c18f50`，模型 `0fdb2601c11e4471a3352f6254c59ef4`（`acc70_sm2`）：185×232×1 底板，一次计划挂 4 道折边（h=80、R2.54、Y=0.5，边 104/105/106/107）；`f_px`、`f_nx` 成功，`f_ny` 失败（`ProFeatureWithoptionsCreate=-1`），`f_py` = `not_executed`。报告 S10 的逐项结果为 index 2 `f_px` succeeded、index 4 `f_ny` failed、index 5 `f_py` not_executed，成功项均为 `effect_status: rolled_back`。
+- 基体采用 T03 已确认薄底板契约（`sheetmetal_wall(depth=1, thickness=232)`，185×232×1 = 42 920 mm³）。T02 的弧方向契约未读写。
+- 受派范围仅 T05 离线阶段。工作区中其他会话的未提交改动（`.gitattributes`、`docs/BACKLOG.md`、`docs/DEVELOPMENT.md`、两份 0.7.0 计划、`docs/work-items/BUG-032.md`、`DEV-051.md`、`FEAT-034.md`、`0.7.2-FEEDBACK-*`、`docs/validation/feedback-0.7.2-2026-10-28/`）以及本机产物（`session_activity.json`、`session_erase/`、`examples/wb_unsaved_03.prt.1`、`.codebuddy/`、`.workbuddy/`、`.zcode/`）未暂存、未改写、未删除。
+
+## 结论摘要
+
+| 项目 | 结果 |
+| --- | --- |
+| 是否复现 | **未复现**。离线阶段没有 Toolkit 会话，没有任何折边被创建 |
+| 根因 | **未定**。四条假设均未解决，未选任何一条作为结论 |
+| 是否为“已修复” | 否。无生产改动（`native/`、`src/creo_mechdog/`、`server.py` 均未改） |
+| 可离线确定的事实 | 折边元素树只有一个公开方向控制；1 mm 板每侧有两条相隔 1 mm 的平行边界；四道折边合计 66 720 mm³；第三道在材料位于板内侧时与既有两壁各有 ≥77.46 mm³ 角部重叠；前两道之后垂直边界缩短 ≥2 mm |
+| 交付物 | 可执行的离线诊断夹具与驱动（默认离线、`--live` 拒绝）、每道预期与判定字段、四条可反驳假设与判定表、T11 设计输入 |
+
+## 离线可确定的事实（读码与几何，不含 Creo 行为）
+
+### 1. 折边原生元素树（静态审计，`native/advanced.cpp` `generic_sheetmetal_flange`）
+
+| 元素 | 当前值 | 含义 |
+| --- | --- | --- |
+| `PRO_E_FEATURE_TYPE` / `PRO_E_SMT_WALL_TYPE` / `PRO_E_SMT_FLANGE_TYPE` | `PRO_FEAT_WALL` / `PRO_SMT_WALL_TYPE_FLANGE` / `PRO_FLANGE_WALL_TYPE_2D_SWEPT` | 单一折边创建路径 |
+| 轨迹 | `PRO_E_STD_CURVE_COLLECTION_APPL` + 一条边引用（`PRO_CURVCOLL_TAN_INSTR`） | 只接受一条边，无多边链 |
+| **材料侧** | `PRO_E_SMT_FLANGE_TRAJ_CRV_NORM = flip ? PRO_FLANGE_TRAJ_NORM_FLIP : ..._NO_FLIP` | **唯一**暴露给用户的侧向控制，且只翻转轨迹法向 |
+| 壁厚侧 | `PRO_E_SMT_WALL_THICKNESS_FLIP = PRO_B_FALSE` | 固定，无参数 |
+| 截面侧 | `PRO_E_SMT_FLANGE_SEC_FLIP = PRO_B_FALSE` | 固定，无参数 |
+| 折弯释放 | `PRO_E_SMT_BEND_RELIEF` 两侧 `PRO_BEND_RLF_NONE` | 固定关闭，无 relief 能力 |
+| 尖角转圆角 | `PRO_E_SMT_WALL_SHARPS_TO_BENDS = PRO_B_TRUE` | 尖角自动变为 R2.54 折弯 |
+| 半径 | `PRO_E_SMT_FILLETS_USE_RAD = TRUE`、`PRO_BEND_RAD_INSIDE`、值 = `radius` | 内侧半径 |
+| 展开 | `PRO_DVL_SRC_FEAT_YF_ONLY` + `y_factor` | 只影响展开长度，不影响体积 |
+| 父体 | 创建树中**没有** `PRO_E_BODY` | 依附模型当前活动体，不是显式选择 |
+| 父引用 | `ProFeatureWithoptionsCreate(模型选择, tree, PRO_FEAT_CR_NO_OPTS)` | 父引用是模型本身 |
+| 收尾 | `ProSolidRegenerate(PRO_REGEN_NO_FLAGS)` 后 `remember(op, f, extra)`，`extra.section_path` 记录截面路径 | 每次折边后立即重生成 |
+
+结论：公开参数能到达的只有轨迹法向（`flip`）、半径、高度、角度、`y_factor`；壁厚侧、截面侧、释放、目标体都不由请求控制。因此“第三道 -1”不能仅凭源码归因到某个公开参数，必须实机测量。
+
+### 2. 1 mm 板的“实际边”不是唯一指定
+
+185×232×1 的长方体有 12 条边，每个侧面在 z=0 与 z=1 各有一条**相隔 1 mm 的平行边界边**。按几何选边时若不指明顶/底边界，`+x` 会同时命中两条（夹具实测报错原文：`side +x has 2 parallel boundary edges 1.000 mm apart (bottom, top); pass face='top' or face='bottom'`）。报告只记录了 104—107 四个整数，没有记录端点、相邻面或所在 z 边界，因此**原实验的边选择在记录层面不可重建**，只能按几何重新选择并显式声明 `face`。本任务的夹具因此把 `face` 设为必填，并把 `edge_before_submit`（id/端点/跨度/相邻面/所在边界）列为每道折边的必录判定字段。
+
+### 3. 四壁的几何量（独立 oracle，不用生产代码）
+
+| 项 | 值 |
+| --- | --- |
+| 底板 | 185 × 232 × 1 = 42 920 mm³ |
+| `f_px` / `f_nx` 壁 | 232 × 80 × 1 = 每道 18 560 mm³ |
+| `f_ny` / `f_py` 壁 | 185 × 80 × 1 = 每道 14 800 mm³ |
+| 四道合计新增 | 66 720 mm³（与 R、Y 因子无关：等厚板体积 = 中性层展开长 × 高 × 厚） |
+| 每个角部的重叠下界 | `(h − R) × t² = (80 − 2.54) × 1 = 77.46 mm³` |
+| 第三道 `f_ny` 的共享角部 | 2 个（分别与 `f_px`、`f_nx`），重叠下界 **154.92 mm³** |
+| 第四道 `f_py` 的共享角部 | 2 个（永远未执行） |
+
+“材料在板足迹内侧”时，`f_px` 占 x∈[184,185]，`f_ny` 占 y∈[0,1]，两者在 x∈[184,185]、y∈[0,1]、z∈[0,80] 相交；“材料在外侧”时两者只共边。这就是把材料侧与角部冲突联系起来的可测量差别：箱体 bbox 在对应轴上相差恰好一个板厚（1 mm，远大于 0.01 mm 容差）。这是**几何预测**，不是已观察到的失败原因。
+
+### 4. 单计划与逐道刷新的差别（夹具推演，非实机）
+
+方向一致的两道（`f_px`、`f_nx`）不共享角部，互不影响；从第三道起，垂直边界在两端各被吃掉一个板厚（折弯半径会吃掉更多，1 mm 是下界）：
+
+| 折边 | 单计划引用跨度 | 逐道刷新后跨度 | 差值 |
+| --- | --- | --- | --- |
+| `f_px` | 232 | 232 | 0 |
+| `f_nx` | 232 | 232 | 0 |
+| `f_ny` | 185 | 183 | 缩短 2.0 mm |
+| `f_py` | 185 | 183 | 缩短 2.0 mm |
+
+即“一次取四条边 ID”的做法，在第三道执行时引用的已经不是当初那条全长度边界。这只是**引用漂移的必要条件推演**；Creo 是否保留同一 ID、是否因此失败，必须实机判定。
+
+## 夹具与驱动（默认离线）
+
+- `tests/unit/test_sheetmetal_flange.py`（单一来源，33 个用例）：箱体检查载荷（bodies/surfaces/edges，含端点与相邻面）、按几何选边、逐道刷新（边被吃掉、邻边缩短、ID 重编号）、四壁单计划与逐道计划、独立体积/角部重叠/bbox oracle、方向与材料侧分类、判定字段模板、四条假设与判定表、原始证据。
+- `tools/test_sheetmetal_flange.py`：执行上述检查并落盘报告。默认严格离线：不实例化 MCP 客户端、不连 Creo、不提交作业；`--live` 在缺少 `--confirm-session-usable` 时返回 2，带该开关仍返回 2，并指向唯一 dev 服务 `MCP_CREO_MechDog_dev`。
+- 选边规则只用几何：`side`（+x/-x/+y/-y）+ `face`（top/bottom）+ 当前检查的端点、跨度、边界平面；报告中的 104—107 只在证据区引用，夹具目录里不存在这些 ID（单测断言）。
+- 刷新规则取最坏情况（ID 会变、边会被吃掉），因此流程不依赖 ID 稳定性；`assert_edge_current` 在边消失或端点移动时拒绝提交。
+
+## 每道预期与判定字段
+
+驱动为每道折边生成一条记录（`checks.plan_contract.flanges[]`），请求回声与实测字段分开，实测项离线一律为 `null`：
+
+`@text
+label, index, side,
+flip_input, height_input, radius_input, angle_input, y_factor_input,
+edge_before_submit, edge_span_mm, edge_shortfall_mm,
+parent_body_before, parent_body_after, new_body,
+body_bbox_before, body_bbox_after,
+direction, material_side, added_volume_mm3,
+feature_health, native_tree,
+execution_status, effect_status, toolkit_code, last_feature_errors,
+revision_before, revision_after,
+saved_file_reloaded_and_verified, rolled_back_rebuild_required
+`@
+
+| 折边 | index | 期望新增体积 | 共享角部 | 角部重叠下界 | 判断方向（bbox） | 判断材料侧（bbox） |
+| --- | --- | --- | --- | --- | --- | --- |
+| `f_px` | 2 | 18 560 | 0 | 0 | `bbox.z_max ≥ 1+40` → up | `bbox.x_max−185 = 0` → inside；`1` → outside |
+| `f_nx` | 3 | 18 560 | 0 | 0 | 同上 | `0−bbox.x_min`：0 → inside；1 → outside |
+| `f_ny` | 4 | 14 800（全长度）/ 14 640（缩短后 183） | 2 | 154.92 | 同上 | `0−bbox.y_min`：0 → inside；1 → outside |
+| `f_py` | 5 | 14 800 / 14 640 | 2 | 154.92 | 同上 | `bbox.y_max−232`：0 → inside；1 → outside |
+
+方向的第三类签名是 `in_plane`：若 bbox 在 x 或 y 上增长约 80 mm 而 z 不变，说明折弯未生效（截面被当成平面延伸）。其余为 `ambiguous`。
+
+## 四条假设与判定表（均未解决）
+
+| ID | 假设 | 探针 | 若成立 | 反驳条件 | 判定字段 |
+| --- | --- | --- | --- | --- | --- |
+| H1 | 四条边在折边前一次取得；前两道吃掉边并缩短垂直边界，第三道引用已不是全长度边 | 每道前重新检查并比较 id/端点/跨度；逐道单作业；另跑未改动的单计划 | 第三道前 id 消失或跨度每端缩短 ≥1 mm；刷新后提交的失败模式不同或成功但更短 | 第三道前边完全不变 | `edge_before_submit`、`edge_span_mm`、`edge_shortfall_mm`、`execution_status`、`toolkit_code` |
+| H2 | 材料在板内侧时第三道与两壁实体干涉；钣金壁不能并体 | 从 bbox 读材料侧；再用“距两角各留 20 mm”的短边尝试第三道 | 内侧失败、短边或外侧成功 | 短边同样失败且预测重叠为 0 | `material_side`、`body_bbox_after`、`added_volume_mm3`、`execution_status`、`toolkit_code` |
+| H3 | `flip` 只翻轨迹法向；边切向由面环决定，同一 `flip` 在 +X/-X/垂直边不必是同一材料侧 | 同边、同 h/R/Y，只切 `flip` | 两次落在板的两侧（相差约一个板厚），且 ±X 同 `flip` 不一致 | 同边切 `flip` 仍在同一侧 | `flip_input`、`material_side`、`body_bbox_after`、`direction` |
+| H4 | 折边树无 `PRO_E_BODY`，依附活动体；报告的 `bodies=2` 使 body 列表本身不可作证据 | 每道前后记录 bodies（id/state/has_geometry） | 新增体或活动体变化，或出现 body 相关元素错误 | 始终一个活动体且无 body 元素错误 | `parent_body_before`、`parent_body_after`、`new_body`、`feature_health`、`native_tree` |
+
+判定表（驱动 `checks.hypotheses.decision_table`）把观察映射到结论，含“修剪后仍失败 → H2 被反驳”“短边成功 → H2 成立、需 T11 释放”“四壁全部成功但 bbox 方向不对 → 仍不构成能力完成”等分支。离线阶段**没有任何一条被记为成立或根因**。
+
+## 厚底板首道（只记录，不下结论）
+
+基体 `sheetmetal_wall(depth=232, thickness=1)` = 185×1×232；首道折边仍为 h80/R2.54/Y0.5，若落在 185 mm 顶边则体积 oracle 为 14 800 mm³。T03 明确把 bbox 摆放与轴符号列为实机待核项，因此该分支的 `direction`、`material_side`、`body_bbox_before` 均为未知，状态 `pending_t03_live_contract`，本卡不设几何结论。
+
+## T11 设计输入（不在本任务实现）
+
+- 触发条件：实机证明第三道在全长度边上失败、在距两角各留 20 mm 的短边上成功；或实测角部重叠与本文预测一致。
+- 能力：壁端折弯释放（bend relief）+ 垂直壁的角部规则。
+- 待定参数：释放类型（none/矩形/扯裂/圆形）、宽与深相对板厚、单端或双端及是否可选、角部规则（仅释放/斜接/显式重叠策略）、字段落点（`sheetmetal_flange` 字段或模型级规则）、兼容默认必须保持 `none`。
+- 禁止：在调查任务中顺手加未登记的 relief 默认值；在四壁 + 展开/折回 + 编辑 + 重载 + 回滚闭环前宣称四壁能力完成。
+
+## 实际修改文件
+
+新增：`tests/unit/test_sheetmetal_flange.py`、`tools/test_sheetmetal_flange.py`、本卡；更新：`docs/work-items/FEAT-014.md`、`docs/work-items/BUG-047.md`。**未改**：`native/`（无生产改动）、`src/creo_mechdog/`、`server.py`、根兼容包装、`version.py`、台账、README、其他任务的共享契约文件。提交仅按这些精确路径暂存；并发会话的改动与本机产物未暂存、未改写。
+
+## 依赖提交、受测身份与指纹
+
+- 依赖提交：`2726ca54715d547c71c7de61c24fb214ac7f6864`（T00）→ `a3c1f4b3e05668aa57d7225dc16394dd272abec9`（T02）→ `601b4bca` / `f10bee750d6c9d582839306b2ffc029997bfb339`（T03）→ `ffbffaad7d4d315fa3c7da37d32a5aaf447fc57b`（T04，本卡基线）。
+- 实现提交：本卡对应 T05 提交，提交号不能自指写入同一提交文件，以交接报告的 `git rev-parse HEAD` 为准。
+- 受测 commit：`ffbffaad7d4d315fa3c7da37d32a5aaf447fc57b` + 本批尚未提交的新增文件；`dirty=true`（同时含其他会话未提交的文档改动）。
+- `source_fingerprint`：见“命令与真实结果”第 2 行报告内的 `provenance.source_fingerprint`（算法与 T03/T04 驱动一致：全部已跟踪 `*.py` 与 `native/*.h|*.hpp|*.cpp` 的 CRLF 归一化 SHA256 清单哈希，另加本任务两个新增文件的显式路径）。提交后源码内容不变，指纹不变；换指纹后不得混用旧结论。
+
+## 环境
+
+Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；pydantic 2.13；ruff 0.17.0（requirements-dev 锁定）。全程未连接 Creo、未启动 MCP/Creo、未提交任何 Toolkit 作业；服务版本入口仍为 0.7.2，未改动。
+
+## 命令与真实结果
+
+| # | 命令 | 真实结果 |
+| --- | --- | --- |
+| 1 | `./.venv/Scripts/python.exe -m unittest tests.unit.test_sheetmetal_flange -v` | exit 0，Ran 33 tests，OK（PowerShell 直接调用时 unittest 写 stderr 会被包装成 NativeCommandError，属调用伪影，以退出码为准） |
+| 2 | `./.venv/Scripts/python.exe tools/test_sheetmetal_flange.py` | exit 0；报告 `build/sheetmetal_flange/20261028T221132_793b8ff3/report.json`，SHA256 `f05895906e79ad6d29d04407ab36d9805b8530d2826c4e15a791422fb7c2a572`（另有同名 `report.sha256`）；`status=not_reproduced_offline / undetermined`；内置复跑 33/33 OK |
+| 3 | `.venv\Scripts\python.exe tools/test_sheetmetal_flange.py --live` 与 `--live --confirm-session-usable` | 均 exit 2；第二条打印 `LIVE_REFUSAL`，指向唯一 dev 服务并要求在集成步骤中使用 |
+| 4 | `./.venv/Scripts/python.exe -m unittest discover -s tests` | exit 0，`Ran 1226 tests`，OK（259.5 s） |
+| 5 | `./.venv/Scripts/python.exe -m ruff format` / `-m ruff check`（两个新增文件） | 格式化后 `All checks passed!`，无新增诊断 |
+| 6 | `./.venv/Scripts/python.exe tools/dev_check.py` | exit 0；`success=true`、`unit_tests=passed`；style `lint_findings=30`、`unformatted_files=16`（与 T03/T04 基线一致，本批未新增）；`source.checked_source_sha256=fe4d0dcbadb2a723b2fed21980fb2adc5de443c5ba0a41bb7b1f5be0dbf194b7`，`dirty=true`；报告 `build/development_check.json` |
+| 7 | `bridge.py build` | **未执行**：本批无原生改动，执行器源码未变（沿用 T03 生成的 `build/creo_worker.exe`，`build/source.sha256` 未变） |
+
+## 未测项与下一步
+
+- 未测（需实机，按共同契约另行指派并在唯一 dev 服务串行执行，先确认会话可操作与 BUG-001 条件）：底板与四道折边的真实创建；第三道是否重现 `ProFeatureWithoptionsCreate=-1`；每道的 `material_side`/`direction`/`parent_body`/`feature_health`/`native_tree`/`revision`；失败的真实回滚与 `effect_status`；成功后的 `saved_file_reloaded_and_verified`。
+- 未测：单计划与逐道刷新的实机对照（本卡只推演了引用漂移的必要条件）；`flip` 正交对照；剪短 20 mm 的第三道探针；厚底板首道（依赖 T03 实机契约）；展开/折回、尺寸编辑；WorkBuddy 黑盒验收；Creo 9/10。
+- 缺材料：原始 4 条边的端点/相邻面/所在 z 边界、各道 `flip`、`acc70_sm2` 的 PRT、失败时的元素错误详情均未随报告提供，因此原实验不可逐字节重放；本卡只按几何重建同形场景。
+- 下一步：集成人按“给集成人的冲突文件与接口变化”合并；实机阶段按 `live_checklist` 逐道填字段，失败即整件重建（成功项为 `rolled_back`，不能续跑第四道）；结论只按判定表给出，未满足条件时保持“根因未定”；若确认角部干涉，转 T11 设计释放/角部规则。
+- 状态口径：本卡可用于“离线调查完成 / 未复现 / 根因未定”；不可写成“已修复”；只有四壁 + 角部几何 + 展开/折回 + 编辑 + 重载 + 回滚全部通过，才可宣称四壁能力完成。
+
+## 给 T01 的公共文档变更需求
+
+1. `creo_sheetmetal_flange` 工具描述补充：`edge` 必须是检查返回的裸边引用；1 mm 薄壁的同一侧有顶/底两条平行边，调用方必须记录实际选中的边界与端点；`flip` 只切轨迹法向，不等同于“材料侧”开关。
+2. 能力页注明：折边释放当前固定为 `PRO_BEND_RLF_NONE`，四壁闭合角部没有释放能力；四壁能力未完成，需 T11。
+3. 勘误：不要把“第三道 -1”表述为已定位的角部冲突；当前状态是“有失败报告、离线有可反驳假设、实机未复现”。
+
+## 给集成人的冲突文件与接口变化
+
+- 共享冲突面：本批**未改** `native/advanced.cpp`（T05/T11/T12 共用）、`src/creo_mechdog/schema.py`（T02/T03/T05 共用）、`native/generic.cpp`。仅在读码中引用它们，无合并冲突风险。
+- 新增文件：`tests/unit/test_sheetmetal_flange.py`、`tools/test_sheetmetal_flange.py`，均为默认离线、`--live` 拒绝、指向唯一 dev 服务的独立夹具；与 T03 的 `test_sheetmetal_contract.py`、T04 的 `test_sheetmetal_overlap.py` 并列，不复制其报告或 oracle 约定。
+- 接口变化：无（无工具、字段、错误码变化）。
+- 文档冲突面：`docs/work-items/FEAT-014.md`、`docs/work-items/BUG-047.md` 由本任务更新；如其他会话也要改同两文件，以先读后追加为准，不要覆盖。
