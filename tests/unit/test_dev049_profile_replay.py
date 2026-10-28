@@ -145,6 +145,49 @@ class VolumeVerdictTests(unittest.TestCase):
                 driver.judge_volume(cases()[0], bad)
 
 
+class ExplicitDirEquivalenceTests(unittest.TestCase):
+    """T07: the legacy no-dir input stays the live input; dir=+1 is equivalent."""
+
+    def test_live_cases_still_carry_no_dir_key(self):
+        for case in cases():
+            for entity in driver.entities_of(case):
+                with self.subTest(case=case["case"], entity=entity["name"]):
+                    self.assertNotIn("dir", entity)
+
+    def test_explicit_dir_p1_matches_the_legacy_geometry(self):
+        equivalence = driver.explicit_dir_equivalence()
+        self.assertTrue(equivalence["t02_integrated"])
+        self.assertTrue(equivalence["passed"])
+        self.assertEqual(len(equivalence["cases"]), 2)
+        for row in equivalence["cases"]:
+            with self.subTest(case=row["case"]):
+                self.assertTrue(row["legacy_entities_carry_no_dir_key"])
+                self.assertEqual(row["explicit_dir_value"], 1)
+                self.assertTrue(row["entities_equal_except_dir"])
+                self.assertTrue(row["sweeps_equal"])
+                self.assertEqual(row["sweeps_explicit_deg"], [90.0])
+                self.assertEqual(row["area_legacy_mm2"], row["area_explicit_mm2"])
+                self.assertLessEqual(row["max_closure_gap_mm"], 1e-9)
+                self.assertGreater(row["minimum_pairwise_gap_mm"], 0.0)
+                self.assertTrue(row["schema_accepted_explicit_plan"])
+                self.assertTrue(row["passed"])
+
+    def test_explicit_dir_plan_passes_schema_validation(self):
+        explicit = driver.ring_row(5, "five", arc_dir=1)
+        case = {"contours": explicit, "depth": driver.PLATE_DEPTH_MM}
+        validate_operations(driver.cut_operations(case))
+
+    def test_the_offline_report_records_the_equivalence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "report.json"
+            driver.main(["--output", str(target)])
+            report = json.loads(target.read_text(encoding="utf-8"))
+            equivalence = report["dir_equivalence"]
+            self.assertTrue(equivalence["passed"])
+            self.assertEqual(len(report["cases"]), 3)
+            self.assertIn("legacy entities without dir", equivalence["live_input"])
+
+
 class OriginalInputTests(unittest.TestCase):
     def test_missing_attachments_are_recorded_as_missing(self):
         inputs = driver.original_inputs()

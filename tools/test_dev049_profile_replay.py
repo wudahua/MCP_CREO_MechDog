@@ -76,32 +76,43 @@ def circle(name: str, center: tuple[float, float], radius: float) -> dict:
     }
 
 
-def arc_ring(name: str, center: tuple[float, float], radius: float = RING_RADIUS_MM) -> dict:
-    """One closed loop made of four quarter arcs; the fourth ends at 360 degrees."""
-    return {
-        "name": name,
-        "entities": [
-            {
-                "type": "arc",
-                "name": f"{name}_{quarter}",
-                "center": [float(center[0]), float(center[1])],
-                "radius": radius,
-                "start_angle": quarter * 90.0,
-                "end_angle": quarter * 90.0 + 90.0,
-            }
-            for quarter in range(4)
-        ],
-    }
+def arc_ring(
+    name: str,
+    center: tuple[float, float],
+    radius: float = RING_RADIUS_MM,
+    arc_dir: int | None = None,
+) -> dict:
+    """One closed loop made of four quarter arcs; the fourth ends at 360 degrees.
+
+    ``arc_dir=None`` keeps the legacy request without a ``dir`` key (T02 default
+    is +1). ``arc_dir=+1`` adds the explicit direction used by the T07 offline
+    equivalence comparison; it never replaces the legacy live input.
+    """
+    entities = [
+        {
+            "type": "arc",
+            "name": f"{name}_{quarter}",
+            "center": [float(center[0]), float(center[1])],
+            "radius": radius,
+            "start_angle": quarter * 90.0,
+            "end_angle": quarter * 90.0 + 90.0,
+        }
+        for quarter in range(4)
+    ]
+    if arc_dir is not None:
+        for entity in entities:
+            entity["dir"] = arc_dir
+    return {"name": name, "entities": entities}
 
 
 def circle_contour(name: str, center: tuple[float, float], radius: float) -> dict:
     return {"name": name, "entities": [circle(name, center, radius)]}
 
 
-def ring_row(count: int, prefix: str = "ring") -> list[dict]:
+def ring_row(count: int, prefix: str = "ring", arc_dir: int | None = None) -> list[dict]:
     start = -(count - 1) * RING_SPACING_MM / 2
     return [
-        arc_ring(f"{prefix}{index}", (start + index * RING_SPACING_MM, 0.0))
+        arc_ring(f"{prefix}{index}", (start + index * RING_SPACING_MM, 0.0), arc_dir=arc_dir)
         for index in range(count)
     ]
 
@@ -342,6 +353,95 @@ def validate_case_inputs(cases: list[dict]) -> None:
         validate_expectation(case)
 
 
+def explicit_dir_equivalence() -> dict:
+    """T07: compare the legacy no-dir input against an explicit dir=+1 input.
+
+    T02 (FEAT-034) is integrated on this branch, so the arc schema accepts a
+    strict ``dir``. The live submission keeps the legacy entities without
+    ``dir``; the explicit variant exists only to show the two inputs stay
+    equivalent. Sweeps follow the T02 rule ``(end - start) % 360`` for dir=+1,
+    which is also the legacy default; no native result is produced or claimed.
+    """
+    from creo_mechdog.schema import validate_operations
+
+    rows = []
+    for count, prefix in ((5, "five"), (10, "ten")):
+        legacy = ring_row(count, prefix)
+        explicit = ring_row(count, prefix, arc_dir=1)
+        sweeps_legacy: list[float] = []
+        sweeps_explicit: list[float] = []
+        entities_equal = True
+        for legacy_contour, explicit_contour in zip(legacy, explicit, strict=True):
+            if legacy_contour["name"] != explicit_contour["name"]:
+                entities_equal = False
+            for old, new in zip(
+                legacy_contour["entities"], explicit_contour["entities"], strict=True
+            ):
+                for key in ("type", "name", "center", "radius", "start_angle", "end_angle"):
+                    if old[key] != new[key]:
+                        entities_equal = False
+                if "dir" in old or new.get("dir") != 1:
+                    entities_equal = False
+                sweeps_legacy.append((old["end_angle"] - old["start_angle"]) % 360)
+                sweeps_explicit.append((new["end_angle"] - new["start_angle"]) % 360)
+        case = {
+            "case": f"{prefix}_arc_rings_explicit_dir_p1",
+            "contours": explicit,
+            "depth": PLATE_DEPTH_MM,
+        }
+        validate_operations(plate_operations())
+        validate_operations(cut_operations(case))
+        legacy_case = {"contours": legacy, "depth": PLATE_DEPTH_MM}
+        area_legacy = sum(analytic_area(contour) for contour in legacy_case["contours"])
+        area_explicit = sum(analytic_area(contour) for contour in case["contours"])
+        gaps = [closure_gap(contour) for contour in case["contours"]]
+        minimum = min(
+            pairwise_gap(left, right)
+            for index, left in enumerate(case["contours"])
+            for right in case["contours"][index + 1 :]
+        )
+        sweeps_equal = sweeps_legacy == sweeps_explicit
+        passed = (
+            entities_equal
+            and sweeps_equal
+            and all(abs(sweep - 90.0) < 1e-12 for sweep in sweeps_explicit)
+            and area_legacy == area_explicit
+            and max(gaps) <= 1e-9
+            and minimum > 0.0
+        )
+        if not passed:
+            raise AssertionError(f"dir=+1 equivalence failed for {prefix} rings")
+        rows.append(
+            {
+                "case": case["case"],
+                "contour_count": count,
+                "entity_count": 4 * count,
+                "legacy_entities_carry_no_dir_key": all(
+                    "dir" not in entity for contour in legacy for entity in contour["entities"]
+                ),
+                "explicit_dir_value": 1,
+                "entities_equal_except_dir": entities_equal,
+                "sweeps_legacy_deg": sorted(set(sweeps_legacy)),
+                "sweeps_explicit_deg": sorted(set(sweeps_explicit)),
+                "sweeps_equal": sweeps_equal,
+                "area_legacy_mm2": area_legacy,
+                "area_explicit_mm2": area_explicit,
+                "max_closure_gap_mm": max(gaps),
+                "minimum_pairwise_gap_mm": minimum,
+                "schema_accepted_explicit_plan": True,
+                "passed": True,
+            }
+        )
+    return {
+        "t02_integrated": True,
+        "comparison": "legacy arc entities without dir vs explicit dir=+1, same coordinates",
+        "live_input": "legacy entities without dir are unchanged and remain the submitted input",
+        "scope": "offline equivalence only; no native geometry result is produced or claimed",
+        "cases": rows,
+        "passed": True,
+    }
+
+
 def geometry_basis() -> dict:
     return {
         "plate": {
@@ -378,8 +478,9 @@ def original_inputs() -> dict:
         "original_case_replay": "not_possible_missing_attachments",
         "search_scope": (
             "repository working tree and git history, C:/Users/Administrator/Downloads "
-            "(including 0.6.1), and release archives under build/"
+            "(including 0.6.1 and 0.7.0), and release archives under build/"
         ),
+        "last_checked": "2026-10-28 (T07 re-check including Downloads/0.7.0; still missing)",
         "note": (
             "The reported 10-ring 40-arc payload cannot be replayed verbatim; every case "
             "below is substitute verification."
@@ -778,6 +879,7 @@ def offline_checks(run_id: str) -> dict:
         "cases": checked,
         "rejections": rejections,
         "reported_control": control,
+        "dir_equivalence": explicit_dir_equivalence(),
     }
 
 
@@ -802,6 +904,7 @@ def write_offline_report(output: Path, run_id: str, results: dict) -> dict:
             "reported_control": results["reported_control"],
             "rejections": results["rejections"],
         },
+        "dir_equivalence": results["dir_equivalence"],
         "cases": results["cases"],
         "provenance": local_provenance(),
     }
