@@ -172,4 +172,5 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；pydantic 
 - 共享冲突面：本批**未改** `native/advanced.cpp`（T05/T11/T12 共用）、`src/creo_mechdog/schema.py`（T02/T03/T05 共用）、`native/generic.cpp`。仅在读码中引用它们，无合并冲突风险。
 - 新增文件：`tests/unit/test_sheetmetal_flange.py`、`tools/test_sheetmetal_flange.py`，均为默认离线、`--live` 拒绝、指向唯一 dev 服务的独立夹具；与 T03 的 `test_sheetmetal_contract.py`、T04 的 `test_sheetmetal_overlap.py` 并列，不复制其报告或 oracle 约定。
 - 接口变化：无（无工具、字段、错误码变化）。
+- 静态断言是变更检测：`check_native_source` 把当前元素值（无 `PRO_E_BODY`、`PRO_BEND_RLF_NONE`、壁厚侧/截面侧固定 FALSE）记为事实。T11 引入 relief 或开放壁厚侧时这些断言会按设计失败，须随 T11 同步更新断言与本卡，不得据此判定回退。
 - 文档冲突面：`docs/work-items/FEAT-014.md`、`docs/work-items/BUG-047.md` 由本任务更新；如其他会话也要改同两文件，以先读后追加为准，不要覆盖。
