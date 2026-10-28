@@ -1,0 +1,71 @@
+{
+    "schema_version":  1,
+    "work_item":  "DEV-051",
+    "task":  "T00",
+    "archived_at":  "2026-10-28",
+    "timezone":  "Asia/Shanghai",
+    "archive_policy":  "Four Markdown originals copied byte for byte without decoding, re-encoding or formatting. The source and archive sizes/SHA256 match the total plan. Only the four originals have -text; MAPPING.md retains normal text rules.",
+    "comparison_baseline":  {
+                                "main_commit":  "2b677f53422102fc14109871f1794b627274a09f",
+                                "tag":  "v0.7.2",
+                                "tag_peeled":  "2b677f53422102fc14109871f1794b627274a09f",
+                                "version":  "0.7.2",
+                                "release":  "https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.7.2",
+                                "release_draft":  false,
+                                "release_prerelease":  false,
+                                "release_assets":  4
+                            },
+    "scope":  "read-only Git and Release checks, byte-preserving archive, mapping and work-item registration; no Creo connection, modeling, unit tests or build",
+    "mapping":  "MAPPING.md",
+    "reports":  [
+                    {
+                        "id":  "R1",
+                        "filename":  "2026-10-27_CREO_0.7.0_钣金增料与四壁折边仍未修复验收报告.md",
+                        "bytes":  8649,
+                        "sha256":  "64ffb9d6c6fc7ee704da6f545d19b0b0adbfcd7282346a29cf53c9e5f8bca0db",
+                        "source":  "C:\\Users\\Administrator\\Downloads\\0.7.0\\2026-10-27_CREO_0.7.0_钣金增料与四壁折边仍未修复验收报告.md",
+                        "reported_version":  "0.7.0",
+                        "evidence_method":  "external_mcp_live_report",
+                        "reported_environment":  "reported MCP 0.7.0; Creo version not independently confirmed in this report"
+                    },
+                    {
+                        "id":  "R2",
+                        "filename":  "2026-10-27_CREO_0.7.0_核心问题_草图弧无dir参数且恒CCW致静默主弧.md",
+                        "bytes":  16184,
+                        "sha256":  "41b46de40f8017d95a1bfa4cac351045cbae13b2e53860a2a075a354a918dacb",
+                        "source":  "C:\\Users\\Administrator\\Downloads\\0.7.0\\2026-10-27_CREO_0.7.0_核心问题_草图弧无dir参数且恒CCW致静默主弧.md",
+                        "reported_version":  "0.7.0",
+                        "evidence_method":  "external_mcp_live_report_and_static_inspection",
+                        "reported_environment":  "reported Creo 10.0.0.0 / MCP 0.7.0"
+                    },
+                    {
+                        "id":  "R3",
+                        "filename":  "2026-10-27CREO10.0.0.0-0.7.0-0.5.2反馈三项全落地但断连与台账两项仍未处理.md",
+                        "bytes":  13657,
+                        "sha256":  "2f31bc1c13e80862be5a55136f42a7018786169f0079a2dc4bb3ca62fb0ca165",
+                        "source":  "C:\\Users\\Administrator\\Downloads\\0.7.0\\2026-10-27CREO10.0.0.0-0.7.0-0.5.2反馈三项全落地但断连与台账两项仍未处理.md",
+                        "reported_version":  "0.7.0",
+                        "evidence_method":  "external_install_and_static_inspection_no_modeling",
+                        "reported_environment":  "reported Creo 10.0.0.0 / MCP 0.7.0; no Creo connection in this report"
+                    },
+                    {
+                        "id":  "R4",
+                        "filename":  "20261027_CREO_v0.7.0_方向与u_axis已修_倾斜面草图在新建零件上不可建.md",
+                        "bytes":  12092,
+                        "sha256":  "edd13122b33acd517b4521acfe403e980987b847684c045f3f7279082ff50940",
+                        "source":  "C:\\Users\\Administrator\\Downloads\\0.7.0\\20261027_CREO_v0.7.0_方向与u_axis已修_倾斜面草图在新建零件上不可建.md",
+                        "reported_version":  "0.7.0",
+                        "evidence_method":  "external_mcp_live_report",
+                        "reported_environment":  "reported Creo 10.0.0.0 / MCP 0.7.0"
+                    }
+                ],
+    "missing_report_attachments":  [
+                                       "gear10.json",
+                                       "sketch_entities.json",
+                                       "sketchgen.py",
+                                       "original 30-segment sketch request",
+                                       "old/new star PRT files",
+                                       "failed request/job/native_result JSON",
+                                       "original preview images"
+                                   ]
+}

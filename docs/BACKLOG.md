@@ -6,6 +6,8 @@
 
 ## 当前安排
 
+- [0.7.0 四份反馈总计划](development/0.7.0-FEEDBACK-PLAN-2026-10-28.md)与[派发表](development/0.7.0-FEEDBACK-TASKS-2026-10-28.md)由 [DEV-051](work-items/DEV-051.md) 汇总；T00 已将[四份原件](validation/feedback-0.7.0-2026-10-28/manifest.json)逐字节归档并完成[逐章映射](validation/feedback-0.7.0-2026-10-28/MAPPING.md)、[验收记录](development/DEV051-T00-ACCEPTANCE.md)。新登记 [BUG-088](work-items/BUG-088.md) 处理 preview 输出**文件缺失**；已有 FEAT-014 补[工作卡](work-items/FEAT-014.md)，不重复登记 ID。T01—T09、T11—T13 尚未实施，T10 仅在另获指派后处理所选范围集成与交付。BUG-066 的图像内容/视角失真与 BUG-088 分开；0.7.2 已完成项不重新列为待开发。
+
 - [0.6.1 两份反馈后续 PATCH 计划](development/0.6.1-FEEDBACK-PLAN-2026-10-27.md)已按用户指派由 [DEV-049](work-items/DEV-049.md) 汇总，目标为下一未占用 PATCH（暂定 0.7.2，执行前重新核对占用）；[T00—T08 派发表](development/0.6.1-FEEDBACK-TASKS-2026-10-27.md)列出依赖、步骤、共享接口与验收。两份[原件](validation/feedback-0.6.1-2026-10-27/manifest.json)已逐字节归档，[逐章映射](validation/feedback-0.6.1-2026-10-27/MAPPING.md)覆盖 32 个章节与 5 条回复请求。T00 文档基线、T01 断连离线核对（结论：证据不足、**根因未定**）、T02 开发检查超时、T03 安装误报、T04 原斜槽六例、T05 多环/预览查缺、T06 种子驱动与 15+2 均已完成，记录见 [T00](development/DEV049-T00-ACCEPTANCE.md)—[T06](development/DEV049-T06-ACCEPTANCE.md)；2026-10-28 实机：T04 六例经 [BUG-087](work-items/BUG-087.md) 修复后 6/6 通过、T06 15+2 全部通过（T05 差项实机仍未跑）；T07 文档收口、T08 集成与发布已完成，本批随 0.7.2 交付。本批新登记 [BUG-085](work-items/BUG-085.md)（断连调查）、[BUG-086](work-items/BUG-086.md)（安装误报）、[DEV-050](work-items/DEV-050.md)（开发检查超时）。不新增工具（保持 94）；主干 `d2e37b0` 与已发布 `v0.7.1`（`ffa0a43`）的差异由 0.7.2 覆盖（GAP-1/GAP-2），不宣称 `d2e37b0` 属于 0.7.1 附件；DEV-049 已移入[完成档案](BACKLOG_COMPLETED.md)。
 
 - [0.6.0 四份反馈后续 PATCH 计划](development/0.6.0-FEEDBACK-PLAN-2026-10-27.md)已按用户选择保存并由 [DEV-048](work-items/DEV-048.md) 汇总，目标版本 0.7.1（已发布）；[T00—T05 派发表](development/0.6.0-FEEDBACK-TASKS-2026-10-27.md)列出依赖、步骤、共享接口与验收。四份[原件](validation/feedback-0.6.0-2026-10-27/manifest.json)已逐字节归档，[逐章映射](validation/feedback-0.6.0-2026-10-27/MAPPING.md)覆盖 61 个章节与 11 条回复请求。T00 文档基线、T01 sidecar 完整性/同名校验/回退诊断、T02 拒绝后引用生命周期、T03 工作卡与发布检查回填、T04 Right 面 ±Z 定向实机、T05 集成与交付均已完成；本批已随 0.7.1 发布（`ffa0a43`，标签 `v0.7.1`）并移入[完成档案](BACKLOG_COMPLETED.md)。本批不新增工具（保持 94）、不重做 0.7.0 已交付能力；仅开发者离线与本机 Creo 12.4 按范围验收，不要求 WorkBuddy，旧现场与 BUG-001 会话限制保持。分类与唯一 ID 统计已按实际行回填，见下节。
@@ -26,8 +28,8 @@
 
 | 状态 | 数量 | 下一步 |
 | --- | --- | --- |
-| 开发中 | 3 | DEV-046、DEV-002、DEV-030；继续已登记的分期工作 |
-| 待复现 | 21 | 补齐输入与环境，复现并定位（含 BUG-085 断连事故根因未定、BUG-084 静态引用缺口、BUG-049/066 缺原件） |
+| 开发中 | 4 | DEV-046、DEV-002、DEV-030、DEV-051；DEV-051 仅 T00 文档基线完成 |
+| 待复现 | 22 | 补齐输入与环境，复现并定位（含新登记 BUG-088 文件缺失；BUG-085 根因未定、BUG-084 静态引用缺口、BUG-049/066 缺原件） |
 | 待核实 | 12 | 明确输入、规则或预期后再定性（含 BUG-045 已测范围待外部环境） |
 | 待开发 | 0 | 本批无；DEV-050 已由 DEV-049 T02 实施并随 0.7.2 交付，转入下行 |
 | 验收中 | 29 | 按卡补齐剩余验证，不重复计入旧成功（26 项行状态为验收中 + BUG-081；另加 FEAT-048、BUG-080） |
@@ -35,7 +37,7 @@
 | 观察中 | 2 | 出现新证据后再转回调查 |
 | 已交付/已修复/已完成/已验收（未收口，状态保留） | 14 | 归类口径：已交付2（DEV-044、FEAT-047）、已修复（0.5.1 交付）1（BUG-079）、已修复（验收中）3（BUG-062/029/082）、已验收（本机）1（BUG-030）、验收完成（0.5.2）1（FEAT-006）、已交付（0.7.0）2（FEAT-036/027）、已修复（0.7.2 交付）2（BUG-086 含 T08 批内补充修复、BUG-087）、已完成（0.7.2 交付）1（DEV-050）、已验收（0.7.2，未收口）1（FEAT-030）；均有另期保留范围，按各卡待收口下一步收口后再移档，不改原状态凑数 |
 
-共 123 项：121 项未完成工作、2 项历史观察；每个固定 ID 只出现一行，123 行对应 123 个唯一 ID，无重复。历史行数变化：2026-10-27 DEV-049 T00 新登记 4 项（DEV-049、BUG-085、BUG-086、DEV-050）；2026-10-28 T07 把 DEV-048（已随 0.7.1 交付）移入[完成档案](BACKLOG_COMPLETED.md)、BUG-086/DEV-050 转入未收口完成态、当日补登 BUG-087 行；2026-10-28 T08 把 DEV-049（已随 0.7.2 交付）移入完成档案，BUG-086（含 T08 批内补充修复）/BUG-087 记为 0.7.2 已修复交付、DEV-050 记为 0.7.2 已完成交付、FEAT-030 转已验收（未收口），并按实际行状态逐行重算分类（行数=唯一 ID）。DEV-047 已随 0.7.0 完成并移入完成档案（历史：本表由 121 行减为 120 行）。分类按行状态显式口径统计，明细见 [DEV048 T03 记录](development/DEV048-T03-ACCEPTANCE.md)、[DEV049 T07 记录](development/DEV049-T07-ACCEPTANCE.md)与 [T08 发布验收记录](validation/RELEASE-0.7.2.md)。
+共 125 项：123 项未完成工作、2 项历史观察；每个固定 ID 只出现一行，125 行对应 125 个唯一 ID，无重复。2026-10-28 DEV-051 T00 在原有 123 行上新增 DEV-051、BUG-088 两行；FEAT-014 复用原行并补工作卡。历史行数变化：2026-10-27 DEV-049 T00 新登记 4 项（DEV-049、BUG-085、BUG-086、DEV-050）；2026-10-28 T07 把 DEV-048（已随 0.7.1 交付）移入[完成档案](BACKLOG_COMPLETED.md)、BUG-086/DEV-050 转入未收口完成态、当日补登 BUG-087 行；2026-10-28 T08 把 DEV-049（已随 0.7.2 交付）移入完成档案，BUG-086（含 T08 批内补充修复）/BUG-087 记为 0.7.2 已修复交付、DEV-050 记为 0.7.2 已完成交付、FEAT-030 转已验收（未收口），并按实际行状态逐行重算分类（行数=唯一 ID）。DEV-047 已随 0.7.0 完成并移入完成档案（历史：本表由 121 行减为 120 行）。分类按行状态显式口径统计，明细见 [DEV048 T03 记录](development/DEV048-T03-ACCEPTANCE.md)、[DEV049 T07 记录](development/DEV049-T07-ACCEPTANCE.md)与 [T08 发布验收记录](validation/RELEASE-0.7.2.md)。
 
 - 收到失败报告不等于根因已确认；部分实现/通过只缩小剩余范围，不批量关闭。状态变化同时同步工作卡，完成项及时移入档案。
 - 新工作先登记固定 ID、目标、范围、环境与验收要求；执行过程写入工作卡或证据，使用[模板](templates/WORK_ITEM.md)。
@@ -47,6 +49,7 @@
 
 | ID | 优先级 | 状态 | 目标版本 | 问题与下一步 |
 | --- | --- | --- | --- | --- |
+| [DEV-051](work-items/DEV-051.md) | P1 | 开发中（仅 T00 共同基线完成） | 未定 | [0.7.0 四份反馈](validation/feedback-0.7.0-2026-10-28/manifest.json)归档与[逐章映射](validation/feedback-0.7.0-2026-10-28/MAPPING.md)已提交；其余任务按[派发表](development/0.7.0-FEEDBACK-TASKS-2026-10-28.md)另行指派，T10 统一所选范围，未实施项不记通过。 |
 | [DEV-046](work-items/DEV-046.md) | P1 | 第二批实机通过，WorkBuddy 取消未执行；第二批已随 0.6.0 交付 | 0.6.0 | 第一批 BUG-080/FEAT-006 已随 0.5.2 交付。第二批 Task 4 FEAT-012/BUG-045 矩阵创建/更新管线已实现并完成开发者实机验收（38 父作业含故意失败成功回滚、11 姿态基向量/已知点、rev 递进、保存重载、约束符号名、体积 330 独立断言；补充 4 次真实改变位姿 rev 36→40）；第二阶段（2026-10-25）FEAT-008 官方管线示例/说明、组件变更摘要、list_components 约束符号名与 FEAT-048 锁顺序小修复已实现；FEAT-048 两批真实夹具实机（2+1 成功、3+2 拒绝、0 unknown、rev 1、窗口/源字节不变、same-key 回放、依赖探针分支）与最终管线 b86 实机（10 父作业全成功，快照刷新新唯一 label，7200→7800、12384→12984、装配 rev 3→4）通过；独立全量 dev_check 748 项 0 失败 0 错误（b86 干净树）。用户 2026-10-26 决定取消本批 WorkBuddy 测试（未执行，不记通过）并授权合入 main+Release；第二批已随 0.6.0 交付。FEAT-048/FEAT-008 其余范围及第三批 FEAT-049/050、DEV-027 剩余（二进制可复现性、真实世代删除）、FEAT-012 显式源件更新/嵌套继续开放。 |
 | [BUG-077](work-items/BUG-077.md) | P0 | 验收中 | 0.4.7 | 530项单测及[0.4.7黑盒](validation/WORKBUDDY-0.4.7-2026-10-21.md)正常主线、分页、拒绝保护和并发busy通过；[小型真实非空迁移、同键回放及后续编辑/保存重载已通过](validation/WORKBUDDY-0.4.7-NONEMPTY-2026-10-21.md)；[>16 MiB超限迁移→收养→编辑实机链路通过](validation/BUG077-OVERSIZE-MIGRATION-2026-10-21.md)；[恢复链路四动作矩阵+restore_baseline/abandon_new通过](validation/BUG077-RECOVERY-2026-10-22.md)；[图纸消费点+两处拆分遗漏修复随版交付](validation/BUG077-DRAWING-2026-10-22.md)。accept_saved/accept_live两动作[健康会话各3/3通过](validation/BUG078-ROOT-CAUSE-2026-10-22.md)，事故会话关联及旧现场仍保留、待操作者选择收尾；原环境复测继续开放。485条真实旧登记未迁移，不清保护。0.4.7已随版交付（d23866a/v0.4.7/Release 420203117）。 |
 | [BUG-078](work-items/BUG-078.md) | P1 | 验收中 | 待排期 | [根因已定位](validation/BUG078-ROOT-CAUSE-2026-10-22.md)：全部-1集中于复用孤儿nmsd的事故会话（trail 70条dbg_err_crash），代码序列无罪、零行为改动；accept_saved/accept_live健康会话各3/3独立夹具闭环（同键重放、恢复后编辑过）；偶发编辑-1十组对照未复现保留子项；三个旧现场仅restore_baseline可用待操作者收尾。 |
@@ -63,6 +66,7 @@
 
 | ID | 优先级 | 状态 | 目标版本 | 问题与下一步 |
 | --- | --- | --- | --- | --- |
+| [BUG-088](work-items/BUG-088.md) | P2 | 待复现 | 未排期 | 0.7.0 外部报告 raster=0 后 `output_file=-4`、预览文件未确认；T08A 核对路径/存在/大小与真实文件系统错误，和 BUG-066 文件存在但画面失真分开验收。 |
 | [BUG-087](work-items/BUG-087.md) | P1 | 已修复（0.7.2 已交付；2026-10-28 实机六例 6/6） | 0.7.2 | 按 `datum_plane` ID 引用 + 自定义面内 `u_axis` 时，第二参照选到与 orient 参照同法向的重复基准面（Z=0 的 42 与 6），截面只剩一条可用参考线，`ProSectionSolve` 对所有实体与标注模式返回 -1 且无 section error（DEV-049 T04 原斜槽六例 0/6）。修复：候选基准面须与 orient 面法向不平行，否则跳过并回落既有基准轴参照（`native/generic.cpp:1233-1287`）；不改 `datum_feature` 标签路径与轴对齐 `u_axis`。修复后 T04 六例 6/6 通过（autodim run `20261028T102858_b2d5e5c9`、coordinates run `20261028T104324_57f20a2d`，体积／帧／参考线／revision／保存重载全满足），Right 面 ±Z 回归无退化（[T04 第十节](development/DEV049-T04-ACCEPTANCE.md)）。关联 BUG-064/084、DEV-049。 |
 | [BUG-085](work-items/BUG-085.md) | P1 | 待复现 | 未排期 | 0.6.1 验收（**作者本机 Creo 12.4.0.0**，FEAT-030 九种子矩阵途中）中 `matrix_four_smooth` 创建成功后 worker exit 20 / IPC 不可读、coordinator 两次重试超时；four_smooth 编辑闭环及其后 13 正例 + 2 负例未完成验收（[0.6.1 记录](validation/RELEASE-0.6.1.md)），非外部 Creo 10 新复现。与 BUG-056 同码 `-4`/exit 20 只证明映射相同。T01 离线核对已完成（[记录](development/DEV049-T01-ACCEPTANCE.md)）：四个 job 均在断连前成功、连接码 0，首次异常停止点为 2026-10-26 04:30:48（Asia/Shanghai 12:30:48）的 `building_worker` 悬挂；跨批次 nmsd 与「请求是否到达 Creo」两项关键证据分别**缺失**与**自相矛盾**，事故窗口另有运行期 native 改动/可能重建 worker、`parametric` 隐藏且 hung 两个旧案不存在的变量，**结论为证据不足、根因未定**。不自动重开 BUG-056、不清保护、不主动探测。 |
 | [BUG-086](work-items/BUG-086.md) | P1 | 已修复（0.7.2 已交付；含 T08 批内补充修复） | 0.7.2 | Windows PowerShell 5.1 下 `setup.ps1` 的 pip 步骤 stderr `[notice]` 在 `$ErrorActionPreference='Stop'`/重定向组合下被当失败（pip 实际 exit 0），报 `INSTALL_INCOMPLETE`（[0.7.1 记录](validation/RELEASE-0.7.1.md)）。T03 已在隔离夹具复现（触发条件为原生命令 stderr 被重定向），并在 `setup.ps1` 以 `Invoke-PipStep` 集中封装两个 pip 步骤：函数内局部容忍 ErrorRecord、立即取真实退出码、启动失败/无退出码/非零一律失败、退出时恢复原偏好，不吞 stderr、不全局降偏好。3 种调用 × 4 种退出情形与既有安装回归通过。**T08 批内补充（2026-10-28，安装验证发现、用户批准）**：同类残留在其余非 pip 外部调用，`Invoke-PipStep` 泛化为 `Invoke-ExternalStep` 统一包裹全部 8 处外部调用按真实退出码判定，回归 28 项通过；新目录安装以 `2> err.log` 形式完整通过（exit 0、无 INSTALL_INCOMPLETE、九种子 SHA256 与清单一致、原生执行器编译成功）。[T03 记录](development/DEV049-T03-ACCEPTANCE.md)、[BUG-086 卡](work-items/BUG-086.md)。 |
@@ -165,7 +169,7 @@
 | FEAT-011 | P2 | 待规划 | 未排期 | 增加复合轨迹、可变截面和螺旋扫掠，分别明确范围并测试。 |
 | [FEAT-012](work-items/FEAT-012.md) | P2 | 矩阵子项开发者实机通过；WorkBuddy 取消未执行；随 0.6.0 候选交付 | 0.6.0 | 创建/更新公开工具及 execute_plan 支持互斥的嵌套 3×3 rotation_matrix，1e-6 校验且不修正；离线证据见卡；2026-10-26 实机：38 父作业（37 成功+1 故意失败成功回滚）、11 姿态基向量/已知点、非法拒绝、rev 递进、保存重载、约束符号名、体积 330、补充 4 次真实改变位姿 rev 36→40；用户 2026-10-26 取消本批 WorkBuddy（未执行）。第二阶段配套已实现；显式源件更新和嵌套装配继续开放，source_snapshot 不实时联动。 |
 | FEAT-013 | P2 | 待规划 | 未排期 | 增加剖视、局部放大、装配图和 BOM（物料清单），逐项检查模型变化后图纸能否同步更新。 |
-| FEAT-014 | P2 | 待规划 | 未排期 | 补钣金止裂槽、成形、折边和过渡。已有两道相对折边成功、第 3/4 道垂直折边失败的报告；0.3.2 的 S3 再现第 3 道失败、整体回滚且没有 bend relief（折弯释放）；0.3.5 第四轮仍未修（模型 acc35_sm2，job 45334bda…）：一次挂 4 道 flange（h=80、R2.54、Y=0.5）时前 2 道 ±X 成功、第 3 道 −Y 失败 ProFeatureWithoptionsCreate -1，行为与 0.3.1～0.3.3 完全一致。本轮新发现：厚底板（185×232×232）时连第 1 道折边都失败（Regeneration produced a failed, suppressed or incomplete feature）——折边被折向驱动面一侧、全部落在既有实体内不产生新材料，方向对底板厚度敏感且 flip 不可控（佐证 BUG-047）。评估角部裁剪和释放结构，并说明限制。释放结构缺失是已知能力缺口，但角部干涉是否为失败原因仍待查，不能直接认定四壁箱都建不了。 |
+| [FEAT-014](work-items/FEAT-014.md) | P2 | 待规划 | 未排期 | 补钣金止裂槽、成形、折边和过渡。已有两道相对折边成功、第 3/4 道垂直折边失败的报告；0.3.2 的 S3 再现第 3 道失败、整体回滚且没有 bend relief（折弯释放）；0.3.5 第四轮仍未修（模型 acc35_sm2，job 45334bda…）：一次挂 4 道 flange（h=80、R2.54、Y=0.5）时前 2 道 ±X 成功、第 3 道 −Y 失败 ProFeatureWithoptionsCreate -1，行为与 0.3.1～0.3.3 完全一致。本轮新发现：厚底板（185×232×232）时连第 1 道折边都失败（Regeneration produced a failed, suppressed or incomplete feature）——折边被折向驱动面一侧、全部落在既有实体内不产生新材料，方向对底板厚度敏感且 flip 不可控（佐证 BUG-047）。评估角部裁剪和释放结构，并说明限制。释放结构缺失是已知能力缺口，但角部干涉是否为失败原因仍待查，不能直接认定四壁箱都建不了。 |
 | FEAT-015 | P3 | 待规划 | 未排期 | 评估模具、NC 加工和仿真能力，先选一个最小场景做完整流程，暂不承诺支持全部模块。 |
 | FEAT-016 | P2 | 待规划 | 未排期 | 增加翼型凸度和 NACA 四位数系列，检查能否通过原生参数编辑，并验证实际几何。 |
 | FEAT-017 | P2 | 待规划 | 未排期 | 分别复现并测试布尔、曲面和拔模中尚未测过的用法，再决定扩大哪些支持范围。 |
