@@ -65,9 +65,10 @@
 ## 依赖提交、受测身份与指纹
 
 - 依赖提交：`2726ca54715d547c71c7de61c24fb214ac7f6864`（T00）→ `a3c1f4b3e05668aa57d7225dc16394dd272abec9`（T02，本卡基线）。
-- 实现提交：本卡所属 T03 提交，以交接报告和 `git rev-parse HEAD` 为准（提交号不能自指写入同一提交文件）。
-- 受测 commit：`a3c1f4b3e05668aa57d7225dc16394dd272abec9` 工作树 + 本批 T03 改动；dirty=true。
-- `source_fingerprint`：`3a52f4ffcf9889274087a6c48c1aa538332ddb55ba62a27eb8e79ecca22688f6`（`tools/test_sheetmetal_contract.py` 的 provenance 算法：全部 `*.py` 与 `native/*.h|*.hpp|*.cpp` 的 CRLF 归一化 SHA256 清单哈希；对应报告 `build/sheetmetal_contract/20261028T210643_b9e02018/report.json`）。
+- 实现提交：`601b4bcaca861b2d1edd9930a17cf4752d9768d8`（本卡首次提交；本节的指纹补正为其后的同任务提交）。
+- 受测 commit：`601b4bcaca861b2d1edd9930a17cf4752d9768d8` + 工作区既有无关修改（`session_activity.json` 等未提交）；dirty=true。
+- `source_fingerprint`：`fc7ced085fd0ea26aad16f0e321a0475cc74aa4325748a9adce3ab54afccf127`（`tools/test_sheetmetal_contract.py` 的 provenance 算法：全部已跟踪 `*.py` 与 `native/*.h|*.hpp|*.cpp` 的 CRLF 归一化 SHA256 清单哈希，另加本任务两个新增测试文件的显式路径；对应报告 `build/sheetmetal_contract/20261028T210821_dffd031b/report.json`，SHA256 `73cd0c5ef9557dba0c15df29ba81191b8a9ecad53fbf25466e033ee61592c53b`）。
+- 追溯说明：提交前同一内容的一次运行得到 `3a52f4ff…`（报告 `build/sheetmetal_contract/20261028T210643_b9e02018/report.json`）。差异仅因 `src/creo_mechdog/sheetmetal.py` 当时未被 git 跟踪而不在 `git ls-files` 清单中，源码内容相同；以上述 `fc7ced08…` 为准，勿混用两个指纹的结论。
 
 ## 环境
 
@@ -78,7 +79,7 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；pydantic 
 | # | 命令 | 真实结果 |
 | --- | --- | --- |
 | 1 | `.venv\Scripts\python.exe -m unittest tests.unit.test_sheetmetal_contract -v` | exit 0（经 `Start-Process` 取值），Ran 18 tests，OK。注意：PowerShell 直接调用时因 unittest 写 stderr 会被包装成 NativeCommandError 并返回 1，属调用方式伪影，非测试失败 |
-| 2 | `.venv\Scripts\python.exe tools\test_sheetmetal_contract.py` | exit 0；报告 `build/sheetmetal_contract/20261028T210643_b9e02018/report.json`，SHA256 `0da34929fb5955fbe2efde3f7971bb889d29134e9753db2ba4133bddd733c285`（另有 `report.sha256`）；内置复跑单元 18/18 OK |
+| 2 | `.venv\Scripts\python.exe tools\test_sheetmetal_contract.py` | exit 0；实现提交后运行报告 `build/sheetmetal_contract/20261028T210821_dffd031b/report.json`，SHA256 `73cd0c5ef9557dba0c15df29ba81191b8a9ecad53fbf25466e033ee61592c53b`（另有 `report.sha256`）；内置复跑单元 18/18 OK。提交前同内容的一次运行见上节追溯说明 |
 | 3 | `.venv\Scripts\python.exe tools\dev_check.py` | exit 0；`success=true`、`unit_tests=passed`、`regressions=[]`；style `lint_findings=30`、`unformatted_files=16`（均为存量基线计数，前一次运行 31/17 含本批新增文件）；`checked_source_sha256=cb2dc045234a2091feef88f3a1062dc7b72d5208c4bd20d6e05cb982bd7c9d98`；报告 `build/development_check.json` |
 | 4 | `.venv\Scripts\python.exe bridge.py build` | 成功；`build/build.log`：`COMPILER_PREFLIGHT` 通过 → 编译 `worker.cpp`，仅 3 条存量 C4819（`assembly_units.h`、`assembly_walk.h`、`generic.cpp`，代码页 936 警告，与本批无关），无错误；`build/creo_worker.exe` 重新生成（2026-10-28 20:56:05），`build/source.sha256` 更新为 `f18383ec…b45e11` |
 
