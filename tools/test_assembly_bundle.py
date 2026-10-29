@@ -1,12 +1,14 @@
-"""FEAT-031 T13 offline fixture report; live Creo execution is refused."""
+"""FEAT-031 T13 driver: offline fixture report, or the live bundle round trip."""
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import hashlib
 import json
 import os
 import platform
+import shutil
 import subprocess
 import sys
 import time
@@ -17,6 +19,256 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from tests.unit import test_assembly_bundle as fixture  # noqa: E402
+from tools.sheetmetal_live import (  # noqa: E402
+    LiveRunner,
+    failure_text,
+    require_manual_start,
+    unique_name,
+)
+
+HANG_BUDGET_SECONDS = 180.0
+
+
+def box_plan(low: list[float], high: list[float], depth: float) -> list[dict]:
+    return [
+        {
+            "op": "sketch",
+            "label": "box_sketch",
+            "plane": "XY",
+            "entities": [{"type": "rectangle", "name": "box", "min": low, "max": high}],
+        },
+        {
+            "op": "extrude",
+            "label": "box",
+            "sketch": "box_sketch",
+            "depth": depth,
+            "mode": "add",
+            "direction": "positive",
+            "depth_type": "blind",
+        },
+    ]
+
+
+def component_summary(payload: dict) -> list[dict]:
+    rows = []
+    for item in payload.get("components") or []:
+        if not isinstance(item, dict):
+            continue
+        rows.append(
+            {
+                "label": item.get("label"),
+                "identity": item.get("identity"),
+                "translation": item.get("translation") or item.get("transform"),
+                "name": item.get("name") or item.get("component_name"),
+            }
+        )
+    return rows
+
+
+async def create_model(
+    runner: LiveRunner, tag: str, model_type: str, operations: list[dict]
+) -> dict:
+    name = unique_name(tag)
+    created = await runner.submit(
+        f"{tag}:create",
+        "creo_execute_plan",
+        {"model_name": name, "model_type": model_type, "operations": operations},
+    )
+    terminal = await runner.wait_job(created["job_id"], budget=HANG_BUDGET_SECONDS)
+    return {"name": name, "created": created, "terminal": terminal}
+
+
+async def run_live(output: Path | None) -> int:
+    require_manual_start(ROOT / "config.json")
+    from mcp import Client
+    from mcp.client.stdio import StdioServerParameters
+
+    run_id = time.strftime("%Y%m%dT%H%M%S") + "_" + uuid.uuid4().hex[:8]
+    target = output or ROOT / "build" / "assembly_bundle" / run_id / "report.json"
+    if target.exists():
+        raise SystemExit(f"refusing to overwrite {target}")
+    fresh_root = target.parent / "reimport"
+    params = StdioServerParameters(command=sys.executable, args=[str(ROOT / "server.py")], cwd=ROOT)
+    async with Client(params, read_timeout_seconds=180) as client:
+        runner = LiveRunner(
+            client,
+            target,
+            "FEAT-031 / DEV-051 T13",
+            "two-part assembly: native_bundle export, manifest check, copy to a fresh directory "
+            "and re-open",
+            run_id,
+        )
+        try:
+            await runner.start()
+            runner.report["hang_budget_seconds"] = HANG_BUDGET_SECONDS
+            first = await create_model(
+                runner, "t13_src_a", "part", box_plan([0.0, 0.0], [50.0, 40.0], 10.0)
+            )
+            second = await create_model(
+                runner, "t13_src_b", "part", box_plan([70.0, 0.0], [90.0, 20.0], 5.0)
+            )
+            entry: dict = {
+                "case": "export_bundle",
+                "sources": {
+                    "a": first["created"]["model_id"],
+                    "b": second["created"]["model_id"],
+                },
+            }
+            if (
+                first["terminal"].get("status") != "succeeded"
+                or second["terminal"].get("status") != "succeeded"
+            ):
+                entry.update(failure="source part failed", passed=False)
+                runner.case(entry)
+            else:
+                assembly = await create_model(
+                    runner,
+                    "t13_asm",
+                    "assembly",
+                    [
+                        {
+                            "op": "assemble_component",
+                            "label": "part_alpha",
+                            "source_model_id": first["created"]["model_id"],
+                            "placement": "fixed",
+                        },
+                        {
+                            "op": "assemble_component",
+                            "label": "part_beta",
+                            "source_model_id": second["created"]["model_id"],
+                            "placement": "fixed",
+                            "translation": [100.0, 0.0, 0.0],
+                        },
+                    ],
+                )
+                model_id = assembly["created"]["model_id"]
+                entry.update(
+                    assembly_model_id=model_id,
+                    assembly_name=assembly["name"],
+                    assembly_job_id=assembly["created"]["job_id"],
+                    assembly_status=assembly["terminal"].get("status"),
+                )
+                if assembly["terminal"].get("status") != "succeeded":
+                    entry.update(failure=failure_text(assembly["terminal"]), passed=False)
+                    runner.case(entry)
+                else:
+                    before = await runner.call("creo_list_components", {"model_id": model_id})
+                    entry["components_before"] = component_summary(before)
+                    entry["revision_before"] = before.get("revision")
+                    exported = await runner.submit(
+                        "export:native_bundle",
+                        "creo_export_model",
+                        {"model_id": model_id, "format": "native_bundle"},
+                    )
+                    terminal = await runner.wait_job(exported["job_id"], budget=HANG_BUDGET_SECONDS)
+                    result = terminal.get("result") or {}
+                    bundle = result.get("native_bundle") or {}
+                    entry.update(
+                        export_job_id=exported["job_id"],
+                        export_status=terminal.get("status"),
+                        bundle=bundle,
+                    )
+                    manifest_path = Path(str(bundle.get("manifest") or ""))
+                    problems: list[str] = []
+                    if terminal.get("status") != "succeeded":
+                        problems.append("export job did not succeed")
+                    if not bundle.get("complete"):
+                        problems.append("bundle reported incomplete")
+                    if not manifest_path.is_file():
+                        problems.append("manifest file missing")
+                    manifest = {}
+                    if manifest_path.is_file():
+                        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                        entry["manifest"] = manifest
+                        files = manifest.get("files") or []
+                        if manifest.get("schema") != 1:
+                            problems.append("manifest schema is not 1")
+                        if not files:
+                            problems.append("manifest lists no files")
+                        for item in files:
+                            relative = item.get("relative_path") or item.get("path")
+                            if not relative:
+                                problems.append("manifest file without relative path")
+                                continue
+                            candidate = manifest_path.parent / relative
+                            if not candidate.is_file():
+                                problems.append(f"missing bundle file {relative}")
+                                continue
+                            digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
+                            if digest != item.get("sha256"):
+                                problems.append(f"sha256 mismatch for {relative}")
+                    entry["manifest_problems"] = problems
+
+                    root_file = manifest.get("root")
+                    reopened: dict = {}
+                    if root_file:
+                        fresh_root.mkdir(parents=True, exist_ok=True)
+                        for item in Path(str(bundle.get("directory"))).iterdir():
+                            if item.is_file():
+                                shutil.copy2(item, fresh_root / item.name)
+                        opened = await runner.submit(
+                            "reimport:open",
+                            "creo_open_file",
+                            {
+                                "file_path": str((fresh_root / root_file).resolve()),
+                                "idempotency_key": uuid.uuid4().hex,
+                            },
+                        )
+                        opened_terminal = await runner.wait_job(
+                            opened["job_id"], budget=HANG_BUDGET_SECONDS
+                        )
+                        reopened.update(
+                            open_job_id=opened["job_id"],
+                            open_status=opened_terminal.get("status"),
+                            open_failure=failure_text(opened_terminal)
+                            if opened_terminal.get("status") != "succeeded"
+                            else None,
+                        )
+                        stem = Path(root_file).stem
+                        if opened_terminal.get("status") == "succeeded":
+                            session = await runner.call(
+                                "creo_inspect_session_assembly", {"name": stem}
+                            )
+                            reopened["session_component_count"] = len(
+                                session.get("components") or []
+                            )
+                            reopened["session_components"] = component_summary(session)
+                            reopened["session"] = {
+                                key: session.get(key)
+                                for key in ("name", "path", "revision", "component_count")
+                            }
+                    entry["reimport"] = reopened
+                    expected_count = len(entry["components_before"])
+                    if reopened.get("open_status") != "succeeded":
+                        problems.append("re-opened assembly did not load")
+                    if reopened.get("session_component_count") != expected_count:
+                        problems.append(
+                            "re-opened component count "
+                            f"{reopened.get('session_component_count')!r} != {expected_count}"
+                        )
+                    entry["passed"] = not problems
+                    runner.case(entry)
+        except BaseException as error:
+            runner.report["stopped"] = f"{type(error).__name__}: {error}"
+            runner.finish()
+            raise
+    summary = runner.finish()
+    print(json.dumps(summary, ensure_ascii=False))
+    rows = [
+        {
+            key: case.get(key)
+            for key in (
+                "case",
+                "export_status",
+                "manifest_problems",
+                "reimport",
+                "passed",
+            )
+        }
+        for case in runner.report["cases"]
+    ]
+    print(json.dumps({"passed": runner.report["passed"], "cases": rows}, ensure_ascii=False))
+    return 0 if runner.report["passed"] else 1
 
 
 def provenance() -> dict:
@@ -61,8 +313,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
     if args.live:
-        print("T13 offline driver refuses live Toolkit/Creo connection", file=sys.stderr)
-        return 2
+        if not args.confirm_session_usable:
+            print("live runs require --confirm-session-usable", file=sys.stderr)
+            return 2
+        return asyncio.run(run_live(args.output))
     suite = unittest.defaultTestLoader.loadTestsFromModule(fixture)
     result = unittest.TextTestRunner(verbosity=1).run(suite)
     report = {

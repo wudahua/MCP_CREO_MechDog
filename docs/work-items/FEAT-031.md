@@ -31,3 +31,13 @@
 ## DEV-051 T13 离线阶段（2026-10-29）
 
 新增显式 `native_bundle` 只读导出格式：在本次 job 的独立目录从所属模型 `output` 内的原生版本快照收集已知装配引用，写相对路径、SHA256 和缺失状态 manifest。原有五种导出格式和默认 `step` 不变。离线夹具与匹配 SDK 构建通过；真实装配新目录打开、引用解析、嵌套遍历完整性、源件实际哈希、revision 与重载尚未连接 Creo 验收。详见 [T13 验收卡](../development/DEV051-T13-ACCEPTANCE.md)。状态保持实现待原生验收。
+
+## 2026-10-29 实机：两件装配打包失败（组件身份无法解析）
+
+`tools/test_assembly_bundle.py --live --confirm-session-usable`，报告 `build/assembly_bundle/20261029T231622_7cbf542e/report.json`（SHA256 `8a50e8b0…b00105`）：
+
+- 装配与组件记录正常（`part_alpha`/`part_beta`，`feature_id` 40/43，变换矩阵与标签正确），导出 job `0856a754151544f08bbd489d7d7398be` 成功。
+- 但 `native_bundle.complete=false`、`files=1`、`missing=2`，清单两条 `{name:null,status:missing,reason:unresolved_identity}`；包里只有 `.asm`，两个 `c_<token>_<n>.prt` 源件没有进包。
+- 原因：磁盘副本名是 `c_fec6a06a17f54953_0.prt.1`（与装配 job 前 16 位一致，符合契约），而巡检 `model_name` 返回 `\u25a9C_FEC6A06A17F549530001`（前导 U+25A9、全大写、后缀 `0001` 而非 `_0`），`_references` 的 `[a-z][a-z0-9_]{0,30}` 校验失败。
+- 回导未完成：同名装配仍在会话中，`creo_open_file` 返回 `SESSION_NAME_CONFLICT`（`open_file_session_check`、`toolkit_code=-1`）；未擅自擦除会话模型。
+- 本轮**未**放宽校验或猜测名字映射（会把不完整包伪装成自包含），也未改原生名称读取。修复方向：让巡检名与磁盘文件名同源（核对 `ProMdlNameGet` 缓冲区与前导 U+25A9 是否未初始化内存），再补"擦除会话模型 + 新目录打开"的回导验收。本条仍开放。
