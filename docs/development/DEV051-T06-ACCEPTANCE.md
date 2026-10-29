@@ -30,3 +30,15 @@
 仅精确提交本卡、两份新增 Python 文件、BUG-064/087 两卡的追加段落。未触及共享 `native/generic.cpp`、schema、版本、主台账、两份计划或另一个会话文件；接口无变化。该矩阵是离线准备，实机执行器和第二参照缺失构型仍待后续实现/核实。
 
 提交后追溯：实现提交 `6a09f00b50e9bcce5f4a68d936c66701a8041654`；上述两份报告均在该提交前、相同受测源码内容上运行，因此报告内的 `commit` 字段仍为依赖提交 `26b24c6`，`dirty=true`。本段仅补充提交身份，不把离线结果升级为实机验收。工作区仍有另一会话与本机运行数据的未提交文件，未暂存或改写。
+
+## 实机阶段（2026-10-29，Creo 12.4.0.0）
+
+用户 2026-10-29 授权直接操作 Creo；会话由用户手动打开，`auto_start_creo=false`，驱动未启动/关闭 Creo、未注入故障、未清保护。在同一会话串行执行 `tools\test_t06_native.py --live --confirm-session-usable`，**exit 0**，报告 `build/t06_native_acceptance.json`。
+
+- `native_acceptance=passed`，`toolkit_serial=true`，`pending_native_acceptance=[]`。
+- 9 个独立夹具全部通过：7 个 add（含 2/5/10 环与倾斜面矩形构型）+ 2 个 cut；每个都 `saved_file_reloaded_and_verified=true`。示例（2 圆 add）：期望 452.3893421169302 mm³，实测 452.389346693283 mm³，`protrusion` +1、`datum_plane` +1，model `89246772c063468cb8fe4cc615cff4f7`。
+- `failure_recovery`：一次同面矩形 cut 真实失败（`Extrude cut removes no material…`，原生 section 5 闭合环/0 开口），`rollback_succeeded=true`，revision 未推进。
+- `external_case_replay=not_applicable_missing_attachments`：原 30 段/星形材料仍未提供，**原案不因此关闭**。
+- 未测：真实第二参照选择（夹具只覆盖独立新件的顺序模式）、`dir` 交互、WorkBuddy、Creo 9/10。
+
+给集成人：本段只追加卡与实机记录，不改生产代码。

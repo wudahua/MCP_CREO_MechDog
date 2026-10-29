@@ -65,3 +65,29 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；ruff 0.17
 
 - 无共享生产冲突面：本批只改 `tools/test_dev049_profile_replay.py`、`tests/unit/test_dev049_profile_replay.py`、本卡与 BUG-049 追加段，未触碰 `native/*`、`schema.py`、`server.py`、版本与主台账。
 - 接口变化：无生产接口变化。驱动 `arc_ring`/`ring_row` 增加可选 `arc_dir`（缺省 None=旧输入，不写 `dir` 键），live 提交输入不变；离线报告新增 `dir_equivalence` 字段与 `original_inputs.last_checked` 字段（只增不改旧字段）。
+
+## 实机阶段（2026-10-29，Creo 12.4.0.0）
+
+用户于 2026-10-29 明确授权直接操作 Creo；会话由其手动打开（`parametric.exe` + `xtop` 运行中、可响应），`config.json` 保持 `auto_start_creo=false`，驱动未启动、未关闭、未重启 Creo，未做故障注入，未清 unknown 保护。工作区 `E:\Projects\MCP_CREO_MechDog`，分支 `codex/dev051-feedback070`，版本 0.8.2，`dirty=true`（仅 `session_activity.json` 与本次驱动改动）。
+
+实机前先在驱动上修掉两个**夹具层缺陷**（不涉及生产代码）：
+
+1. `call()` 直接把 `client.call_tool()` 的 `CallToolResult` 当 dict 用，第一次实跑在 `creo_check_environment` 后 `json.dumps` 直接 `TypeError`——该驱动从未真正跑通过实机。现改为取 `structured_content`，`is_error` 时抛错，无结构化载荷时回落到文本 JSON。
+2. 5 环夹具原为半径 3、间距 12，外两环中心在 ±24 mm，**已在 R20 圆板外**，因此只切掉 3 环（实测 424.1148787 = 3×141.37），首轮被误判为产品缺陷。现按环数固定布局：5 环用 (r=3, spacing=8)，10 环用 (r=1.5, spacing=4)，`ring_row()` 在建请求前校验「不越板、不相交」，越界直接 `ValueError`。
+
+修正后同一会话串行跑 `tools\test_dev049_profile_replay.py --live --confirm-session-usable`，**exit 0**，报告 `build/dev049_t05/20261029T145811_c1465566/report.json`：
+
+| 用例 | model_id | job_id | revision | 期望去料 mm³ | 实测去料 mm³ | 误差 mm³ | 重载核验 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 2 圆对照 | `93b7043c6fed4bd09dee695d479137a4` | `aff8f939148f4becbd5e0beddfecc201` | 2 | 125.66370614359172 | 125.66370614359039 | 1.3e-12 | true |
+| 5 四弧环 | `1c8b3e96dfa74be5956a978db47b69ec` | `308547f973eb497981a6e52eb662c903` | 2 | 706.8583470577034 | 706.8582848640717 | 6.2e-5 | true |
+| 10 四弧环 | `5130698f71c848d58f9c5274c3a4c7b7` | `a69090be52804bc49fcbb0119bab5d17` | 2 | 353.4291735288517 | 353.42900085383553 | 1.7e-4 | true |
+
+结论与边界：
+
+- 替代夹具范围内，**5 环与 10 环的单次 cut 都完整去料**（误差远小于 0.01 mm³ 门槛），原生 section 报告 5/10 个闭合环、0 开口，cut 特征各 +1，三例均 `saved_file_reloaded_and_verified=true`、revision 2。
+- 因此**不能用本替代夹具支撑「只支持 2 个轮廓」的说法**；`contour_limit_claim` 仍为 `not_asserted`，本卡不主张任何环数上限。
+- 原 gear10 案仍缺 `gear10.json`/`sketch_entities.json`，`original_case_replay=not_possible_missing_attachments`，**BUG-049 原案保持开放**。
+- 未测：失败路径、busy/单通道行为、`dir=+1` 实机几何等价（只做了离线等价）；夹具布局改动前的历史离线通过数不与本次实机结果合并。
+
+给集成人：本次改动 `tools/test_dev049_profile_replay.py`（`call()` 解包与 `ring_row`/`RING_LAYOUTS`）、本卡与 BUG-049 追加；无生产接口变化，需随下一次版本发布打包。

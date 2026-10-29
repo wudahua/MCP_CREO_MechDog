@@ -106,3 +106,12 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；ruff 0.17
   - 原生 preview 结果新增 `file_check`（raster 未成功时为 `null`）；`failed_code` 语义收紧：只有“路径不存在”才是 `-4`，其余 filesystem 失败为 `-1`，真实码在 `file_check.error_code`。
   - 投影块新增 `file_check`、`verification_error`；原生 claimed-written 但复检失败时 `failed_code` 由自造的 `-1`/raster 码改为 `null`（下游不得再把该字段当作“必有数字”）。
   - `preview_status`/`preview_file`/`preview_code`/`codes` 语义未变；未新增工具、未改 schema、未改 32 KiB 预算算法（`error_message` 截断 160 字符）。
+
+## 实机阶段（2026-10-29，Creo 12.4.0.0）
+
+用户 2026-10-29 授权直接操作 Creo；会话由其手动打开，`auto_start_creo=false`，驱动未启动/关闭 Creo，未注入故障。同一会话串行执行 `tools\test_t07_preview.py --live --confirm-session-usable`，**exit 0**，报告 `build/t07_preview_acceptance.json`（896 421 字节）。
+
+- `preview_acceptance=passed`，`toolkit_serial=true`；4 个用例 `disk`、`disk_cut`、`disk_cut_pattern`、`explicit_jpeg_export` 全部 `succeeded`，输出文件实际写出并通过新增的 `file_check` 阶段确认。
+- **BUG-088 现象未复现**：本轮的 raster 码非 0、文件系统检查正常，没有出现 `raster=0 → output_file=-4` 的原始现场；因此只能记“文件检查链路可区分且当前未复现”，不能据此关闭 BUG-088 的间歇失败。后续若再现，按 `file_check.error_code/category` 归档真实现场。
+- `image_content_verification=human_review_pending`：图像内容正确性未判定，仍归 T08C（本轮无原始图像与作业输入）。
+- 未测：空件/钣金件的新输出路径、写入失败与权限失败的实机注入（不做故障注入）、raster 失败后的重试策略（本版未实现，按设计只保留诊断）。
