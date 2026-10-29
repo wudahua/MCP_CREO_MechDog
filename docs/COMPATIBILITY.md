@@ -125,3 +125,13 @@ FEAT-042无盘prepare/apply、FEAT-043会话枚举及BUG-071预检收尾已实�
 - 诊断写入失败不改变建模终态，失败原因保留在 `seed_load_evidence.evidence_error`。
 
 本轮为开发分支改动，未连接 Creo 会话、未执行实机建模与保存重载；实机成功核对留给回归收口任务。详见 [FEAT-030](work-items/FEAT-030.md)、[BUG-034](work-items/BUG-034.md) 与[本轮验证记录](validation/FEAT030-BUG034-SEED-TRANSPARENCY-2026-10-25.md)。
+
+## 2026-10-29：钣金件实体增料支持边界（BUG-046）
+
+本机 Windows x64 / Creo 12.4.0.0 实机隔离（T04，见 [验收卡](development/DEV051-T04-ACCEPTANCE.md) 第五轮）定案：
+
+- **不支持**：`extrude` `mode="add"`（实体增料）并入既有钣金体。重叠位置与非重叠位置都返回 `ProFeatureWithoptionsCreate=-1`，元素错误为空，作业回滚成立（revision/体积不变）。同一截面在普通件上 add 成功、在钣金件上 cut 成功（−100 mm³），因此失败与重叠、截面、位置无关。
+- **可用**：钣金件上的 `cut`；`surface`/`thin` 拉伸；`new_body=true`（产出**独立实体**，整块 +500 mm³，不与钣金体合并，不等于钣金增料）。
+- **准入拒绝**：钣金模型上的实体增料在建模前以 `SHEETMETAL_SOLID_ADD_UNSUPPORTED` 拒绝，消息给出 `sheetmetal_wall` / `sheetmetal_flange` / `new_body=true` 指引；不再以裸 `-1` 暗示该组合可用。`revolve` 增料未纳入本规则（同路径但未实测）。
+
+该结论只覆盖本机 Creo 12.4 与上述输入形态，不外推为其他 Creo 版本或其他钣金增料形式。

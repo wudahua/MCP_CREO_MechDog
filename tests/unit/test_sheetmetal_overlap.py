@@ -37,6 +37,10 @@ BASE_VOLUME_MM3 = 42_920.0
 # --- shared overlap prism (identical rectangle/position/overlap per route) --
 OVERLAP_MIN = [20.0, 20.0]
 OVERLAP_MAX = [30.0, 30.0]
+# The XZ wall base occupies y = -232 ... 0, so the same block sits at y = -30 ... -20
+# over that plate instead of y = 20 ... 30.
+SHEETMETAL_OVERLAP_MIN = [20.0, -30.0]
+SHEETMETAL_OVERLAP_MAX = [30.0, -20.0]
 PRISM_SIDE_MM = 10.0
 # direction "symmetric" sweeps depth to both sides (DEV-049 tilted cut matrix
 # measures exactly twice the one-sided volume for the same depth value).
@@ -75,6 +79,22 @@ def overlap_sketch() -> dict:
             }
         ],
     }
+
+
+def sheetmetal_overlap_sketch() -> dict:
+    """Same 10 x 10 block over the XZ wall base, which lies in y = -232 ... 0.
+
+    The wall is built from an XZ line extruded 232 mm in -Y with a 1 mm thickness
+    centred on z = 0: live inspection of the base (2026-10-29) measured the body
+    bbox as x 0..185, y -232..0, z -0.5..0.5. A block at the solid-route position
+    (y 20..30) would be disjoint from that sheet, so the footprint keeps the same
+    10 x 10 size and moves into the plate while the prism stays over z = 0.
+    """
+    sketch = overlap_sketch()
+    sketch["label"] = "sheetmetal_overlap_sketch"
+    sketch["entities"][0]["min"] = list(SHEETMETAL_OVERLAP_MIN)
+    sketch["entities"][0]["max"] = list(SHEETMETAL_OVERLAP_MAX)
+    return sketch
 
 
 def prism_op(mode: str, label: str, **overrides) -> dict:
@@ -156,11 +176,21 @@ def route_solid_add() -> list[dict]:
 
 
 def route_sheetmetal_add() -> list[dict]:
-    return [wall_sketch(), wall_base_op(), overlap_sketch(), prism_op("add", "boss_add")]
+    return [
+        wall_sketch(),
+        wall_base_op(),
+        sheetmetal_overlap_sketch(),
+        prism_op("add", "boss_add", sketch="sheetmetal_overlap_sketch"),
+    ]
 
 
 def route_sheetmetal_cut() -> list[dict]:
-    return [wall_sketch(), wall_base_op(), overlap_sketch(), prism_op("cut", "pocket_cut")]
+    return [
+        wall_sketch(),
+        wall_base_op(),
+        sheetmetal_overlap_sketch(),
+        prism_op("cut", "pocket_cut", sketch="sheetmetal_overlap_sketch"),
+    ]
 
 
 ROUTES = (
@@ -195,14 +225,27 @@ class ThreeWayInputContractTest(unittest.TestCase):
     """One rectangle, one position, one overlap volume across the three routes."""
 
     def test_routes_share_rectangle_position_and_prism(self) -> None:
-        entities = [route()[2]["entities"] for _, route in ROUTES]
-        self.assertEqual(entities[0], entities[1])
-        self.assertEqual(entities[0], entities[2])
+        sides = [
+            [
+                hi - lo
+                for lo, hi in zip(
+                    route()[2]["entities"][0]["min"], route()[2]["entities"][0]["max"]
+                )
+            ]
+            for _, route in ROUTES
+        ]
+        for side in sides:
+            self.assertEqual(side, [PRISM_SIDE_MM, PRISM_SIDE_MM])
         prisms = [route()[3] for _, route in ROUTES]
         for prism in prisms:
-            self.assertEqual(prism["sketch"], "overlap_sketch")
             self.assertEqual(prism["depth"], PRISM_HALF_DEPTH_MM)
             self.assertEqual(prism["direction"], "symmetric")
+        # The sheetmetal routes place the same block over the XZ wall base (y -232..0);
+        # the prism label follows that sketch so nothing references a missing label.
+        self.assertEqual([prism["sketch"] for prism in prisms][0], "overlap_sketch")
+        self.assertEqual(
+            [prism["sketch"] for prism in prisms][1:], ["sheetmetal_overlap_sketch"] * 2
+        )
         self.assertEqual([prism["mode"] for prism in prisms], ["add", "add", "cut"])
 
     def test_routes_are_accepted_with_parameters_preserved(self) -> None:
@@ -212,6 +255,7 @@ class ThreeWayInputContractTest(unittest.TestCase):
             self.assertEqual(prism["mode"], route()[-1]["mode"], name)
             self.assertEqual(prism["depth"], PRISM_HALF_DEPTH_MM, name)
             self.assertEqual(prism["direction"], "symmetric", name)
+            self.assertEqual(prism["sketch"], route()[-1]["sketch"], name)
 
     def test_add_routes_volume_oracle(self) -> None:
         self.assertAlmostEqual(prism_volume_mm3(), PRISM_VOLUME_MM3)
@@ -247,6 +291,24 @@ class ThreeWayInputContractTest(unittest.TestCase):
         self.assertLessEqual(OVERLAP_MAX[1], BASE_WIDTH_MM)
         side = [hi - lo for lo, hi in zip(OVERLAP_MIN, OVERLAP_MAX)]
         self.assertEqual(side, [PRISM_SIDE_MM, PRISM_SIDE_MM])
+
+    def test_sheetmetal_footprint_is_inside_measured_wall_bbox(self) -> None:
+        # Live inspection of the XZ wall base (2026-10-29): x 0..185, y -232..0,
+        # z -0.5..0.5. The block must fall inside the sheet, not next to it.
+        measured = {"x": (0.0, 185.0), "y": (-232.0, 0.0), "z": (-0.5, 0.5)}
+        for axis, lo in zip("xy", SHEETMETAL_OVERLAP_MIN):
+            self.assertGreaterEqual(lo, measured[axis][0], axis)
+        for axis, hi in zip("xy", SHEETMETAL_OVERLAP_MAX):
+            self.assertLessEqual(hi, measured[axis][1], axis)
+        self.assertEqual(
+            [hi - lo for lo, hi in zip(SHEETMETAL_OVERLAP_MIN, SHEETMETAL_OVERLAP_MAX)],
+            [PRISM_SIDE_MM, PRISM_SIDE_MM],
+        )
+        # "symmetric" halves the requested depth per side, so the offline 2.5 mm gives
+        # a 2.5 mm tall block that still spans the whole 1 mm sheet thickness.
+        self.assertGreaterEqual(PRISM_HALF_DEPTH_MM, BASE_THICKNESS_MM)
+        self.assertLessEqual(-PRISM_HALF_DEPTH_MM, measured["z"][0])
+        self.assertGreaterEqual(PRISM_HALF_DEPTH_MM, measured["z"][1])
 
     def test_overlap_volume_is_fixed_across_plate_z_placements(self) -> None:
         block = (-PRISM_HALF_DEPTH_MM, PRISM_HALF_DEPTH_MM)

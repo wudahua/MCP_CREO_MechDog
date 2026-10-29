@@ -43,3 +43,36 @@ def first_wall_section_problem(entities: list[dict[str, Any]]) -> str | None:
             f"got a {kind!r} entity ({_UNSUPPORTED})"
         )
     return None
+
+
+# BUG-046 / DEV-051 T04: a solid protrusion that merges into an existing
+# sheetmetal body is refused by Creo with a bare ProFeatureWithoptionsCreate -1.
+# Live isolation on Creo 12.4.0.0 (2026-10-29) measured the three cases that fix
+# the boundary: the same add over the sheet and far away from it both return -1
+# with no element errors, the same rectangle as a cut removes 100 mm3, and the
+# same add with new_body=true succeeds as a separate solid body (+500 mm3, no
+# merge). Adding material to the sheet therefore has to go through the wall or
+# flange operations; the solid protrusion path cannot feed the sheetmetal body.
+SOLID_ADD_UNSUPPORTED = "SHEETMETAL_SOLID_ADD_UNSUPPORTED"
+
+
+def solid_add_on_sheetmetal_problem(operations: list[dict[str, Any]]) -> str | None:
+    """Return why a plan would add solid material into a sheetmetal body."""
+    blocked = [
+        operation.get("label")
+        for operation in operations
+        if operation.get("op") == "extrude"
+        and operation.get("mode") == "add"
+        and operation.get("thin") is None
+        and not operation.get("new_body")
+    ]
+    if not blocked:
+        return None
+    labels = ", ".join(str(label) for label in blocked)
+    return (
+        f"{SOLID_ADD_UNSUPPORTED}: Creo rejects an extrude add that merges solid material "
+        "into a sheetmetal body (ProFeatureWithoptionsCreate returns -1, measured on Creo "
+        "12.4.0.0 with and without overlap). Add material with sheetmetal_wall or "
+        "sheetmetal_flange, or request new_body=true to create a separate solid body; "
+        f"cut, surface and thin extrudes are unaffected. Blocked operations: {labels}"
+    )

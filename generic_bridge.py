@@ -281,6 +281,15 @@ def submit(
                 "feature_tree",
             }:
                 raise ValueError("This operation requires a part model")
+        # BUG-046 / DEV-051 T04: adding solid material into a sheetmetal body is
+        # refused by Creo with a bare -1, so the plan is rejected here with an
+        # identifiable code and viable tool guidance instead.
+        if actual_type == "sheetmetal":
+            from creo_mechdog.sheetmetal import solid_add_on_sheetmetal_problem
+
+            problem = solid_add_on_sheetmetal_problem(operations)
+            if problem:
+                raise ValueError(problem)
         components = {}
         for op in operations:
             if op["op"] in ("assemble_component", "drawing_model"):

@@ -44,12 +44,14 @@ if str(_SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(_SOURCE_ROOT))
 
 from creo_mechdog.paths import SOURCE_PATHS  # noqa: E402
+from creo_mechdog.sheetmetal import SOLID_ADD_UNSUPPORTED  # noqa: E402
 from tests.unit import test_sheetmetal_overlap as fx  # noqa: E402
 
 ROOT = SOURCE_PATHS.resource_root
 
 from tools.sheetmetal_live import (  # noqa: E402
     LiveRunner,
+    LiveStop,
     failure_text,
     require_manual_start,
     unique_name,
@@ -76,10 +78,11 @@ def check_three_way_contract() -> list[dict]:
     for name, model_kind, ops, expected_volume in routes:
         validated = validate_operations(ops)
         prism = validated[-1]
-        assert prism["sketch"] == "overlap_sketch", prism
+        assert prism["sketch"] == ops[-1]["sketch"], prism
         assert prism["depth"] == fx.PRISM_HALF_DEPTH_MM, prism
         assert prism["direction"] == "symmetric", prism
         assert prism["mode"] == ops[-1]["mode"], prism
+        footprint = ops[-2]["entities"][0]
         rows.append(
             {
                 "route": name,
@@ -87,12 +90,15 @@ def check_three_way_contract() -> list[dict]:
                 "mode": prism["mode"],
                 "validated_operations": validated,
                 "shared_input": {
-                    "rectangle_min": fx.OVERLAP_MIN,
-                    "rectangle_max": fx.OVERLAP_MAX,
-                    "sketch_plane": "XY",
+                    "rectangle_min": footprint["min"],
+                    "rectangle_max": footprint["max"],
+                    "prism_plane": "XY",
                     "prism_depth_mm": fx.PRISM_HALF_DEPTH_MM,
                     "prism_direction": "symmetric",
-                    "note": "symmetric sweeps both sides; total swept height 5 mm",
+                    "note": (
+                        "same 10 x 10 x 5 block and the same 100 mm3 overlap; the sheetmetal "
+                        "routes move the footprint into the XZ wall base band y=-232..0"
+                    ),
                 },
                 "oracle": {
                     "base_volume_mm3": fx.BASE_VOLUME_MM3,
@@ -328,19 +334,30 @@ LIVE_ROUTES = (
     # with the 1 mm sheet, so the only difference from sheetmetal_add is the
     # position (off the processed area) or the target body (PRO_BODY_USE_NEW).
     ("sheetmetal_add_offgroup", "t04_sm_add_off", "sheetmetal", fx.ROUTE_ADD_VOLUME_MM3),
-    ("sheetmetal_add_new_body", "t04_sm_add_newbody", "sheetmetal", fx.ROUTE_ADD_VOLUME_MM3),
+    ("sheetmetal_add_new_body", "t04_sm_add_newbody", "sheetmetal", fx.BASE_VOLUME_MM3 + 500.0),
 )
 EXPECTED_DELTA_MM3 = {
     "solid_add": 400.0,
     "sheetmetal_add": 400.0,
     "sheetmetal_cut": -100.0,
     "sheetmetal_add_offgroup": 400.0,
-    "sheetmetal_add_new_body": 400.0,
+    "sheetmetal_add_new_body": 500.0,
 }
-# Isolation geometry: 10 x 10 at [60,60]-[70,70], clear of the plate edges and of
-# every other feature on this model.
-OFFSET_MIN = [60.0, 60.0]
-OFFSET_MAX = [70.0, 70.0]
+# The measured boundary (2026-10-29 live isolation) is the contract this driver now
+# checks: adding solid material into the sheetmetal body is refused at admission
+# with an identifiable code, the same add as a new body is a separate 10x10x5 solid
+# (+500 mm3, no merge), and the cut still removes the 100 mm3 overlap.
+EXPECTED_OUTCOME = {
+    "solid_add": {"kind": "success", "delta_mm3": 400.0},
+    "sheetmetal_add": {"kind": "rejected", "code": SOLID_ADD_UNSUPPORTED},
+    "sheetmetal_cut": {"kind": "success", "delta_mm3": -100.0},
+    "sheetmetal_add_offgroup": {"kind": "rejected", "code": SOLID_ADD_UNSUPPORTED},
+    "sheetmetal_add_new_body": {"kind": "success", "delta_mm3": 500.0},
+}
+# Isolation geometry: 10 x 10 at x 60..70 / y -70..-60, clear of the plate edges and
+# of every other feature on the XZ wall base (x 0..185, y -232..0, z -0.5..0.5).
+OFFSET_MIN = [60.0, -70.0]
+OFFSET_MAX = [70.0, -60.0]
 ROUTE_PURPOSE = {
     "sheetmetal_add_offgroup": (
         "BUG-046 H3 probe: a non-overlapping-in-plane position must fail exactly like "
@@ -351,13 +368,16 @@ ROUTE_PURPOSE = {
         "body isolates whether the target body is what Creo rejects"
     ),
 }
-# Live runs use an explicit positive depth of 5 mm. The offline fixture reaches the
-# same 10x10x5 block with depth 2.5 + "symmetric", but the 2026-10-29 live run
-# measured only +150 mm3 that way (10x10x2.5 block minus the 100 mm3 overlap), so on
-# this path "symmetric" splits the requested depth across the sketch plane instead of
-# sweeping it twice. Depth 5 positive is unambiguous and is what T04 specifies.
+# The XZ wall base puts the 1 mm sheet across the sketch plane (z -0.5..0.5), so a
+# one-sided prism only shares 0.5 mm with it. "symmetric" halves the requested depth
+# per side (2026-10-29 live: depth 2.5 gave a 2.5 mm tall block), so depth 5
+# symmetric is a 10x10x5 block spanning the whole thickness on both base kinds
+# while the requested value stays the T04 depth of 5 mm.
 LIVE_PRISM_DEPTH_MM = 5.0
-LIVE_PRISM_DIRECTION = "positive"
+LIVE_PRISM_DIRECTION = "symmetric"
+# One job that has not reached a terminal state within this budget counts as a hang:
+# the driver stops, records the job id and never resubmits (DEV-051 hand-off rule).
+HANG_BUDGET_SECONDS = 180.0
 
 
 def live_base_plan(route: str) -> list[dict]:
@@ -367,7 +387,7 @@ def live_base_plan(route: str) -> list[dict]:
 
 
 def shifted_sketch(label: str) -> dict:
-    sketch = fx.overlap_sketch()
+    sketch = fx.sheetmetal_overlap_sketch()
     sketch["label"] = label
     sketch["entities"][0]["min"] = list(OFFSET_MIN)
     sketch["entities"][0]["max"] = list(OFFSET_MAX)
@@ -378,22 +398,54 @@ def live_prism_plan(route: str) -> list[dict]:
     depth, direction = LIVE_PRISM_DEPTH_MM, LIVE_PRISM_DIRECTION
     if route == "sheetmetal_cut":
         return [
-            fx.overlap_sketch(),
-            fx.prism_op("cut", "pocket_cut", depth=depth, direction=direction),
+            fx.sheetmetal_overlap_sketch(),
+            fx.prism_op(
+                "cut",
+                "pocket_cut",
+                depth=depth,
+                direction=direction,
+                sketch="sheetmetal_overlap_sketch",
+            ),
         ]
     if route == "sheetmetal_add_offgroup":
         return [
             shifted_sketch("offset_sketch"),
-            fx.prism_op("add", "boss_add_offset", depth=depth, direction=direction),
+            fx.prism_op(
+                "add", "boss_add_offset", depth=depth, direction=direction, sketch="offset_sketch"
+            ),
         ]
     if route == "sheetmetal_add_new_body":
         return [
-            fx.overlap_sketch(),
+            fx.sheetmetal_overlap_sketch(),
             fx.prism_op(
-                "add", "boss_add_new_body", depth=depth, direction=direction, new_body=True
+                "add",
+                "boss_add_new_body",
+                depth=depth,
+                direction=direction,
+                new_body=True,
+                sketch="sheetmetal_overlap_sketch",
             ),
         ]
     return [fx.overlap_sketch(), fx.prism_op("add", "boss_add", depth=depth, direction=direction)]
+
+
+def element_errors(terminal: dict) -> dict:
+    """Element-level errors, reported as present only when the native layer gave them."""
+    result = terminal.get("result") if isinstance(terminal.get("result"), dict) else {}
+    pieces = [str(terminal.get("message") or "")]
+    for operation in result.get("operations") or []:
+        if isinstance(operation, dict):
+            pieces.extend(str(operation.get(key) or "") for key in ("error", "message"))
+    blob = " ".join(pieces)
+    marker = "Element errors:"
+    detail = blob.split(marker, 1)[1].split(".", 1)[0].strip() if marker in blob else None
+    return {
+        "present": detail is not None,
+        "detail": detail,
+        "log_has_feature_error": "feature_error element="
+        in (terminal.get("native_log_tail") or ""),
+        "searched": "job message, operation errors/messages and native log tail",
+    }
 
 
 def volume_check(measured: float | None, expected: float) -> dict:
@@ -415,7 +467,7 @@ async def run_route(
         {"model_name": name, "model_type": model_type, "operations": live_base_plan(route)},
     )
     job_id, model_id = created["job_id"], created["model_id"]
-    terminal = await runner.wait_job(job_id)
+    terminal = await runner.wait_job(job_id, budget=HANG_BUDGET_SECONDS)
     entry: dict = {
         "route": route,
         "purpose": ROUTE_PURPOSE.get(route, "baseline route of the three-way comparison"),
@@ -432,13 +484,14 @@ async def run_route(
         "prism_spec": {
             "depth_mm": LIVE_PRISM_DEPTH_MM,
             "direction": LIVE_PRISM_DIRECTION,
-            "rectangle_min": fx.OVERLAP_MIN,
-            "rectangle_max": fx.OVERLAP_MAX,
+            "rectangle_min": live_prism_plan(route)[0]["entities"][0]["min"],
+            "rectangle_max": live_prism_plan(route)[0]["entities"][0]["max"],
         },
     }
     if terminal.get("status") != "succeeded":
         entry.update(
             failure=failure_text(terminal),
+            element_errors=element_errors(terminal),
             passed=False,
             note="the base was not created, so this route measured no volume or feature",
         )
@@ -453,20 +506,62 @@ async def run_route(
         base_feature_types=base_features,
     )
 
-    prism = await runner.submit(
-        f"{route}:prism",
-        "creo_execute_plan",
-        {
-            "model_id": model_id,
-            "expected_revision": base.get("revision"),
-            "operations": live_prism_plan(route),
-        },
-    )
-    terminal = await runner.wait_job(prism["job_id"])
+    prism_arguments = {
+        "model_id": model_id,
+        "expected_revision": base.get("revision"),
+        "operations": live_prism_plan(route),
+    }
+    answer = await runner.probe("creo_execute_plan", prism_arguments)
+    body = answer["structured"] or {}
+    if answer["is_error"]:
+        if body.get("status") == "busy":
+            raise LiveStop(f"toolkit channel busy: {json.dumps(body)[:400]}")
+        message = str(body.get("error") or body.get("message") or answer["text"])
+        rejected = {
+            "case": route,
+            "route": route,
+            "prism_status": "rejected_before_modelling",
+            "job_id": body.get("job_id"),
+            "message": message[:1200],
+            "code_present": SOLID_ADD_UNSUPPORTED in message if route != "sheetmetal_cut" else None,
+        }
+        after_rejection = await runner.snapshot(model_id)
+        rejected.update(
+            revision_after_rejection=after_rejection.get("revision"),
+            volume_after_rejection_mm3=runner.volume(after_rejection),
+            model_unchanged=bool(
+                after_rejection.get("revision") == base.get("revision")
+                and runner.volume(after_rejection) == base_volume
+            ),
+            expected=EXPECTED_OUTCOME[route],
+            passed=bool(
+                EXPECTED_OUTCOME[route]["kind"] == "rejected"
+                and SOLID_ADD_UNSUPPORTED in message
+                and not body.get("job_id")
+                and after_rejection.get("revision") == base.get("revision")
+            ),
+        )
+        entry.update(rejected)
+        return runner.case(entry)
+
+    prism = body
+    terminal = await runner.wait_job(prism["job_id"], budget=HANG_BUDGET_SECONDS)
     entry.update(prism_job_id=prism["job_id"], prism_status=terminal.get("status"))
     if terminal.get("status") != "succeeded":
+        failure = failure_text(terminal)
+        after_failure = await runner.snapshot(model_id)
+        failure_volume = runner.volume(after_failure)
         entry.update(
-            failure=failure_text(terminal),
+            failure=failure,
+            element_errors=element_errors(terminal),
+            revision_after_failure=after_failure.get("revision"),
+            volume_after_failure_mm3=failure_volume,
+            rollback_matches_base=bool(
+                after_failure.get("revision") == base.get("revision")
+                and base_volume is not None
+                and failure_volume is not None
+                and abs(failure_volume - base_volume) <= 0.01
+            ),
             passed=False,
             note="the prism failed; the raw failure is kept and expectations are unchanged",
         )
@@ -569,6 +664,7 @@ async def live(output: Path, run_id: str) -> int:
         )
         try:
             await runner.start()
+            runner.report["hang_budget_seconds"] = HANG_BUDGET_SECONDS
             anchor = None
             wall_blocked = None
             for route, tag, model_type, expected in LIVE_ROUTES:

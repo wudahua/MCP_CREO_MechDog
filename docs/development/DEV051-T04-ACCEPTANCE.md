@@ -226,3 +226,76 @@ Sketch: 'overlap_sketch'.
 - 两条隔离路线（`sheetmetal_add_offgroup`、`sheetmetal_add_new_body`）本轮仍未提交：会话消失（见 [T11 验收卡](DEV051-T11-ACCEPTANCE.md) §4.1），同一 Toolkit 通道不可用，交接规则也禁止在无会话时启动/重启或重提。
 - 因此"钣金件上实体 add 的 `-1`"仍**既未复现也未排除**；本轮不改准入层、不写支持边界、不加拒绝码——按 BUG-046 既有条款，须先有隔离结果。
 - 下一步：会话恢复后按 `sheetmetal_add_offgroup` → `sheetmetal_add_new_body` → 三路原样重跑；两条都失败且元素错误为空时，才补可识别拒绝码与 `sheetmetal_wall`/`sheetmetal_flange` 指引。
+
+## 2026-10-29 第五轮实机：隔离完成、边界定案、准入拒绝落地
+
+环境：手动打开的 Creo 12.4.0.0（`xtop.exe` 22:05 启动），`config.json` `auto_start_creo=false`，唯一 dev 服务指向本仓库，`creo_startup_status` 为 `ready/connected=true`，服务 0.8.4。未启动/关闭/重启 Creo，未注入故障，未清保护，未重提任何已受理 job。
+
+### 0. 夹具修正（先纠正上一轮的假失败）
+
+上一轮把第一壁基体改成 `plane="XZ", depth=232, thickness=1` 后，块的位置没有跟着改：实机巡检该基体的 body bbox 是 **x 0…185 / y −232…0 / z −0.5…0.5**（1 mm 板厚跨草图面，挤出落在 −Y），而夹具的 10×10 矩形仍在 y 20…30，与板完全不交。因此上一轮 `sheetmetal_cut` 报 “Extrude cut removes no material”、`sheetmetal_add` 报 `-1` **都不能作为产品结论**。
+
+本轮按实测 bbox 修正夹具：钣金路线矩形移到 `x 20…30 / y −30…−20`，棱柱仍用 `symmetric`、深度 5（实测 symmetric 把 depth 对半分，故总高 5 mm），与 1 mm 板重叠恒为 100 mm³；普通件路线保持原位。离线单测 19 项通过（新增 `test_sheetmetal_footprint_is_inside_measured_wall_bbox` 锁定实测 bbox 与块位置）。
+
+### 1. 隔离结果（拒绝前，报告 `20261029T225140_52c9a477`）
+
+驱动：`tools\test_sheetmetal_overlap.py --live --confirm-session-usable`（挂起预算 180 s/作业）。报告 SHA256 `a3aec3b7826bff27165eaa2f979ce34c8ec5daefb0d26e18ab11d0dc8c4d6f98`。
+
+| 路 | 模型 | 基体 job / 体积 / rev | 棱柱 job | 结果 | 判定 |
+| --- | --- | --- | --- | --- | --- |
+| A `solid_add` | `4de558c567304636b12984b3e4f464e2` | `e35888ccfd1c4b32b792004d605d8fa4` / 42 920 / 1 | `21f03431cf404a089eb3956b7f8050d5` | +400（43 320，rev 2） | 通过 |
+| B `sheetmetal_add`（重叠位置） | `f0159ab8f3ad4250a936efdd3e3fb588` | `a938badb08b741d5ad5e6c72576262ba` / 42 920 / 1 | `6378cf0e7d9b4f578a747eafd9a5a335` | `-1`，元素错误为空 | 失败 |
+| C `sheetmetal_cut` | `f48839ba2d8e4bba87f06c722a42d86b` | `802512974763463caad72b663adfa446` / 42 920 / 1 | `7c2f6a0d16454af1b1e9122aed124fc8` | −100（42 820，rev 2） | 通过 |
+| B2 `sheetmetal_add_offgroup`（非重叠位置） | `b3c5d7b9fdaf4123b6eb072e06c2c12f` | `06a236bc5ac84f3cb60b0ee29741ba6a` / 42 920 / 1 | `4418e2ab41454d1cae40ad1cacfbc933` | `-1`，元素错误为空 | 失败 |
+| B1 `sheetmetal_add_new_body`（`PRO_BODY_USE_NEW`） | `2156ea943de14cc4adf76e6e523d80e5` | `159c5348bf3e4f7288581349e6ebef6c` / 42 920 / 1 | `ff57ae9d0846479494bcb06aaa6475ed` | **+500**（43 420，rev 2） | 成功（新体） |
+
+- 三条失败/成功路线各自新建模型，模板名 `t04_sm_add_*` / `t04_sm_add_off_*` / `t04_sm_add_newbody_*`；每个失败都取快照：`revision_after_failure=1`、`volume_after_failure_mm3=42920.0`、`rollback_matches_base=true`。
+- 失败原文（B 路，未改写）：`Extrude feature creation failed (ProFeatureWithoptionsCreate=-1). … Detected native section: 1 closed contour(s), 1 contour(s), 4 entity(ies), 0 open end(s). … Sketch: 'sheetmetal_overlap_sketch'.`；`toolkit_code=-1`、`failed_stage=execute_extrude`、`failed_toolkit_call=ProFeatureWithoptionsCreate`。驱动新增 `element_errors` 探针（job message + operations + native log tail 三处）在三条失败上均为 `present=false`，`log_has_feature_error=false`。
+- B1 的体积增量是 **500 mm³ 而不是 400**：新体不并入钣金体，10×10×5 块整块独立，不与 1 mm 板合并，因此“新体成功”不等于“钣金增料可用”。
+
+### 2. 定案（本次可确定的支持边界）
+
+同一台机器、同一 Creo 12.4、同一 10×10×5 块、同一重叠 100 mm³：
+
+1. 普通件 add 成功（+400），钣金 cut 成功（−100，特征 `cut=1`，钣金身份保留）；
+2. 钣金件 add 在**重叠位置**与**非重叠位置**都以 `-1` 失败，且元素错误为空、作业级回滚成立；
+3. 同一 add 改为 `new_body=true` 成功，但产物是**独立实体**（+500）。
+
+结论：**Creo 12.4 不接受把这类实体增料并入既有钣金体**。触发点不是重叠、不是截面、不是位置，而是"合并进钣金材料体"这一动作本身（`PRO_BODY_USE_SELECTED` + 默认体）；`PRO_FEAT_PROTRUSION` + `PRO_EXT_MATERIAL_ADD` 在新体上是可用的。具体是 BODY 元素还是钣金材料模型拒绝静态无法再细分，但支持边界已可判定，无需继续二分。
+
+### 3. 准入拒绝（带错误码与指引）
+
+`src/creo_mechdog/sheetmetal.py` 新增 `SOLID_ADD_UNSUPPORTED = "SHEETMETAL_SOLID_ADD_UNSUPPORTED"` 与纯函数 `solid_add_on_sheetmetal_problem`；`generic_bridge.submit` 在已知 `actual_type == "sheetmetal"` 时调用它。命中条件：`op="extrude"`、`mode="add"`、未设 `thin`、未设 `new_body`。
+
+拒绝原文（实机返回，节选）：
+
+```text
+SHEETMETAL_SOLID_ADD_UNSUPPORTED: Creo rejects an extrude add that merges solid material into a
+sheetmetal body (ProFeatureWithoptionsCreate returns -1, measured on Creo 12.4.0.0 with and
+without overlap). Add material with sheetmetal_wall or sheetmetal_flange, or request
+new_body=true to create a separate solid body; cut, surface and thin extrudes are unaffected.
+Blocked operations: boss_add
+```
+
+`cut`、`surface`、`thin`、`new_body=true` 不受影响；`revolve` 增料**未**纳入本规则（同一条 protrusion 路径但本轮未实测，不扩判）。
+
+### 4. 拒绝后回归（报告 `20261029T225554_2bf60e52`，驱动退出码 0）
+
+报告 SHA256 `8fa3865b6b732bc6bf7f2180a7bf2b30237dcd73183404ba0d8896eebf84ff98`，`passed=true`：
+
+| 路 | 结果 | 关键数据 |
+| --- | --- | --- |
+| A `solid_add` | 通过 | 42 920 → 43 320，+400，rev 2（job `e653574d8b2b42e2bbf3b9db11085852`） |
+| B `sheetmetal_add` | **建模前拒绝** | `job_id=null`、`code_present=true`、rev 1→1、42 920 不变 |
+| C `sheetmetal_cut` | 通过 | 42 920 → 42 820，−100，rev 2（job `b8f26d3013724d4e9b1e4c7e15e10e0a`） |
+| B2 `offgroup` | **建模前拒绝** | `job_id=null`、403 与 B 同码、revision/体积不变 |
+| B1 `new_body` | 通过 | 42 920 → 43 420，+500（独立体），rev 2（job `27044b3820e042359d20b20ed75f9c12`） |
+
+负例（建模前拒绝、模型不变）沿用同一驱动的 `negative_before_modelling`，本次仍在 A 路模型上通过。
+
+### 5. 未测与边界
+
+- 未测：钣金件 `unbend`/`bend_back`（本任务不含）；厚壁基体分支；`revolve` 增料在钣金件上的行为；Creo 9/10 与 WorkBuddy 黑盒（本机未执行）。
+- 保留：历史 0.3.1/0.3.2 的 -1 与本次同因；原始 job/model 未重放（原件缺失），本轮为同形重放。
+- 数据侧观察（移交 T08B）：钣金第一壁基体实测 `body_counts={objects:2, records:2, active:1, with_material:1, without_material:1}`，非 ACTIVE 记录 `id=-5778`、`state_name=no_geometry`，ACTIVE 体 `surface_count=6`、bbox 与上述一致。
+
