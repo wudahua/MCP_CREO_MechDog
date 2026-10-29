@@ -97,3 +97,60 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；pydantic 
 - 无生产代码改动：`native/generic.cpp`（T02/T06/T08B/T09B 共享面）、`native/advanced.cpp`（T05/T11/T12 共享面）、`src/creo_mechdog/schema.py`（T02/T05 共享面）本批均未触碰，无合并冲突面。
 - 新增 `tests/unit/test_sheetmetal_overlap.py`、`tools/test_sheetmetal_overlap.py`（离线驱动，默认不连 Creo，`--live` 拒绝并指向唯一 dev 服务的集成实机步骤）；与 T03 的 `test_sheetmetal_contract.py` 并存，复用其报告/指纹约定但不重复其矩阵。
 - 接口变化：无（不新增工具、字段、错误码）。行为变化：无（拒绝规则均为既有契约的回归断言）。
+
+## 2026-10-29 实机验收：A 路通过，B/C 路被第一壁阻断
+
+环境与前置：手动打开的 Creo 12.4.0.0，§config.json§ 的 §auto_start_creo=false§，唯一 dev 服务指向本仓库，服务 0.8.3，§creo_startup_status§ 为 §ready/connected=true§，§session_health.status=no_failure_observed§。未启动/关闭/重启 Creo，未注入故障，未清 unknown 保护，未重提任何已受理 job。
+
+§§§text
+.\.venv\Scripts\python.exe tools\test_sheetmetal_overlap.py --live --confirm-session-usable
+§§§
+
+报告：§build/sheetmetal_overlap/20261029T155600_c978d2c7/report.json§（SHA256 §76bb4fa5e376cebd84dca95633ab1b4f62aa3175505d45188c182c12cf27ba63§）。驱动退出码 1（B/C 未通过），报告内每路两个作业（先建基体、再提交同一重叠棱柱）。
+
+### 三路结果
+
+| 路 | 基体模型 | job_id | 基体状态 | 棱柱 job_id | 基体体积 | 结果体积 | 体积变化 | 误差/容差 | 判定 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| A solid_add | §35594cdef1974f89a27163f8e9d0f224§（t04_solid_add_28df6b） | §60433e7ad93d4e27b6c5bbf38d562f40§ | succeeded | §3cde449543b347aea423e5906f699e8b§ | 42 920 mm³（rev 1） | 43 320 mm³（rev 2） | +400 mm³ | 0 / 43.32 | **通过** |
+| B sheetmetal_add | §53bac4e0694343d3804ad5cc99486385§（t04_sm_add_16383b） | §c954d663d7024c929ab909b0b59ebf60§ | failed | 未提交 | 未产生 | 未产生 | — | — | 阻断 |
+| C sheetmetal_cut | 未创建 | 未提交 | — | — | — | — | — | — | 未执行（同一阻断） |
+
+A 路原生特征类型（§creo_inspect_model§ 快照）：基体 §protrusion=1§、棱柱后 §protrusion=2§，特征增量为 §protrusion +1 / sketch_or_curve +1§；§saved_file_reloaded_and_verified=true§。即普通实体 add 在 185×232×1 底板上把 10×10×5 块并入同一实体，重叠 100 mm³ 只计一次。
+
+B 路原始失败（§creo_get_job§ 原文，未改写）：
+
+§§§text
+sheetmetal_wall creates the first wall from exactly one open straight line; the section has 2
+drawing entities (1 straight lines). Closed contours, arcs, splines and multi-entity chains are
+not supported for the first wall
+§§§
+
+§toolkit_code=-1§、§failed_stage=execute_sheetmetal_wall§；操作记录为 §[{index:0,label:wall_sketch,succeeded},{index:1,label:base_wall,failed}]§。**加料操作（index 2/3）根本没有执行**，因此本次既没有复现也没有排除 0.3.1/0.3.2 的“钣金上实体 add 报 -1”，B 路的 add 行为仍属未测；同样不能据此说“-1 已修复”。C 路共用同一第一壁前置，按同一证据不再重复提交（避免对已知阻断点重复占用通道）。
+
+### 负例（建模前拒绝，体积与 revision 不变）
+
+在 A 路模型（rev 2、43 320 mm³）上提交两个非法计划，均由准入在建模前拒绝（§job_id=null§），之后 §revision§ 2→2、体积 43 320 mm³ 不变：
+
+| 负例 | 拒绝原文（节选） |
+| --- | --- |
+| §through_all§ + add | §operations.1.extrude: Value error, through_all is supported for cuts§ |
+| 退化重叠矩形（max=min） | §operations.0.sketch.entities.0.rectangle: Value error, Rectangle max must exceed min§ |
+
+### 驱动修正：实机 §symmetric§ 语义与离线假设不同
+
+首轮实机（报告 §build/sheetmetal_overlap/20261029T155356_cb915355/report.json§）用离线的 §depth=2.5 + direction=symmetric§ 提交棱柱，A 路实测体积 42 920 → 43 070（**+150 mm³**，job §6bda23c0c9634f159e23f77e00df1b10§），即棱柱实际是 10×10×2.5、与板重叠 100 后净增 150。说明本机这条路径上 §symmetric§ 是把 §depth§ 分到草图面两侧（单侧 1.25），不是“单侧深度的两倍”；DEV-049 斜槽的“symmetric 恰为单向两倍”不能外推到实体增料。
+
+处理：实机驱动改用任务书写的 **depth 5、direction=positive**（§LIVE_PRISM_DEPTH_MM = 5.0§），几何无歧义（10×10×5、重叠 100、净增 400）。离线夹具与其 18 项单测仍是 §2.5 + symmetric§（它们锁的是请求契约与对称几何下界，不是本机实测语义），两处差异已在此记录，未改离线期望值。
+
+### 未测项
+
+- B 路真实结果：钣金件上实体 add 是否仍报 §-1§、是否支持、以及失败回滚后的体积/别名/revision——都被第一壁准入挡在前面，**本次未验证**。
+- C 路（钣金 cut）去料 100 mm³、钣金身份保留、§unbend§/§bend_back§。
+- B2 非重叠探针、B3 原始 depth 5 positive 逐字重放、H1/H2/H3 元素隔离。
+- 厚壁基体分支、Creo 9/10、WorkBuddy 黑盒（本次禁用）。
+
+### 下一步
+
+1. 先修 T03 的第一壁准入（见 [T03 卡](DEV051-T03-ACCEPTANCE.md)），重编译执行器后原样重跑本驱动：B/C 两路会自动解除阻断。
+2. B 路失败时按本卡“负例实机契约”核对体积/别名/revision 不变与后续合法 cut 可用；确认不支持后再决定是否加可识别错误码（本阶段仍不预判）。

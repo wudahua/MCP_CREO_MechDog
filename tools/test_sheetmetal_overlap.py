@@ -14,14 +14,20 @@ verification and it does not determine the root cause: the add/cut asymmetries
 can only be isolated against a live Creo session.
 
 Default is strictly offline: no MCP client is instantiated and no Toolkit
-connection is made. --live requires --confirm-session-usable and is refused
-here: the live native acceptance of BUG-046 runs as a separate integration
-step on the shared dev service, never from this driver.
+connection is made. --live --confirm-session-usable runs the three routes on the
+manually opened session: each route builds its base in one job, records the
+measured volume, submits the same overlap prism in a second job and records the
+measured delta and the native feature types; the negative case then proves a
+rejected plan leaves volume and revision untouched. It never launches, restarts
+or closes Creo, never injects a fault, never clears a protection and never
+resubmits a job. A route blocked by a failed base is recorded as blocked and the
+routes that depend on the same base are not submitted again.
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import hashlib
 import json
 import os
@@ -42,6 +48,18 @@ from tests.unit import test_sheetmetal_overlap as fx  # noqa: E402
 
 ROOT = SOURCE_PATHS.resource_root
 
+from tools.sheetmetal_live import (  # noqa: E402
+    LiveRunner,
+    failure_text,
+    require_manual_start,
+    unique_name,
+)
+from tools.sheetmetal_live import (
+    new_run_id as live_run_id,
+)
+from tools.sheetmetal_live import (
+    resolve_output as live_output,
+)
 
 # --- checks ---------------------------------------------------------------
 
@@ -300,6 +318,258 @@ def check_native_source() -> dict:
     }
 
 
+# --- live acceptance ------------------------------------------------------
+
+LIVE_ROUTES = (
+    ("solid_add", "t04_solid_add", "part", fx.ROUTE_ADD_VOLUME_MM3),
+    ("sheetmetal_add", "t04_sm_add", "sheetmetal", fx.ROUTE_ADD_VOLUME_MM3),
+    ("sheetmetal_cut", "t04_sm_cut", "sheetmetal", fx.ROUTE_CUT_VOLUME_MM3),
+)
+EXPECTED_DELTA_MM3 = {"solid_add": 400.0, "sheetmetal_add": 400.0, "sheetmetal_cut": -100.0}
+# Live runs use an explicit positive depth of 5 mm. The offline fixture reaches the
+# same 10x10x5 block with depth 2.5 + "symmetric", but the 2026-10-29 live run
+# measured only +150 mm3 that way (10x10x2.5 block minus the 100 mm3 overlap), so on
+# this path "symmetric" splits the requested depth across the sketch plane instead of
+# sweeping it twice. Depth 5 positive is unambiguous and is what T04 specifies.
+LIVE_PRISM_DEPTH_MM = 5.0
+LIVE_PRISM_DIRECTION = "positive"
+
+
+def live_base_plan(route: str) -> list[dict]:
+    if route == "solid_add":
+        return [fx.solid_plate_sketch(), fx.solid_base_op()]
+    return [fx.wall_sketch(), fx.wall_base_op()]
+
+
+def live_prism_plan(route: str) -> list[dict]:
+    mode, label = ("cut", "pocket_cut") if route == "sheetmetal_cut" else ("add", "boss_add")
+    return [
+        fx.overlap_sketch(),
+        fx.prism_op(mode, label, depth=LIVE_PRISM_DEPTH_MM, direction=LIVE_PRISM_DIRECTION),
+    ]
+
+
+def volume_check(measured: float | None, expected: float) -> dict:
+    tolerance = max(0.01, abs(expected) * 1e-3)
+    if measured is None:
+        return {"expected_mm3": expected, "tolerance_mm3": tolerance, "abs_error_mm3": None}
+    error = abs(float(measured) - expected)
+    return {"expected_mm3": expected, "tolerance_mm3": tolerance, "abs_error_mm3": error}
+
+
+async def run_route(
+    runner: LiveRunner, route: str, tag: str, model_type: str, expected: float
+) -> dict:
+    """Base job, then the shared overlap prism in a second job on the same model."""
+    name = unique_name(tag)
+    created = await runner.submit(
+        f"{route}:base",
+        "creo_execute_plan",
+        {"model_name": name, "model_type": model_type, "operations": live_base_plan(route)},
+    )
+    job_id, model_id = created["job_id"], created["model_id"]
+    terminal = await runner.wait_job(job_id)
+    entry: dict = {
+        "route": route,
+        "base_model_kind": model_type,
+        "model_name": name,
+        "model_id": model_id,
+        "base_job_id": job_id,
+        "base_status": terminal.get("status"),
+        "expected_base_volume_mm3": fx.BASE_VOLUME_MM3,
+        "expected_result_volume_mm3": expected,
+        "expected_delta_mm3": EXPECTED_DELTA_MM3[route],
+        "overlap_volume_mm3": fx.overlap_volume_mm3(),
+        "prism_volume_mm3": fx.PRISM_SIDE_MM * fx.PRISM_SIDE_MM * LIVE_PRISM_DEPTH_MM,
+        "prism_spec": {
+            "depth_mm": LIVE_PRISM_DEPTH_MM,
+            "direction": LIVE_PRISM_DIRECTION,
+            "rectangle_min": fx.OVERLAP_MIN,
+            "rectangle_max": fx.OVERLAP_MAX,
+        },
+    }
+    if terminal.get("status") != "succeeded":
+        entry.update(
+            failure=failure_text(terminal),
+            passed=False,
+            note="the base was not created, so this route measured no volume or feature",
+        )
+        return runner.case(entry)
+
+    base = await runner.snapshot(model_id)
+    base_volume = runner.volume(base)
+    base_features = runner.feature_types(base)
+    entry.update(
+        base_revision=base.get("revision"),
+        base_measured_volume_mm3=base_volume,
+        base_feature_types=base_features,
+    )
+
+    prism = await runner.submit(
+        f"{route}:prism",
+        "creo_execute_plan",
+        {
+            "model_id": model_id,
+            "expected_revision": base.get("revision"),
+            "operations": live_prism_plan(route),
+        },
+    )
+    terminal = await runner.wait_job(prism["job_id"])
+    entry.update(prism_job_id=prism["job_id"], prism_status=terminal.get("status"))
+    if terminal.get("status") != "succeeded":
+        entry.update(
+            failure=failure_text(terminal),
+            passed=False,
+            note="the prism failed; the raw failure is kept and expectations are unchanged",
+        )
+        return runner.case(entry)
+
+    after = await runner.snapshot(model_id)
+    volume = runner.volume(after)
+    delta = None if volume is None or base_volume is None else volume - base_volume
+    check = volume_check(volume, expected)
+    after_features = runner.feature_types(after)
+    entry.update(
+        revision=after.get("revision"),
+        measured_volume_mm3=volume,
+        volume_delta_mm3=delta,
+        abs_error_mm3=check["abs_error_mm3"],
+        tolerance_mm3=check["tolerance_mm3"],
+        feature_types=after_features,
+        feature_delta={
+            key: after_features.get(key, 0) - base_features.get(key, 0)
+            for key in set(after_features) | set(base_features)
+        },
+        saved_file_reloaded_and_verified=(terminal.get("result") or {}).get(
+            "saved_file_reloaded_and_verified"
+        ),
+    )
+    entry["passed"] = bool(
+        volume is not None
+        and check["abs_error_mm3"] is not None
+        and check["abs_error_mm3"] <= check["tolerance_mm3"]
+        and delta is not None
+        and abs(delta - EXPECTED_DELTA_MM3[route]) <= 0.01
+        and entry["saved_file_reloaded_and_verified"] is True
+    )
+    return runner.case(entry)
+
+
+async def run_negative_case(runner: LiveRunner, anchor: dict) -> dict:
+    """Illegal plans must be refused before modelling and change nothing."""
+    model_id = anchor["model_id"]
+    before = await runner.snapshot(model_id)
+    revision = before.get("revision")
+    volume = runner.volume(before)
+    degenerate = fx.overlap_sketch()
+    degenerate["entities"][0]["max"] = list(fx.OVERLAP_MIN)
+    attempts = []
+    for name, operations in (
+        (
+            "through_all_add",
+            [fx.overlap_sketch(), fx.prism_op("add", "boss_add", depth_type="through_all")],
+        ),
+        ("degenerate_overlap_rectangle", [degenerate, fx.prism_op("add", "boss_add")]),
+    ):
+        answer = await runner.probe(
+            "creo_execute_plan",
+            {"model_id": model_id, "expected_revision": revision, "operations": operations},
+        )
+        body = answer["structured"] or {}
+        attempts.append(
+            {
+                "case": name,
+                "rejected": bool(answer["is_error"]),
+                "job_id": body.get("job_id"),
+                "message": str(body.get("error") or body.get("message") or answer["text"])[:500],
+            }
+        )
+    after = await runner.snapshot(model_id)
+    unchanged = (
+        after.get("revision") == revision
+        and runner.volume(after) == volume
+        and not any(attempt["job_id"] for attempt in attempts)
+    )
+    return runner.case(
+        {
+            "case": "negative_before_modelling",
+            "model_id": model_id,
+            "revision_before": revision,
+            "revision_after": after.get("revision"),
+            "volume_before_mm3": volume,
+            "volume_after_mm3": runner.volume(after),
+            "attempts": attempts,
+            "model_and_revision_unchanged": unchanged,
+            "passed": bool(unchanged and all(attempt["rejected"] for attempt in attempts)),
+        }
+    )
+
+
+async def live(output: Path, run_id: str) -> int:
+    require_manual_start(ROOT / "config.json")
+    from mcp import Client
+    from mcp.client.stdio import StdioServerParameters
+
+    params = StdioServerParameters(command=sys.executable, args=[str(ROOT / "server.py")], cwd=ROOT)
+    async with Client(params, read_timeout_seconds=180) as client:
+        runner = LiveRunner(
+            client,
+            output,
+            "BUG-046 / DEV-051 T04",
+            "three-way overlap comparison: solid add, sheetmetal add, sheetmetal cut",
+            run_id,
+        )
+        try:
+            await runner.start()
+            anchor = None
+            wall_blocked = None
+            for route, tag, model_type, expected in LIVE_ROUTES:
+                if wall_blocked:
+                    runner.case(
+                        {
+                            "route": route,
+                            "base_model_kind": model_type,
+                            "base_status": "not_executed",
+                            "passed": False,
+                            "not_executed": wall_blocked,
+                        }
+                    )
+                    continue
+                entry = await run_route(runner, route, tag, model_type, expected)
+                if entry["passed"] and anchor is None:
+                    anchor = entry
+                if route == "sheetmetal_add" and entry["base_status"] != "succeeded":
+                    message = (entry.get("failure") or {}).get("message") or "base failed"
+                    wall_blocked = (
+                        "sheetmetal base wall did not succeed, so this route was not submitted: "
+                        + str(message)[:300]
+                    )
+                    runner.report["blocked_route"] = {
+                        "route": "sheetmetal_cut",
+                        "reason": wall_blocked,
+                        "evidence": "DEV-051 T03 live card: the first wall is rejected before modelling",
+                    }
+            if anchor is None:
+                runner.report["negative_check"] = {"skipped": "no successful route to anchor on"}
+            else:
+                await run_negative_case(runner, anchor)
+        except BaseException as error:
+            runner.report["stopped"] = f"{type(error).__name__}: {error}"
+            runner.finish()
+            raise
+    summary = runner.finish()
+    print(json.dumps(summary, ensure_ascii=False))
+    rows = [
+        {
+            key: case.get(key)
+            for key in ("route", "base_status", "prism_status", "volume_delta_mm3", "passed")
+        }
+        for case in runner.report["cases"]
+    ]
+    print(json.dumps({"passed": runner.report["passed"], "cases": rows}, ensure_ascii=False))
+    return 0 if runner.report["passed"] else 1
+
+
 def run_unit_module() -> dict:
     from tests.unit import test_sheetmetal_overlap
 
@@ -455,12 +725,8 @@ def main(argv: list[str] | None = None) -> int:
         print("live runs require --confirm-session-usable", file=sys.stderr)
         return 2
     if args.live:
-        print(
-            "BUG-046 live native acceptance is a separate integration step on the shared "
-            "dev service; this driver never instantiates an MCP client or connects to Creo.",
-            file=sys.stderr,
-        )
-        return 2
+        run_id = live_run_id()
+        return asyncio.run(live(live_output("sheetmetal_overlap", run_id, args.output), run_id))
 
     run_id = new_run_id()
     output = resolve_output(args.output, run_id)
