@@ -1,6 +1,6 @@
 # DEV-051 T09B 验收卡：实际回转轴回显（FEAT-008/BUG-083 关联，离线阶段）
 
-日期：2026-10-28（Asia/Shanghai）。阶段：**离线阶段完成 / 实现待原生验收**。分支：`codex/dev051-feedback070`；工作区：`E:\Projects\MCP_CREO_MechDog`。本次未连接 Creo、未启动 MCP/Creo、未提交任何 Toolkit 作业、未建模。状态不是“已修复”：revolve 结果回显的实机闭环（真实解析轴几何/体积/revision/保存重载）尚未执行，见“未测项”。
+日期：2026-10-28（Asia/Shanghai）。阶段：**离线阶段完成；2026-10-29 实机三例通过（内部中心线、显式基准轴、失败路径），`section_centerline_count` 计入参考线的回显局限待后续处理**。分支：`codex/dev051-feedback070`；工作区：`E:\Projects\MCP_CREO_MechDog`。
 
 ## 输入与来源
 
@@ -88,3 +88,27 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；ruff 0.17
   - `revolve` 操作结果新增 `revolve_axis` 块（schema 形态见“结果契约”）；旧作业/失败作业无块不补；`material_removed_mm3`、`length_unit` 等既有字段不变。
   - 结果持久化路径（`generic_bridge` → `annotate_native_result`）自动归一化；compact job 投影不新增字段（本批不动 `bridge.compact_job`）。
   - 准入 schema、工具签名、busy/revision/回滚语义、服务标准输出均未触碰；无版本变更。
+
+## 2026-10-29 实机：回转轴回显三例（驱动 `tools/test_revolve_axis_live.py`）
+
+环境：手动打开的 Creo 12.4.0.0、`auto_start_creo=false`、唯一 dev 服务 0.8.4、`ready/connected=true`；每例一个新建件，挂起预算 180 s，未重提作业。命令：
+
+```text
+.\.venv\Scripts\python.exe tools\test_revolve_axis_live.py --live --confirm-session-usable
+```
+
+报告：`build/revolve_axis/20261029T230937_a27309f6/report.json`，SHA256 `a8336afbf3c6886813fe46599c468f390a75b1a3a54f55f84e740cc75d9e59d8`，退出码 0，3/3 通过。体积 oracle 由请求几何独立推导：环 π(20²−10²)×10 = 9 424.777961、圆柱 π5²×10 = 785.398163。
+
+| 用例 | job / 模型 / rev | 体积 | `revolve_axis` 实测 |
+| --- | --- | --- | --- |
+| `internal_centerline`（草图中心线，未给 axis） | `1daefcb3d95241a4bebb8232433d1b47` / `ef9f986cb7e7419085bb0e31bb91452f` / 1 | 9 424.777960 769 377（误差 0） | `source=internal_centerline`、`kind=section_centerline`、`frame=model`、`origin=[−6.1e−16,−5,0]`、`direction=[1.2e−16,1,0]`、`geometry_known=true`、`query_code=0`、`resolution.section_centerline_count=3` |
+| `explicit_datum_axis`（基准轴 `x_axis`，id 52） | `00b4646420d7480394c333284e257469` / `e3db09a5490a48b4a173396ce1b15fa2` / 1 | 785.398163 397 448（误差 0） | `source=explicit`、`kind=datum_axis`、`id=52`、`origin=[10,0,6.1e−21]`、`direction=[1,0,0]`、`frame=model`、`geometry_known=true`、`resolution.axis_surface_query_code=-4`（E_NOT_FOUND ⇒ 基准轴归类） |
+| `no_centerline`（无中心线、无 axis） | `0921884a7f6e44e89741b9c224de7935` / `e260db19561347f894289f4d386c9133` / 0 | 无 | **无 `revolve_axis` 块**；失败原文含“must contain a centerline, or an explicit axis must be supplied”、`toolkit_code=-1`、`failed_stage=execute_revolve`、`rollback_succeeded=false`（新件无基线，与 BUG-012 语义一致） |
+
+结论：
+
+- 两条成功路径的轴**几何正确**：独立体积 oracle 与回显方向/位置一致；显式轴的 `id=52` 与 `inspection.datum_axes[0].id` 相同，origin/direction 逐位一致；内部中心线回退给出的是模型坐标的 +Y 轴（x=0、z=0 上的点）。
+- 失败路径不产生块，符合“失败作业不输出轴回显”。
+- **回显局限（本轮新发现，未修）**：`internal_centerline` 用例里用户只画了 1 条中心线，`resolution.section_centerline_count` 实测为 **3**，于是 `id` 只能为 `null`。计数把草图参考几何（两条参考线）也算了进去，既高估了“多中心线歧义”，也让 `id` 分支在正常草图上永远走不到。几何不受影响（frame=model 已给出方向），但“选了哪一条”的可观测性没有兑现。需要后续按真实 section 实体类型过滤参考线后再给 `id`，本轮只记录、不改代码。
+- `frame` 的实测口径与卡面文字需要对齐：卡面把 `sketch_local` 列为内部中心线的形式，实测在能取到回转特征自身轴时 **优先给 `model`**，`sketch_local` 只在特征轴不可读时作为回退。本卡以实测为准，代码注释同样如此。
+- 未测：多中心线草图（用户真的画 2 条以上）、`surface` 解析轴样例（非基准轴特征标签）、`ProAxisSurfaceGet` 非 E_NOT_FOUND 分支、显式轴解析失败时的 unknown 分支、保存重载、Creo 9/10。

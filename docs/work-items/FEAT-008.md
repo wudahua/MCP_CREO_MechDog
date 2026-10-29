@@ -346,3 +346,13 @@ R1 §4.1能力摘要、§4.2成熟度、§3.3/§4.3 unchanged、§5五旧请求�
 - 多中心线/无中心线以实测计数表达（用了哪根不可判则 `id=null`）；本次不收紧歧义、准入/回退兼容保持（`{kind:"axis",id}`/`datum_axis_feature`、省略=null=内部中心线、非法轴拒绝均不变），未来收紧须显式记录版本影响。
 - 实现：`native/generic.cpp`（`revolve_axis_report`/`classify_axis_provenance`）、`src/creo_mechdog/operation_results.py` 归一化投影（不一致实测字段降级 unknown）；离线证据 `tests/unit/test_revolve_axis_report.py` 16 项 + T02 弧/T07 多环/T08B 巡检回归 + `bridge.py build` 通过。详见[验收记录](../development/DEV051-T09B-ACCEPTANCE.md)。
 - 实机（解析轴几何/体积/revision/保存重载/回滚、surface 解析轴样例、无中心线失败消息）待统一安排；BUG-083 引用拒绝修复不等于本项完成；工具描述/REFERENCE_SYNTAX 补充由 T01 收口；整卡保持开放，首批底板 holes 等范围不变。
+
+### 2026-10-29 DEV-051 T09B 实机三例（Creo 12.4.0.0）
+
+驱动 `tools/test_revolve_axis_live.py --live --confirm-session-usable`，报告 `build/revolve_axis/20261029T230937_a27309f6/report.json`（SHA256 `a8336afb…9e59d8`），3/3 通过：
+
+- 内部中心线：`source=internal_centerline`、`kind=section_centerline`、`frame=model`、`origin=[0,-5,0]`、`direction=[0,1,0]`、`geometry_known=true`；体积 9 424.777961 mm³ 与独立环体积 oracle 误差 0（job `1daefcb3d95241a4bebb8232433d1b47`，rev 1）。
+- 显式基准轴：`source=explicit`、`kind=datum_axis`、`id=52`、`origin=[10,0,0]`、`direction=[1,0,0]`、`axis_surface_query_code=-4`；体积 785.398163 mm³ 与圆柱 oracle 误差 0，且 id/origin/direction 与 `inspection.datum_axes[0]` 逐位一致（job `00b4646420d7480394c333284e257469`，rev 1）。
+- 无中心线无轴：作业失败（`execute_revolve`、`toolkit_code=-1`），**不输出 `revolve_axis` 块**，体积为空（job `0921884a7f6e44e89741b9c224de7935`，rev 0）。
+
+新发现（未修，待排期）：用户只画 1 条中心线时 `resolution.section_centerline_count=3`，因为计数把草图参考线也计入，导致 `id` 恒为 null；几何方向仍由 `frame=model` 给出。另：`frame` 实测优先 `model`（取回转特征自身轴），`sketch_local` 仅为回退，与卡面文字需对齐。详见[验收卡](../development/DEV051-T09B-ACCEPTANCE.md)实机节。
