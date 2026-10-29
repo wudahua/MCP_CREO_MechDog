@@ -76,3 +76,25 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；ruff 0.17
   - `creo_inspect_model`（detail=full 的 components 节、整页快照、`read_full_model` 重组）的组件记录同样携带上述投影字段（加性；既有消费者按字段访问不受影响）。
   - compact 摘要不变（counts 只计数，不内联记录）；分页/cursor/32 KiB 预算语义不变，投影字段计入页体积。
   - 无新工具、无 schema 变更、无版本变更。
+
+## 2026-10-29 实机：组件业务标签四项（驱动 `tools/test_component_labels_live.py`）
+
+环境：手动打开的 Creo 12.4.0.0、`auto_start_creo=false`、唯一 dev 服务 0.8.4、`ready/connected=true`；每例一个新建装配与两个新建源件，未重提任何作业，挂起预算 180 s。命令：
+
+```text
+.\.venv\Scripts\python.exe tools\test_component_labels_live.py --live --confirm-session-usable
+```
+
+报告：`build/component_labels/20261029T230555_a8d01966/report.json`，SHA256 `8f4ae709fe40e1960be34a87843beeeb4df122319e0a1d658a28fab8e76ad568`，退出码 0，4/4 通过。装配 `7fba61e3891b4be4af0b6ac10d96fabb`（job `8ff2db6b3c5f4105978a7266f4265f11`），源件 `790aff5df3be49b091642d9fd4cba471`、`8c8c6c89c15d466d96de73b777a198c5`。
+
+| 用例 | 数据 | 结论 |
+| --- | --- | --- |
+| `two_components` | rev 1；两条记录 identity feature_id 40/43，`label_state=single`，`label`=`part_alpha`/`part_beta`，`source_model_id` 与源件一致、`source_revision=1` | 业务标签可定位组件，`identity_key=model_identity+feature_id` |
+| `cross_job` | 第二个作业 `2f3e2139a5c24deba36b1dc227d047fa`（save）成功，rev 2；标签集合与 feature_id 完全不变 | 标签跨作业解析，物理副本名 `c_<job>_<n>` 未参与 |
+| `rename_reinsert` | remove（rev 2）→ 以 `part_gamma` 重插（rev 4）；当前组件 `part_alpha`(40) + `part_gamma`(46)，旧标签不再挂到 46；`deleted_identities=[]` | 旧引用不误指重插记录；本实现里 remove 会一并去掉旧绑定，所以旧标签落在"查无"而不是 `deleted_identities`（两种落点都不误指，但客户端可观测差异需在下轮文档说明） |
+| `unknown_label` | 用已移除的 `part_beta` 做 `component_placement`：**准入不拒**，作业 `af09a95aafec4ae0b950211e50df4593` 在原生阶段失败 | 原文 `Unknown feature label: part_beta; available labels: part_alpha, part_gamma`；`toolkit_code=-1`、`failed_stage=execute_component_placement`、`rollback_succeeded=true`，rev 4→4、组件清单不变 |
+
+补充：
+
+- 拒绝是**作业级**而非入口级：标签解析发生在原生执行时，客户端先拿到 `job_id`，必须轮询 `creo_get_job` 才能得到失败与回滚，不能把"已受理"当"已接受"。本轮按此记录，未重提。
+- 未测：多标签挂同一 feature_id 的实机（离线 16 项覆盖）、被篡改的 `aliases_ref`、40 组件大清单与 32 KiB 分页的实机、compact/full 一致性、保存重载后重新打开的标签解析、Creo 9/10。
