@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "work_item": "DEV-051",
+  "task": "T00-072 (supplement to T00; no new work-item ID)",
+  "archived_at": "2026-10-28",
+  "timezone": "Asia/Shanghai",
+  "mapping": "MAPPING.md",
+  "archive_policy": "Four Markdown originals copied byte for byte; no decoding, re-encoding or formatting.",
+  "comparison_baseline": {
+    "version": "0.7.2",
+    "main_commit": "2b677f53422102fc14109871f1794b627274a09f",
+    "local_tag": "v0.7.2",
+    "branch": "codex/dev051-feedback070",
+    "head_commit": "f10bee750d6c9d582839306b2ffc029997bfb339",
+    "dirty": true,
+    "remote_revalidated": false,
+    "runtime_service_identity_queried": false,
+    "initial_head_commit": "a3c1f4b3e05668aa57d7225dc16394dd272abec9",
+    "development_commits": {
+      "T02": "a3c1f4b3e05668aa57d7225dc16394dd272abec9",
+      "T03": "601b4bcaca861b2d1edd9930a17cf4752d9768d8",
+      "T03_acceptance_correction": "f10bee750d6c9d582839306b2ffc029997bfb339"
+    },
+    "refresh_note": "T03 was uncommitted at first read; committed by another ongoing session during planning. Final plan refreshed to its submitted acceptance record. No implementation was changed by this planning session.",
+    "latest_existing_dev_check": {
+      "timestamp_utc": "2026-10-28T13:01:11.399171+00:00",
+      "source": {
+        "commit": "a3c1f4b3e05668aa57d7225dc16394dd272abec9",
+        "dirty": true,
+        "checked_source_sha256": "cb2dc045234a2091feef88f3a1062dc7b72d5208c4bd20d6e05cb982bd7c9d98"
+      },
+      "success": true,
+      "unit_tests": "passed",
+      "native_validation": "not_run"
+    }
+  },
+  "reports": [
+    {
+      "id": "R72-1",
+      "filename": "2026-10-28_CREO_0.7.2_钣金增料与四壁折边连续六版未修复验收报告.md",
+      "bytes": 6455,
+      "sha256": "d6fffd56aba7b8f3d6f9600ba8a843466dde126b01b0392020186aad8a1e1709",
+      "source": "C:\\Users\\Administrator\\Downloads\\0.7.2\\2026-10-28_CREO_0.7.2_钣金增料与四壁折边连续六版未修复验收报告.md",
+      "reported_version": "0.7.2",
+      "evidence_method": "external_live_report_with_static_or_historical_claims_separately_labeled",
+      "reported_environment": "Creo version not independently identified in this report; release_numeric=42 reported"
+    },
+    {
+      "id": "R72-2",
+      "filename": "2026-10-28_CREO_0.7.2_核心问题_草图弧无dir参数且恒CCW致静默主弧.md",
+      "bytes": 10456,
+      "sha256": "7caf1ee357c48a5d4f23bb05a6f07f949734cc7b59d5a863783d845ce98c22f7",
+      "source": "C:\\Users\\Administrator\\Downloads\\0.7.2\\2026-10-28_CREO_0.7.2_核心问题_草图弧无dir参数且恒CCW致静默主弧.md",
+      "reported_version": "0.7.2",
+      "evidence_method": "external_live_report_with_static_or_historical_claims_separately_labeled",
+      "reported_environment": "reported Creo 10.0.0.0; not independently connected in this planning session"
+    },
+    {
+      "id": "R72-3",
+      "filename": "2026-10-28CREO10.0.0.0-0.7.2-BUG079台账终于闭环与断连登记BUG085.md",
+      "bytes": 8926,
+      "sha256": "9f7e8153e84ffe2b81983d73a1af7cea2c5ed6b0d55e0746e6e31993d55111f8",
+      "source": "C:\\Users\\Administrator\\Downloads\\0.7.2\\2026-10-28CREO10.0.0.0-0.7.2-BUG079台账终于闭环与断连登记BUG085.md",
+      "reported_version": "0.7.2",
+      "evidence_method": "external_install_and_static_report_no_creo_connection",
+      "reported_environment": "reported Creo 10.0.0.0; not independently connected in this planning session"
+    },
+    {
+      "id": "R72-4",
+      "filename": "20261028_CREO_v0.7.2_三项阻断全部修复_Part1斜槽首次建成_仅剩多轮廓限额.md",
+      "bytes": 10715,
+      "sha256": "e58f92478fc0316aec70116b5efc365cc1865ad3e2d4d28685a34e00f9b1e433",
+      "source": "C:\\Users\\Administrator\\Downloads\\0.7.2\\20261028_CREO_v0.7.2_三项阻断全部修复_Part1斜槽首次建成_仅剩多轮廓限额.md",
+      "reported_version": "0.7.2",
+      "evidence_method": "external_live_report_with_static_or_historical_claims_separately_labeled",
+      "reported_environment": "reported Creo 10.0.0.0; not independently connected in this planning session"
+    }
+  ],
+  "attachments_present": [],
+  "missing_report_attachments": [
+    "scripts/gear10.json",
+    "sketch_entities.json",
+    "scripts/sketchgen.py",
+    "original 30-entity sketch request",
+    "original PRT files",
+    "original request/job/native JSON",
+    "original preview images"
+  ],
+  "scope": "Local read-only comparison, document planning and byte-preserving archive only; no tests, build, Toolkit connection, source implementation, version change or publication.",
+  "planning_checks": {
+    "reports_verified": 4,
+    "historical_validation_files_unchanged": 364,
+    "markdown_files_checked": 9,
+    "local_links_verified": 329,
+    "backlog_rows": 125,
+    "unique_ids": 125,
+    "implementation_tests_run_by_this_planning_session": false
+  }
+}
