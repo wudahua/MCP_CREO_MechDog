@@ -82,3 +82,23 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；pydantic 
 - 共享冲突面：`native/generic.cpp`（T04/T06/T08B/T09B）、`native/sketch_edit.cpp`、`native/sketch_coordinates.cpp`、`src/creo_mechdog/schema.py`（T03/T05）、`profile_diagnostics.py`、`operation_results.py`。
 - 接口变化：弧实体新增可选 `dir`（缺省 +1，严格整数）；sketch/update 结果新增 `arc_geometry`（实测或 unknown/原码）与 update 结果 `frame`；`analyze_profile` 报告新增 `arc_geometry`（source=input）；坐标极坐标尺寸名在交换表示下按逻辑端点命名；`_expand` 对零扫角/整圆弧从“静默按整圆”改为明确拒绝（schema 先拒，此为分析器防御路径）。
 - 行为保持：不带 `dir` 的旧请求几何语义完全不变（0→90 与 90→0 回归数值固定）；服务标准输出、busy 契约、revision/回滚语义未触碰。
+
+## 实机阶段（2026-10-29，Creo 12.4.0.0）
+
+用户 2026-10-29 授权直接操作 Creo；会话由其手动打开，`config.json` 保持 `auto_start_creo=false`，新增驱动未启动/关闭 Creo、未注入故障、未清保护。本卡此前的实机入口一直缺失（原 `tools/test_arc_direction.py` 明确拒绝 `--live`），本次新增 `tools/test_arc_direction_live.py`：半径 10 mm 弧 + 弦，拉伸 5 mm，每例独立新件。
+
+串行执行 `tools\test_arc_direction_live.py --live --confirm-session-usable`，**exit 0**，报告 `build/arc_direction_live.json`：
+
+| 用例 | dir | job_id | model_id | revision | oracle mm³ | 实测 mm³ | 误差 mm³ |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 旧输入 0→90 | 缺省 | `5eaaa067504149d294e944415b04b8b2` | `84b78e1280f64199a08f0058e7897279` | 1 | 142.69908169872414 | 142.69908169840258 | 3.2e-10 |
+| 旧输入 90→0 | 缺省 | `3b209bf3826b403a8b858ff9e2993177` | `b7f3b4c4d673461c8b89faad5161b6f1` | 1 | 1428.0972450961724 | 1428.09724510173 | 5.6e-9 |
+| 90→0 且 dir=-1 | -1 | `e31e5c8ff10647dca97718599b86c9c0` | `4d5dff5038304cc98b65b56a10343696` | 1 | 142.69908169872414 | 142.69908169840258 | 3.2e-10 |
+| 0→90 且 dir=-1 | -1 | `d12188975415451590a2b4c6c2541449` | `6de96c64cc0d4379acb10dad9abd2708` | 1 | 1428.0972450961724 | 1428.09724510173 | 5.6e-9 |
+
+- 四例误差均远小于 0.01 mm³；**旧语义未变、显式 `dir=-1` 确实反转主弧**，两对结果逐位一致。
+- 实测回显为真实原生数据，不是输入复述：`{"source":"native","query_code":0,"frame":"sketch_local","start_uv":[10,0],"end_uv":[0,10],"start_tangent_uv":[0,1],"end_tangent_uv":[-1,0],"dir":1,"sweep_deg":90}`。
+- 本组用 `creo_execute_plan`（含 sketch+extrude，无 save 操作），因此**未产生 `saved_file_reloaded_and_verified`**（报告为 `null`）；保存/重载与命令后编辑仍属未测，不得按本组声明。
+- 未测：方向编辑（`creo_update_geometry` 改 dir）、下游特征、`revision` 递增语义、非法 `dir` 的实机拒绝、busy/单通道、WorkBuddy、Creo 9/10。
+
+给集成人：本次新增 `tools/test_arc_direction_live.py`（离线默认、`--live` 需双开关），无生产代码改动。
