@@ -83,6 +83,10 @@ PROFILES = {
 }
 
 
+# DEV-051 live rule: one job that is not terminal after 180 s is a hang. The driver then
+# records the job id and the stage, stops every further submission and never resubmits.
+HANG_BUDGET_SECONDS = 180.0
+
 # --- checks ---------------------------------------------------------------
 
 
@@ -456,6 +460,32 @@ def flange_payload(
     return payload
 
 
+def notch_faces(inspection: dict, limit_mm: float = 1.5) -> list[dict]:
+    """Faces small enough to be a 1 x 1 bend-relief notch, with their position.
+
+    A rectangular relief cuts a width x depth pocket through the sheet at each bend end,
+    so its walls are the only faces on the model whose three bbox extents are all within
+    a couple of millimetres. Recording the centres turns "the notch exists" into "the
+    notch is at these bend ends" without a second modelling job.
+    """
+    faces = []
+    for surface in inspection.get("surfaces") or []:
+        bbox = surface.get("bbox")
+        if not isinstance(bbox, list) or len(bbox) != 2:
+            continue
+        extent = [abs(bbox[1][index] - bbox[0][index]) for index in range(3)]
+        if max(extent) > limit_mm or min(extent) <= 0.05:
+            continue
+        faces.append(
+            {
+                "id": surface.get("id"),
+                "extent_mm": extent,
+                "center_mm": [(bbox[0][i] + bbox[1][i]) / 2.0 for i in range(3)],
+            }
+        )
+    return faces
+
+
 async def run_profile(runner: LiveRunner, profile: str, relief_value: dict | None) -> dict:
     """Base wall, then the four flanges one job at a time with fresh edge selection."""
     name = unique_name(f"t11_{profile}")
@@ -469,7 +499,7 @@ async def run_profile(runner: LiveRunner, profile: str, relief_value: dict | Non
         },
     )
     model_id = created["model_id"]
-    terminal = await runner.wait_job(created["job_id"])
+    terminal = await runner.wait_job(created["job_id"], budget=HANG_BUDGET_SECONDS)
     entry: dict = {
         "profile": profile,
         "relief": relief_value,
@@ -520,7 +550,7 @@ async def run_profile(runner: LiveRunner, profile: str, relief_value: dict | Non
             "creo_sheetmetal_flange",
             flange_payload(model_id, before_revision, label, reference, relief_value),
         )
-        terminal = await runner.wait_job(submitted["job_id"])
+        terminal = await runner.wait_job(submitted["job_id"], budget=HANG_BUDGET_SECONDS)
         row: dict = {
             "label": label,
             "side": side,
@@ -557,7 +587,8 @@ async def run_profile(runner: LiveRunner, profile: str, relief_value: dict | Non
         # DEV-051 T11: the volume oracle alone cannot tell a bend from a flat
         # extension - 232 x 80 x 1 is the same number either way, and the 2026-10-29
         # round produced exactly that in-plane wall. The measured bbox decides the
-        # direction, and only "up" counts as a bent flange.
+        # direction; since DEV-051 A the default section side is "out of the attachment
+        # face", so every top-edge flange must go up and `flip` is what would reverse it.
         after_bounds = fx.active_bbox(runner.inspection(after))
         direction = fx.classify_direction(after_bounds)
         row.update(
@@ -566,6 +597,7 @@ async def run_profile(runner: LiveRunner, profile: str, relief_value: dict | Non
             added_mm3=added,
             abs_error_mm3=None if added is None else abs(added - expected_added),
             relief_echo=(runner.record(after, label) or {}).get("relief"),
+            notch_faces=notch_faces(runner.inspection(after)),
             feature_types=runner.feature_types(after),
             body_bbox_after=[list(after_bounds[0]), list(after_bounds[1])],
             direction=direction,
@@ -588,6 +620,55 @@ async def run_profile(runner: LiveRunner, profile: str, relief_value: dict | Non
     return runner.case(entry)
 
 
+def relief_comparison(cases: list[dict]) -> dict:
+    """Differential oracle: relief omitted vs rectangular both 1x1 on the same flange.
+
+    The wall volume oracle is absolute and approximate (development length shortens the
+    wall), so the relief is judged by the difference between the two profiles on the same
+    side: two notches of width x depth x thickness must take exactly 2 mm3 away.
+    """
+    by_profile = {case.get("profile"): case for case in cases if case.get("flanges")}
+    none_rows = {
+        row["label"]: row for row in (by_profile.get("relief_none") or {}).get("flanges") or []
+    }
+    rect_rows = {
+        row["label"]: row for row in (by_profile.get("relief_rect_1x1") or {}).get("flanges") or []
+    }
+    removed = relief.relief_removed_mm3(
+        {"type": "rectangular", "width": 1.0, "depth": 1.0, "ends": "both"}
+    )
+    rows = []
+    for label, row in rect_rows.items():
+        base = none_rows.get(label)
+        if not base or row.get("added_mm3") is None or base.get("added_mm3") is None:
+            continue
+        delta = row["added_mm3"] - base["added_mm3"]
+        rows.append(
+            {
+                "label": label,
+                "added_without_relief_mm3": base["added_mm3"],
+                "added_with_relief_mm3": row["added_mm3"],
+                "measured_delta_mm3": delta,
+                "expected_delta_mm3": -removed,
+                "delta_error_mm3": abs(delta + removed),
+                "notch_faces_without_relief": len(base.get("notch_faces") or []),
+                "notch_faces_with_relief": len(row.get("notch_faces") or []),
+                "notch_centers_with_relief_mm": [
+                    face["center_mm"] for face in row.get("notch_faces") or []
+                ],
+            }
+        )
+    return {
+        "oracle": (
+            "same flange, relief omitted vs rectangular both 1x1: the measured volume delta "
+            "is the two notch volumes (width x depth x thickness each)"
+        ),
+        "tolerance_mm3": 0.2,
+        "rows": rows,
+        "all_within_tolerance": bool(rows) and all(row["delta_error_mm3"] <= 0.2 for row in rows),
+    }
+
+
 async def live(output: Path, run_id: str) -> int:
     require_manual_start(ROOT / "config.json")
     from mcp import Client
@@ -602,6 +683,7 @@ async def live(output: Path, run_id: str) -> int:
             "four-wall flange h80/R2.54/Y0.5 with relief none and rectangular 1x1",
             run_id,
         )
+        runner.report["hang_budget_seconds"] = HANG_BUDGET_SECONDS
         try:
             await runner.start()
             blocked = None
@@ -631,8 +713,10 @@ async def live(output: Path, run_id: str) -> int:
                     }
         except BaseException as error:
             runner.report["stopped"] = f"{type(error).__name__}: {error}"
+            runner.report["profile_comparison"] = relief_comparison(runner.report["cases"])
             runner.finish()
             raise
+        runner.report["profile_comparison"] = relief_comparison(runner.report["cases"])
     summary = runner.finish()
     print(json.dumps(summary, ensure_ascii=False))
     rows = [
