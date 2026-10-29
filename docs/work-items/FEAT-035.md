@@ -28,3 +28,13 @@
 ## DEV-051 T12 离线阶段（2026-10-29）
 
 已在独立工具和计划的共享 `HoleOp` 中加入互斥的 `counterbore{diameter,depth}` 与 `countersink{diameter,angle}`。Creo 12.4 匹配 SDK 的 `ProHole.h` 将这些元素列于 custom hole；原生路径只创建一个 `PRO_FEAT_HOLE`，省略新字段时仍走旧 straight hole 树。离线构建、契约测试、解析几何算式已完成；元素树实际创建、原生尺寸编辑、几何、保存重载、回滚尚未连接 Creo 验收。详见 [T12 验收卡](../development/DEV051-T12-ACCEPTANCE.md)。本条保持开放，状态为实现待原生验收。
+
+## 2026-10-29 实机：沉孔平座与 90° 沉头（CREO 12.4.0.0）
+
+`tools/test_native_countersink.py --live --confirm-session-usable` 3/3 通过，报告 `build/native_countersink/20261029T231402_6e57e45d/report.json`（SHA256 `f58cd6af…8477c`）：
+
+- 沉孔 Ø10×2 平座（Ø6 通孔，50×50×10 板）：去料 **383.274 303 737 951 mm³**，独立 oracle 383.274 303 737 955，误差 3.6e−12；`hole +1`、`feature_id=78`、结果回显 `material_removed_mm3` 与孔轴 `(25,25,0)→(25,25,10)`，rev 2。
+- 沉头 Ø10 @90°：去料 **328.820 031 075 731 mm³**，oracle 328.820 031 075 732，误差 7.3e−12；同样 `hole +1` 并回显轴，rev 2。
+- 180° 沉头：入口拒绝 `operations.0.hole.countersink.angle Input should be less than 180`，无 job（契约要求 `<180`，因此 180° 一侧以平座沉孔作几何对照）。
+
+两个孔型的去料量与独立解析式一致，说明 custom hole 元素树真正生效而非只建特征。未测：盲孔+沉台深度约束、沉孔尺寸 ID 编辑、保存重载、螺纹/标准孔、出口沉头与双端沉孔、Creo 9/10。本条仍开放（编辑与保存重载未验）。

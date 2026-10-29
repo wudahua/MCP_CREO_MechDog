@@ -35,6 +35,7 @@ READY_STATES = (
     "checking",
     "building_worker",
     "starting",
+    "waiting_for_channel",
     "waiting_for_connection",
 )
 
