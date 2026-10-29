@@ -787,6 +787,47 @@ class SheetmetalWallOp(StrictModel):
     direction: Literal["positive", "negative"] = "positive"
 
 
+class FlangeRelief(StrictModel):
+    # DEV-051 T11 / FEAT-014. Creo 12.4 exposes one relief compound per bend end
+    # (ProSmtFlangeWall.h: PRO_E_SMT_BEND_RELIEF_SIDE1/SIDE2) with the types
+    # PRO_BEND_RLF_NONE/RIP/STRETCH/RECTANGULAR/OBROUND/PARAM. Only "none" (the
+    # pre-T11 tree) and "rectangular" with an explicit blind width and depth are
+    # admitted: width and depth stay absolute model units, are never derived from
+    # the sheet thickness, and no corner rule is guessed from the edge geometry.
+    # Rip/stretch/obround/param, corner relief, miter cuts and edge rips remain
+    # unsupported and are rejected instead of being silently replaced by "none".
+    type: Literal["none", "rectangular"] = "none"
+    ends: Literal["both", "side1", "side2"] = "both"
+    width: Annotated[float, Field(gt=0, le=100000)] | None = None
+    depth: Annotated[float, Field(ge=0, le=100000)] | None = None
+
+    @field_validator("width", "depth", mode="before")
+    @classmethod
+    def numeric_dimension(cls, value: Any) -> Any:
+        # bool is an int in Python; accepting True as a 1 mm notch would be a
+        # silent reinterpretation instead of a rejected request.
+        if isinstance(value, bool):
+            raise ValueError("relief width and depth are numbers of model units, not booleans")
+        return value
+
+    @model_validator(mode="after")
+    def relief_valid(self):
+        if self.type == "none":
+            if self.width is not None or self.depth is not None:
+                raise ValueError(
+                    "relief type none takes no width or depth; omit them or use type rectangular"
+                )
+            if self.ends != "both":
+                raise ValueError(
+                    "relief type none has no ends to select; ends applies to rectangular"
+                )
+        elif self.width is None or self.depth is None:
+            raise ValueError(
+                "relief type rectangular requires width (>0) and depth (>=0) in model units"
+            )
+        return self
+
+
 class SheetmetalFlangeOp(StrictModel):
     op: Literal["sheetmetal_flange"]
     label: Label
@@ -796,6 +837,7 @@ class SheetmetalFlangeOp(StrictModel):
     radius: Positive = 1
     flip: bool = False
     y_factor: Annotated[float, Field(gt=0, le=1)] = 0.5
+    relief: FlangeRelief | None = None
 
 
 class SheetmetalUnbendOp(StrictModel):

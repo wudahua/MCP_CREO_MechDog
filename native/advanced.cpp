@@ -397,7 +397,110 @@ static void generic_sheetmetal_unbend(const J &op) {
     ProElementFree(&root);
     remember(op, f);
 }
+// DEV-051 T11 / FEAT-014: bend-end relief. The Creo 12.4 SDK exposes one relief
+// compound per bend end (ProSmtFlangeWall.h PRO_E_SMT_BEND_RELIEF_SIDE1/SIDE2)
+// with PRO_BEND_RLF_NONE/RIP/STRETCH/RECTANGULAR/OBROUND/PARAM. Only the pre-T11
+// tree (both ends NONE) and a rectangular notch with an explicit blind width and
+// depth are implemented. Width and depth stay absolute model units and are never
+// scaled by the sheet thickness; corner relief, miter cuts and edge rips exist in
+// the SDK but are deliberately absent here, so nothing is guessed from the edge
+// or corner geometry.
+struct FlangeReliefRequest {
+    std::string type = "none";
+    std::string ends = "both";
+    double width = 0;
+    double depth = 0;
+    bool side1 = false;
+    bool side2 = false;
+};
+
+static FlangeReliefRequest flange_relief_request(const J &op) {
+    FlangeReliefRequest request;
+    if (!op.contains("relief") || op.at("relief").is_null())
+        return request;
+    const J &relief = op.at("relief");
+    if (!relief.is_object())
+        throw std::runtime_error("relief must be an object");
+    request.type = relief.value("type", "none");
+    request.ends = relief.value("ends", "both");
+    if (request.type == "none") {
+        if (relief.contains("width") || relief.contains("depth"))
+            throw std::runtime_error("relief type none cannot carry width or depth");
+        if (request.ends != "both")
+            throw std::runtime_error("relief type none has no ends to select");
+        return request;
+    }
+    if (request.type != "rectangular")
+        throw std::runtime_error("Unsupported sheetmetal flange relief type: " + request.type +
+                                 " (supported: none, rectangular)");
+    if (!relief.contains("width") || !relief.contains("depth"))
+        throw std::runtime_error("relief type rectangular requires width and depth in model units");
+    request.width = relief.at("width").get<double>();
+    request.depth = relief.at("depth").get<double>();
+    if (!(request.width > 0))
+        throw std::runtime_error("relief width must be greater than zero");
+    if (!(request.depth >= 0))
+        throw std::runtime_error("relief depth must be zero or greater");
+    if (request.ends == "both")
+        request.side1 = request.side2 = true;
+    else if (request.ends == "side1")
+        request.side1 = true;
+    else if (request.ends == "side2")
+        request.side2 = true;
+    else
+        throw std::runtime_error("relief ends must be both, side1 or side2");
+    return request;
+}
+
+static void flange_relief_side(ProElement relief, int side, bool enabled, double width,
+                               double depth) {
+    ProElement item = node(relief, side);
+    integer(item, PRO_E_BEND_RELIEF_TYPE, enabled ? PRO_BEND_RLF_RECTANGULAR : PRO_BEND_RLF_NONE);
+    if (!enabled)
+        return;
+    // SDK note: width and depth type are mandatory for every type except rip, and
+    // blind depth is the only depth value the caller controls. Depth is measured
+    // from the bend edge.
+    real(item, PRO_E_BEND_RELIEF_WIDTH, width);
+    integer(item, PRO_E_BEND_RELIEF_DEPTH_TYPE, PRO_BEND_RLF_DEPTH_BLIND);
+    real(item, PRO_E_BEND_RELIEF_DEPTH, depth);
+}
+
+static J flange_relief_record(const J &op, const FlangeReliefRequest &request) {
+    J sides = J::array();
+    for (int index = 0; index < 2; index++) {
+        bool enabled = index ? request.side2 : request.side1;
+        J row = {{"side", index ? "side2" : "side1"},
+                 {"relief_type", enabled ? "rectangular" : "none"}};
+        if (enabled) {
+            row["width_mm"] = request.width;
+            row["depth_type"] = "blind";
+            row["depth_mm"] = request.depth;
+        }
+        sides.push_back(row);
+    }
+    // The part thickness is the only measured value here; the corner run and the
+    // two comparisons are request arithmetic against the T05 overlap bound
+    // ((height - radius) x thickness^2 at a shared corner), not native geometry.
+    double thickness = 0;
+    bool thickness_known =
+        ProSmtPartThicknessValueGet(ProMdlToPart(board), &thickness) == PRO_TK_NO_ERROR;
+    bool enabled = request.side1 || request.side2;
+    double corner_run = std::max(0.0, op["height"].get<double>() - op["radius"].get<double>());
+    return {{"type", request.type},
+            {"ends", request.ends},
+            {"sides", sides},
+            {"part_thickness_mm", thickness_known ? J(thickness) : J()},
+            {"corner_overlap_run_mm", corner_run},
+            {"width_at_least_thickness",
+             thickness_known && enabled ? J(request.width >= thickness) : J()},
+            {"depth_covers_corner_run", enabled ? J(request.depth >= corner_run) : J()}};
+}
+
 static void generic_sheetmetal_flange(const J &op) {
+    // Validate the relief request before any feature exists so an unsupported
+    // combination cannot leave a created-but-wrong wall behind.
+    FlangeReliefRequest relief_request = flange_relief_request(op);
     ProSection section;
     CK(ProSection2DAlloc(&section));
     ProName section_name;
@@ -456,8 +559,10 @@ static void generic_sheetmetal_flange(const J &op) {
             PRO_SMT_WALL_HEIGHT_NONE);
     integer(root, PRO_E_SMT_WALL_THICKNESS_FLIP, PRO_B_FALSE);
     ProElement relief = node(root, PRO_E_SMT_BEND_RELIEF);
-    for (int side : {PRO_E_SMT_BEND_RELIEF_SIDE1, PRO_E_SMT_BEND_RELIEF_SIDE2})
-        integer(node(relief, side), PRO_E_BEND_RELIEF_TYPE, PRO_BEND_RLF_NONE);
+    flange_relief_side(relief, PRO_E_SMT_BEND_RELIEF_SIDE1, relief_request.side1,
+                       relief_request.width, relief_request.depth);
+    flange_relief_side(relief, PRO_E_SMT_BEND_RELIEF_SIDE2, relief_request.side2,
+                       relief_request.width, relief_request.depth);
     ProElement dev = node(root, PRO_E_SMT_DEV_LEN_CALCULATION);
     integer(dev, PRO_E_SMT_DEV_LEN_SOURCE, PRO_DVL_SRC_FEAT_YF_ONLY);
     real(node(dev, PRO_E_SMT_DEV_LEN_Y_FACTOR), PRO_E_SMT_DEV_LEN_Y_FACTOR_VALUE,
@@ -466,6 +571,8 @@ static void generic_sheetmetal_flange(const J &op) {
     CK(ProSolidRegenerate((ProSolid)board, PRO_REGEN_NO_FLAGS));
     CK(ProElementFree(&root));
     extra["section_path"] = J::array({PRO_E_STD_SECTION, PRO_E_SKETCHER});
+    if (op.contains("relief") && !op.at("relief").is_null())
+        extra["relief"] = flange_relief_record(op, relief_request);
     remember(op, f, extra);
 }
 static void fix_component(ProAsmcomp *c) {

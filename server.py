@@ -1517,26 +1517,40 @@ async def creo_sheetmetal_flange(
     radius: float = 1,
     flip: bool = False,
     y_factor: float = 0.5,
+    relief: Annotated[
+        dict[str, Any] | None,
+        Field(
+            description=(
+                "Optional bend-end relief {type:'none'|'rectangular', "
+                "ends:'both'|'side1'|'side2', width:model units, depth:model units}. "
+                "Omit it for the previous behaviour (no relief on either end). rectangular "
+                "requires width>0 and depth>=0; both are absolute model units and are not "
+                "scaled by the sheet thickness. Rip/stretch/obround/param, corner relief, "
+                "miter cuts and edge rips are not supported. Relief is fixed when the flange "
+                "is created: change it by deleting/re-creating the flange, not in place."
+            )
+        ),
+    ] = None,
 ) -> dict[str, Any]:
-    """Attach a native bent flange to a sheetmetal edge. The section exposes named height for dimension edits."""
-    return await invoke(
-        general.submit,
-        [
-            {
-                "op": "sheetmetal_flange",
-                "label": label,
-                "edge": edge,
-                "height": height,
-                "angle": angle,
-                "radius": radius,
-                "flip": flip,
-                "y_factor": y_factor,
-            }
-        ],
-        model_id,
-        None,
-        expected_revision,
-    )
+    """Attach a native bent flange to a sheetmetal edge. The section exposes named height for dimension edits.
+
+    Optional relief adds a single rectangular notch to the selected bend end(s); without it
+    both ends keep PRO_BEND_RLF_NONE exactly as before. Relief geometry is not verified
+    against the corner overlap and the flange keeps no in-place relief edit.
+    """
+    operation: dict[str, Any] = {
+        "op": "sheetmetal_flange",
+        "label": label,
+        "edge": edge,
+        "height": height,
+        "angle": angle,
+        "radius": radius,
+        "flip": flip,
+        "y_factor": y_factor,
+    }
+    if relief is not None:
+        operation["relief"] = relief
+    return await invoke(general.submit, [operation], model_id, None, expected_revision)
 
 
 @mcp.tool(annotations=CREATE)

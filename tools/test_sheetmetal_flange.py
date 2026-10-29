@@ -214,6 +214,9 @@ def check_native_source() -> dict:
     advanced = (ROOT / "native" / "advanced.cpp").read_text(encoding="utf-8", errors="replace")
     geometry = (ROOT / "native" / "geometry.cpp").read_text(encoding="utf-8", errors="replace")
     body = _function_body(advanced, "static void generic_sheetmetal_flange")
+    # T11 moved relief into its own helper, so the relief facts are asserted on
+    # that body. The default is still NONE on both ends; rectangular is opt-in.
+    relief_body = _function_body(advanced, "static void flange_relief_side")
     checks = {
         "feature_type_wall": "PRO_E_FEATURE_TYPE, PRO_FEAT_WALL" in body,
         "wall_type_flange": "PRO_E_SMT_WALL_TYPE, PRO_SMT_WALL_TYPE_FLANGE" in body,
@@ -224,8 +227,24 @@ def check_native_source() -> dict:
         and 'op.value("flip", false)' in body,
         "wall_thickness_flip_fixed_false": "PRO_E_SMT_WALL_THICKNESS_FLIP, PRO_B_FALSE" in body,
         "section_flip_fixed_false": "PRO_E_SMT_FLANGE_SEC_FLIP, PRO_B_FALSE" in body,
-        "bend_relief_none_both_sides": "PRO_E_SMT_BEND_RELIEF" in body
-        and "PRO_BEND_RLF_NONE" in body,
+        "bend_relief_compound_both_ends": "PRO_E_SMT_BEND_RELIEF" in body
+        and "PRO_E_SMT_BEND_RELIEF_SIDE1" in body
+        and "PRO_E_SMT_BEND_RELIEF_SIDE2" in body,
+        "bend_relief_default_none_both_ends": "PRO_BEND_RLF_NONE" in relief_body
+        and "enabled ? PRO_BEND_RLF_RECTANGULAR : PRO_BEND_RLF_NONE" in relief_body,
+        "bend_relief_rectangular_opt_in": "PRO_BEND_RLF_RECTANGULAR" in relief_body
+        and "PRO_E_BEND_RELIEF_WIDTH" in relief_body
+        and "PRO_BEND_RLF_DEPTH_BLIND" in relief_body
+        and "PRO_E_BEND_RELIEF_DEPTH" in relief_body,
+        "bend_relief_other_shapes_absent": "PRO_BEND_RLF_RIP" not in relief_body
+        and "PRO_BEND_RLF_OBROUND" not in relief_body
+        and "PRO_BEND_RLF_STRETCH" not in relief_body
+        and "PRO_BEND_RLF_PARAM" not in relief_body,
+        "corner_miter_rip_absent": "PRO_E_SMT_CORNER_RELIEF" not in body
+        and "PRO_E_SMT_MTR_CUTS" not in body
+        and "PRO_E_SMT_EDGE_RIP" not in body,
+        "relief_validated_before_create": body.index("flange_relief_request(op)")
+        < body.index("PRO_E_FEATURE_TREE"),
         "sharp_corners_to_bends": "PRO_E_SMT_WALL_SHARPS_TO_BENDS, PRO_B_TRUE" in body,
         "radius_inside_fillet": "PRO_E_SMT_FILLETS_USE_RAD" in body
         and "PRO_BEND_RAD_INSIDE" in body
@@ -250,20 +269,27 @@ def check_native_source() -> dict:
             "fixed_not_exposed": [
                 "PRO_E_SMT_WALL_THICKNESS_FLIP = FALSE",
                 "PRO_E_SMT_FLANGE_SEC_FLIP = FALSE",
-                "PRO_E_SMT_BEND_RELIEF side1/side2 = PRO_BEND_RLF_NONE",
+                "PRO_E_SMT_CORNER_RELIEF, PRO_E_SMT_MTR_CUTS, PRO_E_SMT_EDGE_RIP",
             ],
+            "bend_relief": (
+                "T11: side1/side2 default PRO_BEND_RLF_NONE (unchanged for old calls) and "
+                "opt-in PRO_BEND_RLF_RECTANGULAR with width plus blind depth; other relief "
+                "shapes are absent"
+            ),
             "bend": "radius at PRO_E_SMT_FILLETS_VALUE, side = PRO_BEND_RAD_INSIDE",
             "development": "PRO_E_SMT_DEV_LEN_Y_FACTOR from y_factor (Y factor only)",
             "parent": "ProFeatureWithoptionsCreate(model selection, tree, PRO_FEAT_CR_NO_OPTS)",
             "body": "no PRO_E_BODY element: the wall attaches to the model's active body",
         },
         "conclusion": (
-            "one public control (flip) reaches the trajectory normal; thickness side, section "
-            "side and relief are fixed in the tree, and the target body is implicit. A live "
-            "third-flange failure therefore cannot be attributed to a public parameter from "
-            "the source alone."
+            "one public control (flip) reaches the trajectory normal; thickness side and section "
+            "side are fixed, relief is none by default and rectangular only when requested, and "
+            "the target body plus every corner rule stay implicit. A live third-flange failure "
+            "therefore cannot be attributed to a public parameter from the source alone, and "
+            "T11 relief is not proof that the corner itself is resolved."
         ),
         "production_change_this_stage": "none",
+        "production_change_since": "DEV-051 T11 added the opt-in rectangular relief",
     }
 
 
@@ -346,6 +372,11 @@ def t11_design_input() -> dict:
             "not claim four-wall capability before unbend/bend-back, edit, reload and rollback"
         ),
         "implemented_here": False,
+        "t11_status": (
+            "implemented offline: relief type none (default) or rectangular with explicit width, "
+            "blind depth and end selection; rip/stretch/obround/param and every corner rule stay "
+            "unsupported. Native acceptance is pending, so four-wall capability is still open."
+        ),
     }
 
 
