@@ -171,7 +171,10 @@ static void generic_sweep(const J &op) {
 // depth/thickness geometry and its depth would be silently replaced by the
 // thickness (the reported closed rectangle kept one volume for depth 1 and 30).
 // Reject those sections before any feature is created; the independent tool and
-// execute_plan share this native path.
+// execute_plan share this native path. Only real geometry counts: every section
+// built by native/generic.cpp also carries the PRO_2D_COORD_SYS placement entity,
+// and ProSectionEntityIdsGet lists it as an entity, so counting raw ids rejected
+// every legal one-line section with "2 drawing entities (1 straight lines)".
 static double first_wall_line_length(ProFeature sketch) {
     ProSection section = nullptr;
     ProError code = ProFeatureSectionCopy(&sketch, 0, &section);
@@ -200,6 +203,14 @@ static double first_wall_line_length(ProFeature sketch) {
                       std::to_string(ids[index]);
             break;
         }
+        // The section coordinate system is the sketch placement marker added by
+        // the section builder, and a point is no curve: neither is first wall
+        // geometry, so neither may count as a drawing entity. Every other type
+        // (line, arc, circle, spline, polyline, composite curve) still counts, so
+        // the "exactly one open straight line" rule keeps rejecting closed
+        // contours, arcs and multi-entity chains.
+        if (def->type == PRO_2D_COORD_SYS || def->type == PRO_2D_POINT)
+            continue;
         if (def->type == PRO_2D_CENTER_LINE)
             continue;
         curves++;
