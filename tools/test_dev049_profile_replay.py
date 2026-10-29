@@ -52,7 +52,10 @@ REPORTED_CIRCLE_RADIUS_MM = 2.0
 REPORTED_CIRCLE_CENTERS = ((-8.0, 0.0), (8.0, 0.0))
 REPORTED_TWO_CIRCLE_REMOVED_MM3 = 125.663706
 RING_RADIUS_MM = 3.0
-RING_SPACING_MM = 12.0
+RING_SPACING_MM = 8.0
+# Ring count -> (radius, spacing). Both rows must fit inside the R20 plate and
+# stay disjoint; verified by ring_row() before any request is built.
+RING_LAYOUTS: dict[int, tuple[float, float]] = {5: (3.0, 8.0), 10: (1.5, 4.0)}
 ARC_SAMPLES = 256
 AREA_TOLERANCE_MM2 = 1e-6
 VOLUME_TOLERANCE_MM3 = 0.01
@@ -110,9 +113,24 @@ def circle_contour(name: str, center: tuple[float, float], radius: float) -> dic
 
 
 def ring_row(count: int, prefix: str = "ring", arc_dir: int | None = None) -> list[dict]:
-    start = -(count - 1) * RING_SPACING_MM / 2
+    """Lay rings out symmetrically; every ring must stay inside the plate.
+
+    The 2026-10-29 live run showed the original five-ring layout put the two
+    outermost rings (24 mm from centre, radius 3) outside the R20 plate, so only
+    three rings cut anything and the volume oracle looked like a Creo defect.
+    Each ring count now has its own verified radius/spacing pair.
+    """
+    radius, spacing = RING_LAYOUTS[count]
+    start = -(count - 1) * spacing / 2
+    if abs(start) + radius >= PLATE_RADIUS_MM or spacing <= 2 * radius:
+        raise ValueError(f"ring layout for {count} rings is not inside the plate")
     return [
-        arc_ring(f"{prefix}{index}", (start + index * RING_SPACING_MM, 0.0), arc_dir=arc_dir)
+        arc_ring(
+            f"{prefix}{index}",
+            (start + index * spacing, 0.0),
+            radius=radius,
+            arc_dir=arc_dir,
+        )
         for index in range(count)
     ]
 
@@ -240,8 +258,9 @@ def build_cases(run_tag: str) -> list[dict]:
         "role": "uncovered_difference",
         "expectation_source": "substitute",
         "note": (
-            "Reported 5-ring input is missing; radius 3 and spacing 12 are this driver's "
-            "substitute geometry, not the reported gear profile."
+            "Reported 5-ring input is missing; radius 3 and spacing 8 are this driver's "
+            "substitute geometry, not the reported gear profile. Spacing was 12 until the "
+            "2026-10-29 live run, which placed the outer two rings outside the plate."
         ),
         "contours": ring_row(5, "five"),
         "reported_removed_mm3": None,
@@ -252,7 +271,7 @@ def build_cases(run_tag: str) -> list[dict]:
         "expectation_source": "substitute",
         "note": (
             "T06 cut only the 5-ring mix; 10 four-arc rings in a cut plan were never "
-            "submitted. Geometry is the same substitute row as the five-ring case."
+            "submitted. Radius 1.5 and spacing 4 keep ten disjoint rings inside the plate."
         ),
         "contours": ring_row(10, "ten"),
         "reported_removed_mm3": None,
@@ -627,7 +646,19 @@ class ProfileReplayAcceptance:
     async def call(self, name: str, args: dict) -> dict:
         self.report["calls"].append({"tool": name, "args": args, "at": time.time()})
         self.save()
-        return await self.client.call_tool(name, args)
+        result = await self.client.call_tool(name, args)
+        if getattr(result, "is_error", False):
+            raise RuntimeError(f"{name} failed: {result.content}")
+        structured = getattr(result, "structured_content", None)
+        if isinstance(structured, dict):
+            return structured
+        for item in getattr(result, "content", []) or []:
+            text = getattr(item, "text", None)
+            if text:
+                decoded = json.loads(text)
+                if isinstance(decoded, dict):
+                    return decoded
+        raise RuntimeError(f"{name} returned no structured payload")
 
     async def snapshot(self, model_id: str) -> dict:
         from creo_mechdog.query_client import read_full_model
