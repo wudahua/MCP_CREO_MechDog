@@ -22,3 +22,13 @@ T05 可交付可复现/未复现结论与根因证据，但只有四壁原生特
 - T11 设计输入（未实现）：壁端折弯释放（none/矩形/扯裂/圆形、宽深、单双端）+ 垂直壁角部规则（仅释放/斜接/显式重叠）、字段落点与兼容默认；仍须在四壁 + 角部几何 + 展开/折回 + 编辑 + 重载 + 回滚闭环后才可宣称能力完成。
 - 待验清单（实机）：四壁逐道创建与失败原码；材料侧/方向/父体/边有效性/原生树；单计划与逐道刷新对照；`flip` 正交；剪短 20 mm 的第三道探针；厚底板首道（依赖 T03）；展开/折回、编辑、重载与回滚。
 - 验收记录见 `docs/development/DEV051-T05-ACCEPTANCE.md`。
+
+## 2026-10-29：T11 离线实现（DEV-051）
+
+- 状态：**离线实现完成 / 四壁与释放能力待原生验收**。本次未连接 Creo、未创建折边或释放、未展开/折回、未编辑或重载；四壁能力仍未完成。
+- SDK 核对（本机 Creo 12.4 `ProSmtFlangeWall.h`）：每个弯端有独立释放复合元素 `PRO_E_SMT_BEND_RELIEF_SIDE1/SIDE2`，类型 NONE/RIP/STRETCH/RECTANGULAR/OBROUND/PARAM；深度类型含 BLIND(-4)；角部释放 `PRO_E_SMT_CORNER_RELIEF`、斜接 `PRO_E_SMT_MTR_CUTS`、边撕裂 `PRO_E_SMT_EDGE_RIP` 同在特征树中。
+- 已实现（最小形状）：`sheetmetal_flange.relief` 可选对象，`type` 仅 `none`（默认，保持旧行为：两端 `PRO_BEND_RLF_NONE`）与 `rectangular`；`ends` 取 both/side1/side2；`width>0`、`depth>=0` 为绝对模型单位并固定 BLIND，不按板厚缩放；别名记录带实测板厚与 `height-radius` 角部走向算术。schema/独立工具/execute_plan/原生纵深防御与创建期编辑路径说明均已补齐。
+- 明确未支持：rip、stretch、obround、param、角部释放全系、斜接、边撕裂、释放长度/角度，以及任何按几何自动选角部规则；这些组合在准入处拒绝而不是降级为 none。
+- 未测（实机）：四壁真实创建与释放元素树被接受、体积增量与 `width×depth×t` 的关系、缺口相对折弯边的实际位置、单端释放、`depth ≥ h−R` 档对第三道失败的影响、展开/折回、`height` 尺寸编辑、删除重建改释放、revision、保存重载与失败回滚。
+- T05 静态断言已按新事实同步（`bend_relief_none_both_sides` → 默认 NONE + rectangular opt-in 一组断言），不是回退或删除。
+- 验收记录见 `docs/development/DEV051-T11-ACCEPTANCE.md`。
