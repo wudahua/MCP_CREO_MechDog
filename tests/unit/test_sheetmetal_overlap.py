@@ -120,10 +120,13 @@ def solid_base_op() -> dict:
 
 
 def wall_sketch() -> dict:
+    # DEV-051 T04: the sketch plane decides where the sheet thickness lives. XZ keeps
+    # the 1 mm thin width in Z and the 232 mm extrusion in Y, so the base is a genuine
+    # 1 mm sheet (see test_sheetmetal_flange.wall_base_op for the measured evidence).
     return {
         "op": "sketch",
         "label": "wall_sketch",
-        "plane": "XY",
+        "plane": "XZ",
         "entities": [
             {
                 "type": "line",
@@ -136,12 +139,14 @@ def wall_sketch() -> dict:
 
 
 def wall_base_op(sketch: str = "wall_sketch") -> dict:
+    # "thickness" is the sheet metal thickness (PRO_E_STD_SMT_THICKNESS) and "depth" is
+    # the extrusion, so a 185 x 232 x 1 sheet is depth=232 / thickness=1.
     return {
         "op": "sheetmetal_wall",
         "label": "base_wall",
         "sketch": sketch,
-        "depth": BASE_THICKNESS_MM,
-        "thickness": BASE_WIDTH_MM,
+        "depth": BASE_WIDTH_MM,
+        "thickness": BASE_THICKNESS_MM,
         "direction": "positive",
     }
 
@@ -228,8 +233,12 @@ class ThreeWayInputContractTest(unittest.TestCase):
             BASE_VOLUME_MM3,
         )
         validated = validate_operations([wall_sketch(), wall_base_op()])
-        self.assertEqual(validated[1]["depth"], BASE_THICKNESS_MM)
-        self.assertEqual(validated[1]["thickness"], BASE_WIDTH_MM)
+        # The sheet thickness must be the 1 mm axis and the extrusion must be the
+        # 232 mm one; swapping them keeps the volume and the bbox but types the part
+        # as a 232 mm sheet, which no flange can bend.
+        self.assertEqual(validated[0]["plane"], "XZ")
+        self.assertEqual(validated[1]["thickness"], BASE_THICKNESS_MM)
+        self.assertEqual(validated[1]["depth"], BASE_WIDTH_MM)
 
     def test_overlap_footprint_is_inside_plate_footprint(self) -> None:
         for lo in OVERLAP_MIN:

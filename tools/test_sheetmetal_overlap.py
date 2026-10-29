@@ -324,8 +324,33 @@ LIVE_ROUTES = (
     ("solid_add", "t04_solid_add", "part", fx.ROUTE_ADD_VOLUME_MM3),
     ("sheetmetal_add", "t04_sm_add", "sheetmetal", fx.ROUTE_ADD_VOLUME_MM3),
     ("sheetmetal_cut", "t04_sm_cut", "sheetmetal", fx.ROUTE_CUT_VOLUME_MM3),
+    # BUG-046 isolation. Both keep the same 10 x 10 x 5 block and the same overlap
+    # with the 1 mm sheet, so the only difference from sheetmetal_add is the
+    # position (off the processed area) or the target body (PRO_BODY_USE_NEW).
+    ("sheetmetal_add_offgroup", "t04_sm_add_off", "sheetmetal", fx.ROUTE_ADD_VOLUME_MM3),
+    ("sheetmetal_add_new_body", "t04_sm_add_newbody", "sheetmetal", fx.ROUTE_ADD_VOLUME_MM3),
 )
-EXPECTED_DELTA_MM3 = {"solid_add": 400.0, "sheetmetal_add": 400.0, "sheetmetal_cut": -100.0}
+EXPECTED_DELTA_MM3 = {
+    "solid_add": 400.0,
+    "sheetmetal_add": 400.0,
+    "sheetmetal_cut": -100.0,
+    "sheetmetal_add_offgroup": 400.0,
+    "sheetmetal_add_new_body": 400.0,
+}
+# Isolation geometry: 10 x 10 at [60,60]-[70,70], clear of the plate edges and of
+# every other feature on this model.
+OFFSET_MIN = [60.0, 60.0]
+OFFSET_MAX = [70.0, 70.0]
+ROUTE_PURPOSE = {
+    "sheetmetal_add_offgroup": (
+        "BUG-046 H3 probe: a non-overlapping-in-plane position must fail exactly like "
+        "sheetmetal_add if the trigger is the solid add itself, not the overlap"
+    ),
+    "sheetmetal_add_new_body": (
+        "BUG-046 H1 probe: PRO_BODY_USE_NEW instead of PRO_BODY_USE_SELECTED + default "
+        "body isolates whether the target body is what Creo rejects"
+    ),
+}
 # Live runs use an explicit positive depth of 5 mm. The offline fixture reaches the
 # same 10x10x5 block with depth 2.5 + "symmetric", but the 2026-10-29 live run
 # measured only +150 mm3 that way (10x10x2.5 block minus the 100 mm3 overlap), so on
@@ -341,12 +366,34 @@ def live_base_plan(route: str) -> list[dict]:
     return [fx.wall_sketch(), fx.wall_base_op()]
 
 
+def shifted_sketch(label: str) -> dict:
+    sketch = fx.overlap_sketch()
+    sketch["label"] = label
+    sketch["entities"][0]["min"] = list(OFFSET_MIN)
+    sketch["entities"][0]["max"] = list(OFFSET_MAX)
+    return sketch
+
+
 def live_prism_plan(route: str) -> list[dict]:
-    mode, label = ("cut", "pocket_cut") if route == "sheetmetal_cut" else ("add", "boss_add")
-    return [
-        fx.overlap_sketch(),
-        fx.prism_op(mode, label, depth=LIVE_PRISM_DEPTH_MM, direction=LIVE_PRISM_DIRECTION),
-    ]
+    depth, direction = LIVE_PRISM_DEPTH_MM, LIVE_PRISM_DIRECTION
+    if route == "sheetmetal_cut":
+        return [
+            fx.overlap_sketch(),
+            fx.prism_op("cut", "pocket_cut", depth=depth, direction=direction),
+        ]
+    if route == "sheetmetal_add_offgroup":
+        return [
+            shifted_sketch("offset_sketch"),
+            fx.prism_op("add", "boss_add_offset", depth=depth, direction=direction),
+        ]
+    if route == "sheetmetal_add_new_body":
+        return [
+            fx.overlap_sketch(),
+            fx.prism_op(
+                "add", "boss_add_new_body", depth=depth, direction=direction, new_body=True
+            ),
+        ]
+    return [fx.overlap_sketch(), fx.prism_op("add", "boss_add", depth=depth, direction=direction)]
 
 
 def volume_check(measured: float | None, expected: float) -> dict:
@@ -371,6 +418,7 @@ async def run_route(
     terminal = await runner.wait_job(job_id)
     entry: dict = {
         "route": route,
+        "purpose": ROUTE_PURPOSE.get(route, "baseline route of the three-way comparison"),
         "base_model_kind": model_type,
         "model_name": name,
         "model_id": model_id,

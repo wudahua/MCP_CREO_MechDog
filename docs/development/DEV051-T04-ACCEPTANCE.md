@@ -207,3 +207,16 @@ Sketch: 'overlap_sketch'.
 1. 失败回滚取证：B 路失败后补一次 `creo_inspect_model`（体积/别名/revision）并把结果写回本卡；这属于驱动补强，不改期望值。
 2. 定因隔离（按顺序，仍只用同一驱动形态）：B2 非重叠钣金 add（排除“重叠”因素）→ H1 改为 `PRO_BODY_USE_NEW`/不写 BODY 元素 → H2 若两者仍 -1，则判定“钣金件上的实体 protrusion 增料不被支持”，转而给出明确边界与可行工具指引（`sheetmetal_wall`/`sheetmetal_flange`），并按 BUG-046 的“若不支持”条款补可识别错误码。
 3. 定因前不要写“钣金增料已修复”，也不要把 C 路 cut 通过当作 add 可用。
+
+## 2026-10-29 第三轮实机：隔离用例就绪，实机被挂起的折边作业阻塞
+
+本轮计划按 BUG-046 的要求做三步隔离（非重叠位置 add、`PRO_E_BODY` 改目标体、判定后补拒绝码）。实际执行情况：
+
+- **驱动已扩展**（`tools/test_sheetmetal_overlap.py`）：三路对照之外新增两条路线，每条都用新的模型名，各自一串 `job_id`/`model_id`：
+  - `sheetmetal_add_offgroup`：同 10×10×5 块，矩形移到 `[60,60]`–`[70,70]`（离板边与既有特征都远），用于区分"重叠"与"实体增料本身"；
+  - `sheetmetal_add_new_body`：同截面同位置，`new_body=true`（`PRO_BODY_USE_NEW` 而不是 `PRO_BODY_USE_SELECTED` + 默认体），用于隔离 H1（目标体被拒）。
+- **夹具基体同步修正**：`tests/unit/test_sheetmetal_overlap.py` 的 `wall_base_op()` 原为 `depth=1, thickness=232`（实际是 232 mm 厚的板，见 [T11 验收卡](DEV051-T11-ACCEPTANCE.md) §3.3），现改为 `plane="XZ"` + `depth=232, thickness=1`，保证"钣金 add"跑在真正的 1 mm 板上；`test_base_plate_matches_confirmed_thin_plate` 相应断言 `plane=="XZ"`、`thickness==1`、`depth==232`。
+- **本轮没有提交任何 BUG-046 实机作业**：T11 驱动的第三道折边作业 `bb5543fb3c66404e95172876fa1ac9aa` 在 `ProFeatureWithoptionsCreate` 内挂起（>420 s，job 仍 `running`，`toolkit.lock` 由其持有），按交接规则"忙/未知/超时立即停"，未重提、未清保护、未重启 Creo，因此不具备提交第二条通道的安全条件。
+- 结论不变：**钣金件上实体 add 的 `-1` 仍无新增实机证据**，既未复现也未排除；不得据此在准入层声明"不支持"。拒绝码与指引必须等本轮隔离结果出来后再定，避免以猜测替代证据。
+
+下一轮（会话恢复后，先确认 `ProFeatureWithoptionsCreate` 挂起原因）：按 `sheetmetal_add_offgroup` → `sheetmetal_add_new_body` → 原有三路的顺序串行执行，逐例记录 job/model/revision/体积/回显；若两条隔离路线都失败且元素错误为空，再考虑"钣金体不支持实体增料"的支持边界，并同时给出 `sheetmetal_wall`/`sheetmetal_flange` 指引。
