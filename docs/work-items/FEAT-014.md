@@ -1,6 +1,6 @@
 # FEAT-014：钣金折弯释放与四壁能力
 
-日期：2026-10-28（Asia/Shanghai）补工作卡，沿用既有 ID。类型：功能。优先级：P2（既有台账）；状态：**第一道折边可创建、折弯几何未定**（2026-10-29 第三轮：第一道 `-1` 的根因已定——验收基体实为 232 mm 厚板、所选边不在壁面上——已改基体并在准入层拒绝该类边；修正后两道折边 succeeded 但几何是平铺延伸而非折弯，第三道挂起；四壁与释放能力未完成。2026-10-29 第四轮：截面已按库存 `flange_shapes` 重建（单线、无 centerline、腿在父壁法向）并重建执行器，但实机被会话消失阻塞，折弯仍**未验证**）。目标版本：未排期。
+日期：2026-10-28（Asia/Shanghai）补工作卡，沿用既有 ID。类型：功能。优先级：P2（既有台账）；状态：**折弯与方向已实机成立，四壁仍止于第二道，释放无可观测几何**（2026-10-29 第三轮：第一道 `-1` 的根因已定——验收基体实为 232 mm 厚板、所选边不在壁面上——已改基体并在准入层拒绝该类边；修正后两道折边 succeeded 但几何是平铺延伸而非折弯，第三道挂起；四壁与释放能力未完成。2026-10-29 第四轮：截面已按库存 `flange_shapes` 重建（单线、无 centerline、腿在父壁法向）并重建执行器，但实机被会话消失阻塞，折弯仍**未验证**。2026-10-29 第六轮：`direction` 开关从 `PRO_E_SMT_FLANGE_TRAJ_CRV_NORM` 改到 `PRO_E_SMT_FLANGE_SEC_FLIP` 后，`tools/test_flange_direction.py --live` 两例均 `saved_file_reloaded_and_verified=true`、rev 2，默认向外（+X 顶边 +Z 79 mm）、`flip=true` 反向（−Z 79 mm），报告 `passed=true`；四壁在第二道后仍于 `f_ny` 回滚（rev 不变、原码保留），1×1 矩形释放体积差 0.000000、无缺口面）。目标版本：未排期。
 
 来源：[统一台账](../BACKLOG.md)既有 FEAT-014 行、[0.7.0 R1 S3](../validation/feedback-0.7.0-2026-10-28/2026-10-27_CREO_0.7.0_钣金增料与四壁折边仍未修复验收报告.md)、[逐章映射](../validation/feedback-0.7.0-2026-10-28/MAPPING.md)。关联 [BUG-047](BUG-047.md) 的折边方向/材料侧缺陷与 [BUG-032](BUG-032.md) 的有效薄底板契约。
 
@@ -76,3 +76,49 @@ T05 可交付可复现/未复现结论与根因证据，但只有四壁原生特
 - **已改**：`generic_sheetmetal_flange` 的截面改为单条线 `(0,0) → (h·sinA, h·cosA)` + `height` 长度尺寸、去掉 centerline，其余元素树不动；`bridge.py build` 已重建执行器，`clang-format` 通过。
 - **新增驱动**：`tools/test_flange_direction.py`（单模型单折边、bbox 判定、180 s 挂起预算）与其单测；离线报告 `build/flange_direction/offline_20261029.json`。
 - 状态口径：FEAT-014 = **第一道折边可创建（根因已定），折弯几何未定（第四轮改了截面但未实机验证），第三道挂起未复现，四壁与释放未完成**。不得表述为"折边已修复"。
+
+## 2026-10-29 第六轮：方向开关落在截面侧，折弯与反向均实机成立；四壁仍止于第二道，1×1 释放无可观测几何
+
+分支 `codex/dev051-feedback070`，HEAD `cce1922`；手动打开的 Creo 12.4.0.0 会话（PID 15156，22:05:41 由协调器拉起），`creo_startup_status` → `ready/connected=true`，`session_health=no_failure_observed`。本轮未启动/关闭/重启 Creo、未重提已受理 job、未清保护。
+
+### A. 方向（BUG-047）
+
+- **机制定案**：`flip` 原先写 `PRO_E_SMT_FLANGE_TRAJ_CRV_NORM`。22:06 的对照（`flip=false`→1、`flip=true`→−1）bbox、体积、方向完全相同，说明该元素不是方向开关；`ProSmtFlangeWall.h` 对该元素只列 `PRO_B_TRUE/PRO_B_FALSE`，−1 不是可用的第二个值。真正的开关是 `PRO_E_SMT_FLANGE_SEC_FLIP`（元素表："Flip Section Side"）。
+- **2×2 实测**（同边、h80/R2.54/Y0.5，一次只改一个变量）：
+
+| 依附边 | `SEC_FLIP=FALSE` | `SEC_FLIP=TRUE` |
+| --- | --- | --- |
+| +X 顶边（z=+0.5） | down，bbox z `[-79.5, 0.5]` | up，bbox z `[-0.5, 79.5]` |
+| +X 底边（z=−0.5） | up，bbox z `[-0.5, 79.5]` | down，bbox z `[-79.5, 0.5]` |
+
+  即侧向相对依附面：`TRUE` = 从选中面法向向外，`FALSE` = 材料侧。据此定口径：**默认（`flip=false`）= 向外**，`flip=true` = 反向（材料侧）；轨迹法向固定 `NO_FLIP`（与库存 `UgSmtFlgWallCreate.c` 一致）。证据目录 `build/flange_side_probe/`（`sec_true/20261029T221644_c9ae6ece`、`bottom_default/20261029T221859_a54aec71`、`bottom_sec_true/20261029T221934_470617ee` 等）。
+- **收口实机**：`tools/test_flange_direction.py --live --confirm-session-usable` → `passed=true`，报告 `build/flange_direction/20261029T222510_9cebd5e1/report.json`（SHA256 `9464933eb94bdee351361fc2265777bfe8f58145f1882af45c3fcf3c2b5f3745`）。
+  - `angle90_outward`：模型 `fe7096c0f0444283bf8482979ee6866d`，base job `41454fd240d349f78955512df154378b`，flange job `f20a09ec980e4d4a8c31a0d840d4c0de`，rev 1→2，42 920→60 945.291234，+18 025.291234 mm³，bbox z `[-0.5, 79.5]`，`direction=up`，回显 `bend_side=outward/sec_flip_element=1`，`saved_file_reloaded_and_verified=true`。
+  - `angle90_inward`：模型 `c72271209fa44fa7ba8921590c4834eb`，flange job `bb0cdab24f67453d8c0979781a2a8a41`，rev 1→2，+18 025.291153 mm³，bbox z `[-79.5, 0.5]`，`direction=down`，回显 `inward/0`，重载 true。
+  - 驱动 oracle 已改：`|z 增长| ≥ 72 mm` 判折弯、方向必须等于该例显式期望（默认 up、`flip=true` down），不再"只认向上"。
+
+### B. T05 四壁（`build/sheetmetal_relief/20261029T222754_44e6ab6a/report.json`，SHA256 `d2de17487469f10fba9859a0459cfeb64e593537105c8d5a6df5be9bf829d58f`）
+
+模型 `fc04dfaf7e9a4d6eb17b900d5276da33`（t11_relief_none_2b54bc），底板 42 920、rev 1；逐道一 job、每道重新取边：
+
+| 道 | job | rev | 体积增量 | bbox | direction | 重载 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `f_px`（+x） | `c09759e7d25341d3a98874291273be15` | 1→2 | +18 025.291234 | `[0,-232,-0.5]`–`[185,0,79.5]` | up | true |
+| `f_nx`（−x） | `fc097f17478a4d48a8a64deb2a6effef` | 2→3 | +18 025.291234 | 同上 | up | true |
+| `f_ny`（−y） | `1a2b487ce90b486fb358494ba6afcc22` | 3→3 | 无（回滚） | 不变 | — | — |
+
+- 第三道**未重提**：`f_ny` 边跨度 177.92 mm（两端各被已有折弯占去 3.54 mm），`toolkit_code=-1`、`message="Regeneration produced a failed, suppressed or incomplete feature"`、`rollback_succeeded=true`、`effect_status=rolled_back`，rev 与体积回到第三道之前。原生日志显示 `F_NY` 创建成功但 `status=6`、`geometry_items=[]`，随后的健康检查判定整件失败并回滚。
+- 结论：四壁仍**未完成**；失败点从第一道推进到第三道、且已有真实折弯几何，与前两轮"平铺延伸/第一道 −1"不同。失败边保留 job 与原始码，按规则不再提交该边、也不再续跑第四道。
+
+### C. T11 释放两档（同一报告；`relief_rect_1x1` 模型 `88dcd28eefb4459caf1480cb1803cfb9`）
+
+| 档 | `f_px` job | 体积增量 | 与无释放之差 | 缺口面 | `relief` 回显 |
+| --- | --- | --- | --- | --- | --- |
+| 省略 | `c09759e7d25341d3a98874291273be15` | +18 025.291234 | — | 0 | 无 |
+| rectangular both 1×1 | `e45404d4c09d441791626bb5eb369525` | +18 025.291234 | 0.000000 | 0 | type/ends/width/depth/板厚/两项比较齐全 |
+
+- 差分 oracle（同边、同参数，只有释放不同）期望 −2 mm³；实测 **0.000000 mm³**，且模型上没有 1 mm 级小面（缺口面 0 个）。诊断性第 5 个 job（`6ddadf6487644504a1ebdfd6ef8bd7f4`，`build/relief_probe/w4_d4/20261029T223039_44c271f2/report.json`）把宽深提到 4×4（> 回显板厚 3.71）后体积差仍为 0，说明不是"1×1 太小被忽略"。
+- 自由端解释与边界：这两道折边的弯端位于板件自由角，Creo 在该处不切释放缺口；真正需要释放的第三、四道在 `f_ny` 即回滚（有/无释放失败方式相同，job `2bc5bf3184d94d08b472a0cd179c242e`），因此**释放能力未获实机证实**，只是"请求被接受并回显"。
+- 回显里的 `part_thickness_mm=3.71` 与 1 mm 薄壁不符（`ProSmtPartThicknessValueGet` 读到的是零件级默认板厚），已登记到 BUG-032 状态行：任何"宽 ≥ 板厚"的规则在修正前不可信。
+
+状态口径：FEAT-014 = **折弯与方向已实机成立（A 通过）；四壁止于第二道（第三道 `f_ny` 回滚，原码保留）；释放请求可接受但无可观测几何**。不得表述为"四壁能力已具备"或"释放已实现"。

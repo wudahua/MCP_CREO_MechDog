@@ -192,3 +192,30 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；pydantic 
 - 折边截面已按库存 `flange_shapes` 重建（单线、无 centerline、腿放在父壁法向）并重建执行器，但**没有实机结果**；四道折边、每道体积增量、角部干涉、H1–H4 假设表全部保持未验证（不得读作通过）。
 - 新增 `tools/test_flange_direction.py`：单模型单折边、只看 bbox（Z 增长 ≥72 mm 且向上）、180 s 挂起预算。四壁之前必须先用它确认"折边真的折弯"，否则四壁的体积增量没有判别力（平铺与折弯体积同为 232×80×1 = 18 560 mm³）。
 - 下一步：会话恢复 → `tools/test_flange_direction.py --live --confirm-session-usable` 通过 → 再跑四壁。
+
+## 2026-10-29 第六轮：方向实机通过，四壁止于第二道（`f_ny` 回滚）
+
+分支 `codex/dev051-feedback070`，HEAD `cce1922`；手动打开的 Creo 12.4.0.0（PID 15156），`creo_startup_status` → `ready/connected=true`，`session_health=no_failure_observed`。未启动/关闭/重启 Creo、未重提已受理 job、未清保护。
+
+### 方向（A，BUG-047）：`flip` 改到截面侧
+
+- 归因：`flip` 原先写 `PRO_E_SMT_FLANGE_TRAJ_CRV_NORM`。22:06 的对照（1 vs −1）bbox、体积、方向完全相同——它不是方向开关。实测 2×2：+X 顶边 `SEC_FLIP=FALSE`→down / `TRUE`→up；+X 底边 `FALSE`→up / `TRUE`→down。侧向相对依附面，`TRUE` = 从选中面法向向外。
+- 定口径：默认（`flip=false`）= 向外，`flip=true` = 反向；轨迹法向固定 `NO_FLIP`（与库存 `UgSmtFlgWallCreate.c` 一致）。
+- 实机：`tools/test_flange_direction.py --live --confirm-session-usable` → `passed=true`，`build/flange_direction/20261029T222510_9cebd5e1/report.json`（SHA256 `9464933eb94bdee351361fc2265777bfe8f58145f1882af45c3fcf3c2b5f3745`）。两例 rev 1→2、`saved_file_reloaded_and_verified=true`、+18 025.29 mm³；`angle90_outward` up（job `f20a09ec980e4d4a8c31a0d840d4c0de`，回显 `bend_side=outward`）、`angle90_inward` down（job `bb0cdab24f67453d8c0979781a2a8a41`，`inward`）。
+- oracle 变更：`|z 增长| ≥ 0.9×height` 判折弯，方向必须等于该例显式期望；不再"只认向上"。
+
+### 四壁（B）：前两道成功，第三道回滚
+
+模型 `fc04dfaf7e9a4d6eb17b900d5276da33`（t11_relief_none_2b54bc），底板 42 920 mm³、rev 1；逐道一 job、每道重新取边：
+
+| 道 | job | rev | 体积增量 | bbox | direction | 重载 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `f_px`（+x） | `c09759e7d25341d3a98874291273be15` | 1→2 | +18 025.291234 mm³ | `[0,-232,-0.5]`–`[185,0,79.5]` | up | true |
+| `f_nx`（−x） | `fc097f17478a4d48a8a64deb2a6effef` | 2→3 | +18 025.291234 mm³ | 同上 | up | true |
+| `f_ny`（−y） | `1a2b487ce90b486fb358494ba6afcc22` | 3→3 | 无（回滚） | 不变 | — | — |
+
+- `f_ny` 的边跨度 177.92 mm（两端各被已有折弯占去 3.54 mm），`toolkit_code=-1`、`message="Regeneration produced a failed, suppressed or incomplete feature"`、`rollback_succeeded=true`、`effect_status=rolled_back`；原生日志里 `F_NY` 创建成功但 `status=6`、`geometry_items=[]`。按规则未重提该边、未续跑第四道。
+- 与前几轮的差别：失败点从第一道推进到第三道，且前两道是**真实折弯**（Z 增长 79 mm），不再是平铺延伸。四壁能力仍未完成；H2（角部重叠）仍只是候选，尚未被单独证明。
+- 报告：`build/sheetmetal_relief/20261029T222754_44e6ab6a/report.json`（SHA256 `d2de17487469f10fba9859a0459cfeb64e593537105c8d5a6df5be9bf829d58f`）。
+- 下一道探针（未执行，仍待指派）：把 `f_ny` 的边在两端各内缩 20 mm 后再提交，用于区分"短边可行=角部干涉"与"任何长度都失败=其它原因"；不要重提已回滚的原边。
+- **勘误**：前文「给 T01 的公共文档变更需求」第 1 条"`flip` 只切轨迹法向、不等同于材料侧开关"已被本轮 2×2 实测推翻，现行口径为"`flip` = 从依附面向外 / 材料侧 两个方向的切换"。
