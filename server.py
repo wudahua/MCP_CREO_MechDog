@@ -1894,9 +1894,10 @@ async def creo_save_model(model_id: str, expected_revision: int) -> dict[str, An
 
 @mcp.tool(annotations=READ)
 async def creo_export_model(
-    model_id: str, format: Literal["step", "stl", "iges", "jpeg", "pdf"] = "step"
+    model_id: str,
+    format: Literal["step", "stl", "iges", "jpeg", "pdf", "native_bundle"] = "step",
 ) -> dict[str, Any]:
-    """Export solids to STEP/STL/IGES/JPEG or drawings to PDF/JPEG inside the job output directory."""
+    """Export STEP/STL/IGES/JPEG, drawing PDF/JPEG, or an explicit native assembly bundle."""
     return await invoke(
         general.submit, [{"op": "export", "format": format}], model_id, None, None, None, True
     )

@@ -1053,7 +1053,7 @@ class Assertions(StrictModel):
 
 class ExportOp(StrictModel):
     op: Literal["export"]
-    format: Literal["step", "stl", "iges", "jpeg", "pdf"] = "step"
+    format: Literal["step", "stl", "iges", "jpeg", "pdf", "native_bundle"] = "step"
 
 
 class DrawingModelOp(StrictModel):

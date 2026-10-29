@@ -862,8 +862,18 @@ static J assembly_inspection() {
         if (item["type"].get<int>() == PRO_FEAT_COMPONENT) {
             ProAsmcomp comp;
             CK(ProModelitemInit(board, item["id"], PRO_FEATURE, &comp));
-            ProMdl child;
-            CK(ProAsmcompMdlGet(&comp, &child));
+            ProMdl child = nullptr;
+            ProError child_code = ProAsmcompMdlGet(&comp, &child);
+            if (child_code || !child) {
+                components.push_back({{"feature_id", comp.id},
+                                      {"model_name", nullptr},
+                                      {"model_type", nullptr},
+                                      {"missing", true},
+                                      {"model_query_code", (int)child_code}});
+                continue;
+            }
+            ProMdlType child_type;
+            CK(ProMdlTypeGet(child, &child_type));
             ProName name;
             CK(ProMdlNameGet(child, name));
             ProMatrix position;
@@ -881,14 +891,16 @@ static J assembly_inspection() {
             ProBoolean packaged = PRO_B_FALSE, under = PRO_B_FALSE;
             ProAsmcompIsPackaged(&comp, &packaged);
             ProAsmcompIsUnderconstrained(&comp, &under);
-            components.push_back({{"feature_id", comp.id},
-                                  {"model_name", utf8(name)},
-                                  {"transform", matrix},
-                                  {"transform_source", "component_to_assembly"},
-                                  {"initial_transform", initial_matrix},
-                                  {"packaged", packaged == PRO_B_TRUE},
-                                  {"underconstrained", under == PRO_B_TRUE},
-                                  {"constraints", inspect_constraints(&comp)}});
+            components.push_back(
+                {{"feature_id", comp.id},
+                 {"model_name", utf8(name)},
+                 {"model_type", child_type == PRO_MDL_ASSEMBLY ? "assembly" : "part"},
+                 {"transform", matrix},
+                 {"transform_source", "component_to_assembly"},
+                 {"initial_transform", initial_matrix},
+                 {"packaged", packaged == PRO_B_TRUE},
+                 {"underconstrained", under == PRO_B_TRUE},
+                 {"constraints", inspect_constraints(&comp)}});
         }
     return components;
 }

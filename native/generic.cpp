@@ -2815,39 +2815,48 @@ static void execute_operation_body(const J &op) {
         CK(ProElementFree(&root));
         remember(op, f);
     } else if (kind == "export") {
-        std::string format = op["format"], extension = format == "step"   ? ".stp"
-                                                       : format == "stl"  ? ".stl"
-                                                       : format == "iges" ? ".igs"
-                                                                          : ".jpg";
-        ProPath output;
-        path(output, generic_job + L"\\output\\" + model_name + wide(extension));
-        if (format == "jpeg") {
-            // Same shared capture as the automatic job preview (T07). Unlike
-            // that preview, this image is the requested operation result, so a
-            // failed capture fails this input (recorded with the raw codes in
-            // its single T02 result record) rather than the whole job silently
-            // claiming an image it did not write.
-            PreviewStepOutcome preview =
-                capture_preview(board, generic_job + L"\\output\\" + model_name + wide(extension),
-                                true, 8, 6, PRORASTERTYPE_JPEG);
-            J preview_json = preview_outcome_json(preview);
-            log("PREVIEW=%s\n", preview_json.dump().c_str());
-            stage_operation_result({{"op", kind},
-                                    {"file", utf8(output)},
-                                    {"preview_code", preview.raster_code},
-                                    {"preview", preview_json}});
-            if (!preview_written(preview))
-                throw std::runtime_error("Preview capture failed at " + preview.failed_step +
-                                         " (code " + std::to_string(preview.failed_code) +
-                                         ", raster code " + std::to_string(preview.raster_code) +
-                                         "): " + utf8(preview.path));
-        } else if (format == "stl")
-            write_stl(output);
-        else {
-            ProIntf3DExportType t = format == "step" ? PRO_INTF_EXPORT_STEP : PRO_INTF_EXPORT_IGES;
-            CK(ProIntf3DFileWriteWithDefaultProfile((ProSolid)board, t, output));
+        if (op["format"] == "native_bundle") {
+            if (!assembly_model())
+                throw std::runtime_error("native_bundle requires an assembly");
+            // The read-only Python finalizer copies only verified owned snapshots.
+            // No Toolkit save, regeneration or source mutation occurs here.
+            stage_operation_result({{"op", kind}, {"format", "native_bundle"}});
+        } else {
+            std::string format = op["format"], extension = format == "step"   ? ".stp"
+                                                           : format == "stl"  ? ".stl"
+                                                           : format == "iges" ? ".igs"
+                                                                              : ".jpg";
+            ProPath output;
+            path(output, generic_job + L"\\output\\" + model_name + wide(extension));
+            if (format == "jpeg") {
+                // Same shared capture as the automatic job preview (T07). Unlike
+                // that preview, this image is the requested operation result, so a
+                // failed capture fails this input (recorded with the raw codes in
+                // its single T02 result record) rather than the whole job silently
+                // claiming an image it did not write.
+                PreviewStepOutcome preview = capture_preview(
+                    board, generic_job + L"\\output\\" + model_name + wide(extension), true, 8, 6,
+                    PRORASTERTYPE_JPEG);
+                J preview_json = preview_outcome_json(preview);
+                log("PREVIEW=%s\n", preview_json.dump().c_str());
+                stage_operation_result({{"op", kind},
+                                        {"file", utf8(output)},
+                                        {"preview_code", preview.raster_code},
+                                        {"preview", preview_json}});
+                if (!preview_written(preview))
+                    throw std::runtime_error(
+                        "Preview capture failed at " + preview.failed_step + " (code " +
+                        std::to_string(preview.failed_code) + ", raster code " +
+                        std::to_string(preview.raster_code) + "): " + utf8(preview.path));
+            } else if (format == "stl")
+                write_stl(output);
+            else {
+                ProIntf3DExportType t =
+                    format == "step" ? PRO_INTF_EXPORT_STEP : PRO_INTF_EXPORT_IGES;
+                CK(ProIntf3DFileWriteWithDefaultProfile((ProSolid)board, t, output));
+            }
+            stage_operation_result({{"op", kind}, {"file", utf8(output)}});
         }
-        stage_operation_result({{"op", kind}, {"file", utf8(output)}});
     } else if (kind == "dump_tree") {
         ProFeature f = feature(op["feature"]);
         ProElement root;

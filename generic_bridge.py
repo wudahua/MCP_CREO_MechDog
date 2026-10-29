@@ -256,6 +256,8 @@ def submit(
             ):
                 raise ValueError("This operation requires a solid model")
             if op["op"] == "export":
+                if op["format"] == "native_bundle" and actual_type != "assembly":
+                    raise ValueError("native_bundle requires an assembly")
                 if actual_type == "drawing" and op["format"] not in {"pdf", "jpeg"}:
                     raise ValueError("Drawing export supports PDF and JPEG")
                 if actual_type != "drawing" and op["format"] == "pdf":
@@ -500,6 +502,22 @@ def run_generic_job(job_id: str, manifest: dict):
                     from creo_mechdog import preview
 
                     preview.apply_preview_projection(result, directory=directory)
+                    if result.get("success") and any(
+                        op.get("op") == "export" and op.get("format") == "native_bundle"
+                        for op in request["operations"]
+                    ):
+                        from creo_mechdog.assembly_bundle import create_bundle
+
+                        try:
+                            result["native_bundle"] = create_bundle(
+                                model,
+                                result.get("inspection", {}),
+                                directory / "output",
+                                path / "output",
+                            )
+                        except (OSError, ValueError) as exc:
+                            result["success"] = False
+                            result["message"] = f"native_bundle failed: {exc}"
                     result_aliases = result.get("aliases")
                     result_inspection = result.get("inspection")
                     # Job manifests keep only summaries and controlled references;
