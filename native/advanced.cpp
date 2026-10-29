@@ -663,26 +663,26 @@ static void generic_sheetmetal_flange(const J &op) {
     ProName section_name;
     wcscpy_s(section_name, wide(op["label"]).c_str());
     CK(ProSectionNameSet(section, section_name));
-    // DEV-051 T05/T11: the section's horizontal centerline is the alignment with the
-    // attachment wall and the coordinate system is the attachment point, so the leg is
-    // measured from that alignment and angle 90 is perpendicular to the wall. The
-    // previous (90 - angle) form put the leg along +x for every 90 degree request, i.e.
-    // collinear with the centerline (native.log LINE_wall 0,0 -> 80,0): no bend exists,
-    // and Creo rejects that complete tree with a bare -1.
+    // DEV-051 T05/T11 fourth round: build the section like the stock shapes in
+    // <creo_root>/Common Files/text/smt/flange_shapes - every one of them holds a single
+    // line, one coordinate system and one length dimension, and none holds a centerline.
+    // The leg is measured from the plane normal, not from the parent wall plane: the
+    // third-round build drew it along sketch +y (native.log LINE_wall 0,0 -> 0,80) and
+    // Creo swept a coplanar 80 mm extension in +x, so sketch +x is the direction normal
+    // to the parent wall and sketch +y lies inside the parent wall. Angle 90 therefore
+    // needs the leg on sketch +x, and angle 0 is a straight in-plane continuation.
     double a = op["angle"].get<double>() * acos(-1.0) / 180, h = op["height"];
-    J profile = {{"profile", J::array({{{"type", "centerline"},
-                                        {"name", "attachment"},
-                                        {"start", J::array({-10, 0})},
-                                        {"end", J::array({10, 0})}},
-                                       {{"type", "line"},
+    double leg[2] = {h * sin(a), h * cos(a)};
+    J profile = {{"profile", J::array({{{"type", "line"},
                                         {"name", "wall"},
                                         {"start", J::array({0, 0})},
-                                        {"end", J::array({h * cos(a), h * sin(a)})}}})},
+                                        {"end", J::array({leg[0], leg[1]})}}})},
                  {"dimensions", J::array({{{"name", "height"},
                                            {"type", "length"},
                                            {"refs", J::array({{{"entity", "wall"}}})},
                                            {"value", h},
-                                           {"position", J::array({h * 0.5 + 2, h * 0.5 + 2})}}})},
+                                           {"position", J::array({leg[0] * 0.5 + 2 * cos(a),
+                                                                  leg[1] * 0.5 - 2 * sin(a)})}}})},
                  {"constraints", J::array()}};
     J extra = populate_profile(section, profile);
     ProElement root = node(nullptr, PRO_E_FEATURE_TREE);
