@@ -18,14 +18,21 @@ The driver is offline only. It records:
 * the edit path: relief is fixed at creation, the named height dimension keeps
   its existing edit, and a change means deleting and re-creating the flange.
 
-No Creo session, no Toolkit job, no native geometry. "--live" is refused even
-with --confirm-session-usable: the live four-wall relief run belongs to the
-single shared dev service integration step.
+Default use makes no Creo session, no Toolkit job and no native geometry.
+"--live --confirm-session-usable" runs the two profiles (relief omitted, and
+rectangular 1x1 on both ends) against the manually opened session: one base wall
+per profile, then the four flanges one job at a time, re-selecting each edge from
+a fresh snapshot. Each flange records the measured volume delta, the relief alias
+echo, the native feature types and, on failure, the raw code plus whether the
+model rolled back. It never launches, restarts or closes Creo, never injects a
+fault, never clears a protection and never resubmits a job; a failed base wall
+stops the remaining profile instead of repeating the same blocked submission.
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import hashlib
 import json
 import os
@@ -48,12 +55,17 @@ from tests.unit import test_sheetmetal_relief as relief  # noqa: E402
 
 ROOT = SOURCE_PATHS.resource_root
 
-LIVE_REFUSAL = (
-    "T11 four-wall relief is a separate integration step on the single shared dev service "
-    "(MCP_CREO_MechDog_dev, E:/Projects/MCP_CREO_MechDog). This driver runs offline checks "
-    "only: it never instantiates an MCP client, never connects to Creo and never retries a job. "
-    "Use --live --confirm-session-usable only inside that assigned integration step, after the "
-    "session is confirmed usable and the BUG-001 conditions hold."
+from tools.sheetmetal_live import (  # noqa: E402
+    LiveRunner,
+    failure_text,
+    require_manual_start,
+    unique_name,
+)
+from tools.sheetmetal_live import (
+    new_run_id as live_run_id,
+)
+from tools.sheetmetal_live import (
+    resolve_output as live_output,
 )
 
 PROFILES = {
@@ -417,6 +429,215 @@ def live_checklist() -> list[str]:
     ]
 
 
+# --- live acceptance ------------------------------------------------------
+
+LIVE_PROFILES = (
+    ("relief_none", None),
+    ("relief_rect_1x1", {"type": "rectangular", "width": 1.0, "depth": 1.0, "ends": "both"}),
+)
+
+
+def flange_payload(
+    model_id: str, revision: int | None, label: str, reference: dict, relief_value: dict | None
+) -> dict:
+    payload = {
+        "model_id": model_id,
+        "expected_revision": revision,
+        "label": label,
+        "edge": dict(reference["edge"]),
+        "height": fx.FLANGE_HEIGHT_MM,
+        "angle": fx.FLANGE_ANGLE_DEG,
+        "radius": fx.FLANGE_RADIUS_MM,
+        "flip": False,
+        "y_factor": fx.FLANGE_Y_FACTOR,
+    }
+    if relief_value is not None:
+        payload["relief"] = dict(relief_value)
+    return payload
+
+
+async def run_profile(runner: LiveRunner, profile: str, relief_value: dict | None) -> dict:
+    """Base wall, then the four flanges one job at a time with fresh edge selection."""
+    name = unique_name(f"t11_{profile}")
+    created = await runner.submit(
+        f"{profile}:base",
+        "creo_execute_plan",
+        {
+            "model_name": name,
+            "model_type": "sheetmetal",
+            "operations": [fx.wall_sketch(), fx.wall_base_op()],
+        },
+    )
+    model_id = created["model_id"]
+    terminal = await runner.wait_job(created["job_id"])
+    entry: dict = {
+        "profile": profile,
+        "relief": relief_value,
+        "model_name": name,
+        "model_id": model_id,
+        "base_job_id": created["job_id"],
+        "base_status": terminal.get("status"),
+        "base_revision": terminal.get("revision"),
+        "flanges": [],
+    }
+    if terminal.get("status") != "succeeded":
+        entry.update(
+            failure=failure_text(terminal),
+            passed=False,
+            blocked="the base first wall was not created, so no flange was submitted",
+        )
+        return runner.case(entry)
+
+    snapshot = await runner.snapshot(model_id)
+    bounds = fx.active_bbox(runner.inspection(snapshot))
+    entry.update(
+        base_volume_mm3=runner.volume(snapshot),
+        plate_bounds_mm=[list(bounds[0]), list(bounds[1])],
+    )
+
+    for index, (side, label) in enumerate(fx.FLANGE_SEQUENCE):
+        snapshot = await runner.snapshot(model_id)
+        try:
+            reference = fx.select_wall_edge(
+                runner.inspection(snapshot),
+                bounds,
+                side,
+                face="top",
+                allow_shortened=index >= 2,
+            )
+        except fx.EdgeSelectionError as error:
+            entry["flanges"].append(
+                {"label": label, "side": side, "selected": False, "error": str(error)}
+            )
+            break
+        before_volume = runner.volume(snapshot)
+        before_revision = snapshot.get("revision")
+        span = reference["geometry"]["span_mm"]
+        removed = relief.relief_removed_mm3(relief_value)
+        expected_added = fx.wall_volume_mm3(span) - removed
+        submitted = await runner.submit(
+            f"{profile}:{label}",
+            "creo_sheetmetal_flange",
+            flange_payload(model_id, before_revision, label, reference, relief_value),
+        )
+        terminal = await runner.wait_job(submitted["job_id"])
+        row: dict = {
+            "label": label,
+            "side": side,
+            "edge": reference["geometry"],
+            "job_id": submitted["job_id"],
+            "status": terminal.get("status"),
+            "revision_before": before_revision,
+            "volume_before_mm3": before_volume,
+            "edge_span_mm": span,
+            "wall_volume_mm3": fx.wall_volume_mm3(span),
+            "relief_removed_mm3": removed,
+            "expected_added_mm3": expected_added,
+            "shared_corners": fx.shared_corners([s for s, _ in fx.FLANGE_SEQUENCE[:index]], side),
+        }
+        if terminal.get("status") != "succeeded":
+            after = await runner.snapshot(model_id)
+            row.update(
+                failure=failure_text(terminal),
+                revision_after=after.get("revision"),
+                volume_after_mm3=runner.volume(after),
+                rolled_back=(
+                    after.get("revision") == before_revision
+                    and runner.volume(after) == before_volume
+                ),
+                passed=False,
+            )
+            entry["flanges"].append(row)
+            break
+        after = await runner.snapshot(model_id)
+        added = None
+        if runner.volume(after) is not None and before_volume is not None:
+            added = runner.volume(after) - before_volume
+        saved = (terminal.get("result") or {}).get("saved_file_reloaded_and_verified")
+        row.update(
+            revision_after=after.get("revision"),
+            volume_after_mm3=runner.volume(after),
+            added_mm3=added,
+            abs_error_mm3=None if added is None else abs(added - expected_added),
+            relief_echo=(runner.record(after, label) or {}).get("relief"),
+            feature_types=runner.feature_types(after),
+            saved_file_reloaded_and_verified=saved,
+            passed=bool(
+                added is not None
+                and abs(added - expected_added) <= max(0.01, abs(expected_added) * 1e-3)
+                and saved is True
+            ),
+        )
+        entry["flanges"].append(row)
+
+    entry["flange_count"] = sum(1 for row in entry["flanges"] if row.get("passed"))
+    entry["expected_added_total_mm3"] = sum(
+        row.get("expected_added_mm3") or 0.0 for row in entry["flanges"]
+    )
+    entry["passed"] = entry["flange_count"] == len(fx.FLANGE_SEQUENCE)
+    return runner.case(entry)
+
+
+async def live(output: Path, run_id: str) -> int:
+    require_manual_start(ROOT / "config.json")
+    from mcp import Client
+    from mcp.client.stdio import StdioServerParameters
+
+    params = StdioServerParameters(command=sys.executable, args=[str(ROOT / "server.py")], cwd=ROOT)
+    async with Client(params, read_timeout_seconds=180) as client:
+        runner = LiveRunner(
+            client,
+            output,
+            "FEAT-014 / DEV-051 T11",
+            "four-wall flange h80/R2.54/Y0.5 with relief none and rectangular 1x1",
+            run_id,
+        )
+        try:
+            await runner.start()
+            blocked = None
+            for profile, relief_value in LIVE_PROFILES:
+                if blocked:
+                    runner.case(
+                        {
+                            "profile": profile,
+                            "relief": relief_value,
+                            "base_status": "not_executed",
+                            "passed": False,
+                            "not_executed": blocked,
+                        }
+                    )
+                    continue
+                entry = await run_profile(runner, profile, relief_value)
+                if entry["base_status"] != "succeeded":
+                    message = (entry.get("failure") or {}).get("message") or "base failed"
+                    blocked = (
+                        "the base first wall failed, so no flange was submitted for this profile: "
+                        + str(message)[:300]
+                    )
+                    runner.report["blocked_profile"] = {
+                        "profile": profile,
+                        "reason": blocked,
+                        "evidence": "DEV-051 T03 live card: the first wall is rejected before modelling",
+                    }
+        except BaseException as error:
+            runner.report["stopped"] = f"{type(error).__name__}: {error}"
+            runner.finish()
+            raise
+    summary = runner.finish()
+    print(json.dumps(summary, ensure_ascii=False))
+    rows = [
+        {
+            "profile": case.get("profile"),
+            "base_status": case.get("base_status"),
+            "flanges": len(case.get("flanges") or []),
+            "passed": case.get("passed"),
+        }
+        for case in runner.report["cases"]
+    ]
+    print(json.dumps({"passed": runner.report["passed"], "cases": rows}, ensure_ascii=False))
+    return 0 if runner.report["passed"] else 1
+
+
 def run_unit_module() -> dict:
     from tests.unit import test_sheetmetal_relief
 
@@ -550,8 +771,8 @@ def main(argv: list[str] | None = None) -> int:
         print("live runs require --confirm-session-usable", file=sys.stderr)
         return 2
     if args.live:
-        print(LIVE_REFUSAL, file=sys.stderr)
-        return 2
+        run_id = live_run_id()
+        return asyncio.run(live(live_output("sheetmetal_relief", run_id, args.output), run_id))
 
     run_id = new_run_id()
     output = resolve_output(args.output, run_id)

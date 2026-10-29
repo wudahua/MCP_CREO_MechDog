@@ -139,3 +139,43 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；pydantic 
 - 接口变化（增量）：`sheetmetal_flange` 操作新增可选 `relief{type,ends,width,depth}`；原生别名记录在请求带 relief 时新增 `relief` 块（`type`/`ends`/`sides[]`/`part_thickness_mm`/`corner_overlap_run_mm`/`width_at_least_thickness`/`depth_covers_corner_run`）。缺省调用无任何新增键。
 - 行为变化：`relief` 的非法组合从“不存在该字段”变为**建模前明确拒绝**；旧合法调用不变。
 - 合并注意：若集成时保留旧的“两处固定 NONE”写法，`tools/test_sheetmetal_relief.py` 与 `tests/unit/test_sheetmetal_relief.py` 的 `NativeTreeTest` 会失败，可据此发现回退；T05 驱动已改为在 `flange_relief_side` 上断言，回退时同样报 `native source guard missing`。
+
+## 2026-10-29 实机验收：两轮都在建第一壁时被阻断，未创建任何折边
+
+环境与前置：手动打开的 Creo 12.4.0.0，§config.json§ 的 §auto_start_creo=false§，唯一 dev 服务指向本仓库，服务 0.8.3，§creo_startup_status§ 为 §ready/connected=true§，§session_health.status=no_failure_observed§。未启动/关闭/重启 Creo，未注入故障，未清 unknown 保护，未重提任何已受理 job。
+
+§§§text
+.\.venv\Scripts\python.exe tools\test_sheetmetal_relief.py --live --confirm-session-usable
+§§§
+
+报告：§build/sheetmetal_relief/20261029T155905_bb490653/report.json§（SHA256 §20e94f61512c3ecdee233e8b3fb579f260d160762ef53e4c0a5510d16eaf887f§），共 17 次 MCP 调用。
+
+| 轮 | relief 请求 | 底板作业 | job_id | model_id（名称） | 基体终态 | 折边数 | 结果 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 省略（兼容默认 none） | 草图 + §sheetmetal_wall(depth=1, thickness=232)§ | §796092e2085b49a7903787406c9d8879§ | §c34f02bd6046425caa45dc50f2762a52§（t11_relief_none_de867f） | failed | 0 | 阻断 |
+| 2 | §{type:rectangular, ends:both, width:1, depth:1}§ | 同上 | 未提交 | 未创建 | not_executed | 0 | 未执行（同一阻断点，不重复占用通道） |
+
+第 1 轮的原始失败（§creo_get_job§ 原文）：
+
+§§§text
+sheetmetal_wall creates the first wall from exactly one open straight line; the section has 2
+drawing entities (1 straight lines). Closed contours, arcs, splines and multi-entity chains are
+not supported for the first wall
+§§§
+
+§toolkit_code=-1§、§failed_stage=execute_sheetmetal_wall§；操作记录为 §[{index:0,wall_sketch,succeeded},{index:1,base_wall,failed}]§。与 [T03 卡](DEV051-T03-ACCEPTANCE.md) 的五个矩阵是同一根因：原生准入把草图构建器必写的 §PRO_2D_COORD_SYS§ 计成第二条曲线。
+
+因此本次**没有创建任何折边**：四壁的真实创建、每道体积增量、§relief§ 回显（§sides[]§/§part_thickness_mm§/§corner_overlap_run_mm§）、§width × depth × t§ 的实测关系、第三道 §f_ny§ 的 §ProFeatureWithoptionsCreate=-1§ 是否复现、失败回滚与 §revision§，全部未取证。也没有用四个普通拉伸块替代折边——驱动只走 §creo_sheetmetal_flange§。矩形释放那个待验风险（§PRO_E_BEND_RELIEF_LENGTH_TYPE/LENGTH/ANGLE§ 未设置时 Creo 是否接受该元素树）同样仍在未验状态。
+
+### 未测项
+
+- 两轮各自四道折边的成功/失败、体积增量、缺口面与折弯边距离、§exists§ 单端（§side1§/§side2§）移除。
+- §depth ≥ h−R = 77.46§ 的 corner_run 档能否改变第三道失败（本驱动当前只跑 §1×1§ 档；§PROFILES§ 里的 corner_run 仍需单独一轮）。
+- §feature_health§、原生树、§revision§、失败回滚、§saved_file_reloaded_and_verified§。
+- 展开/折回（§sheetmetal_unbend§/§flat_pattern§/§bend_back§）、§height§ 尺寸编辑、删除/抑制后重建。
+- Creo 9/10；WorkBuddy 黑盒（本次禁用）。
+
+### 下一步
+
+1. 先修 T03 第一壁准入并重编译执行器，再原样重跑本驱动；届时自动覆盖两轮四壁。
+2. 第一壁通过后，按需补跑 §corner_run§（宽 1、深 77.46）与 §ends=side1/side2§ 的对照，再判断矩形释放能否消除角部干涉；本轮不对该问题给结论。

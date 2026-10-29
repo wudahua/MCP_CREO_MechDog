@@ -32,3 +32,13 @@ T05 可交付可复现/未复现结论与根因证据，但只有四壁原生特
 - 未测（实机）：四壁真实创建与释放元素树被接受、体积增量与 `width×depth×t` 的关系、缺口相对折弯边的实际位置、单端释放、`depth ≥ h−R` 档对第三道失败的影响、展开/折回、`height` 尺寸编辑、删除重建改释放、revision、保存重载与失败回滚。
 - T05 静态断言已按新事实同步（`bend_relief_none_both_sides` → 默认 NONE + rectangular opt-in 一组断言），不是回退或删除。
 - 验收记录见 `docs/development/DEV051-T11-ACCEPTANCE.md`。
+
+## 2026-10-29：T11 实机被第一壁阻断（未创建任何折边）
+
+按 [T11 验收卡](../development/DEV051-T11-ACCEPTANCE.md)，在手动打开的 Creo 12.4.0.0 上跑两轮四壁（§relief§ 省略 与 §rectangular/both/1x1§）：
+
+- 第 1 轮底板作业 §796092e2085b49a7903787406c9d8879§（模型 §c34f02bd6046425caa45dc50f2762a52§，t11_relief_none_de867f）在 op index 1 就失败：§toolkit_code=-1§、§failed_stage=execute_sheetmetal_wall§，消息 “the section has 2 drawing entities (1 straight lines)”；与 BUG-032 的 T03 实机阻断同一根因（准入把草图 §PRO_2D_COORD_SYS§ 计成第二条曲线）。
+- 第 2 轮未提交：同一阻断点，不重复占用通道。
+- 因此四壁真实创建、每道体积增量、§relief§ 回显、第三道 §f_ny§ 是否再现 §-1§、失败回滚与 §revision§ 均未取证；也没有用四个普通拉伸块替代折边。报告 §build/sheetmetal_relief/20261029T155905_bb490653/report.json§。
+
+下一轮：先修第一壁准入并重编译执行器，再用同一驱动原样重跑；之后再补 §corner_run§（宽 1、深 77.46）与 §ends=side1/side2§ 对照。
