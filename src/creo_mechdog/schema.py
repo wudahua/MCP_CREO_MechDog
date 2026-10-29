@@ -507,6 +507,16 @@ class RevolveOp(StrictModel):
     thin: float | None = Field(default=None, gt=0)
 
 
+class Counterbore(StrictModel):
+    diameter: Positive
+    depth: Positive
+
+
+class Countersink(StrictModel):
+    diameter: Positive
+    angle: Annotated[float, Field(gt=0, lt=180)]
+
+
 class HoleOp(StrictModel):
     op: Literal["hole"]
     label: Label
@@ -518,6 +528,27 @@ class HoleOp(StrictModel):
     diameter: Positive
     depth: Positive | None = None
     flip: bool = False
+    counterbore: Counterbore | None = None
+    countersink: Countersink | None = None
+
+    @model_validator(mode="after")
+    def hole_options_valid(self):
+        if self.counterbore is not None and self.countersink is not None:
+            raise ValueError("counterbore and countersink are mutually exclusive")
+        if self.counterbore is not None:
+            if self.counterbore.diameter <= self.diameter:
+                raise ValueError("counterbore diameter must exceed hole diameter")
+            if self.depth is not None and self.counterbore.depth >= self.depth:
+                raise ValueError("counterbore depth must be less than blind hole depth")
+        if self.countersink is not None:
+            if self.countersink.diameter <= self.diameter:
+                raise ValueError("countersink diameter must exceed hole diameter")
+            sink_depth = (self.countersink.diameter - self.diameter) / (
+                2 * math.tan(math.radians(self.countersink.angle / 2))
+            )
+            if self.depth is not None and sink_depth >= self.depth:
+                raise ValueError("countersink cone must be shallower than blind hole depth")
+        return self
 
 
 class RoundOp(StrictModel):

@@ -1137,6 +1137,8 @@ async def creo_hole(
     offset2: float = 0,
     depth: float | None = None,
     flip: bool = False,
+    counterbore: dict[str, Any] | None = None,
+    countersink: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Create a native straight hole on a planar face using two independent planar
     references or coplanar straight edges and signed offsets. For edge references,
@@ -1158,6 +1160,10 @@ async def creo_hole(
     }
     if depth is not None:
         op["depth"] = depth
+    if counterbore is not None:
+        op["counterbore"] = counterbore
+    if countersink is not None:
+        op["countersink"] = countersink
     return await invoke(general.submit, [op], model_id, None, expected_revision)
 
 

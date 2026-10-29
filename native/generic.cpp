@@ -2159,22 +2159,47 @@ static void seed_hole_edge_selections(ProSelection &face, ProSelection &first,
 }
 static J generic_hole(const J &op) {
     double before_volume = volume();
+    bool counterbore = op.contains("counterbore");
+    bool countersink = op.contains("countersink");
+    if (counterbore && countersink)
+        throw std::runtime_error("Counterbore and countersink are mutually exclusive");
+    bool custom = counterbore || countersink;
     ProElement root = node(nullptr, PRO_E_FEATURE_TREE);
     integer(root, PRO_E_FEATURE_TYPE, PRO_FEAT_HOLE);
     integer(root, PRO_E_FEATURE_FORM, PRO_HLE_TYPE_STRAIGHT);
     text(root, PRO_E_STD_FEATURE_NAME, wide(op.at("label")).c_str());
     ProElement com = node(root, PRO_E_HLE_COM);
-    integer(com, PRO_E_HLE_TYPE_NEW, PRO_HLE_NEW_TYPE_STRAIGHT);
-    integer(com, PRO_E_HLE_MAKE_LIGHTWT, PRO_HLE_REGULAR);
-    real(com, PRO_E_DIAMETER, op.at("diameter"));
-    ProElement dep = node(com, PRO_E_HOLE_STD_DEPTH);
-    ProElement to = node(dep, PRO_E_HOLE_DEPTH_TO);
-    integer(to, PRO_E_HOLE_DEPTH_TO_TYPE,
-            op.contains("depth") ? PRO_HLE_STRGHT_BLIND_DEPTH : PRO_HLE_STRGHT_THRU_ALL_DEPTH);
-    if (op.contains("depth"))
-        real(to, PRO_E_EXT_DEPTH_TO_VALUE, op.at("depth"));
-    integer(node(dep, PRO_E_HOLE_DEPTH_FROM), PRO_E_HOLE_DEPTH_FROM_TYPE,
-            PRO_HLE_STRGHT_NONE_DEPTH);
+    integer(com, PRO_E_HLE_TYPE_NEW, custom ? PRO_HLE_CUSTOM_TYPE : PRO_HLE_NEW_TYPE_STRAIGHT);
+    if (custom) {
+        integer(com, PRO_E_HLE_ADD_CBORE, counterbore ? PRO_HLE_ADD_CBORE : PRO_HLE_NO_CBORE);
+        integer(com, PRO_E_HLE_ADD_CSINK, countersink ? PRO_HLE_ADD_CSINK : PRO_HLE_NO_CSINK);
+        real(com, PRO_E_HLE_HOLEDIAM, op.at("diameter"));
+        integer(com, PRO_E_HLE_DEPTH,
+                op.contains("depth") ? PRO_HLE_STD_VAR_DEPTH : PRO_HLE_STD_THRU_ALL_DEPTH);
+        if (op.contains("depth")) {
+            real(com, PRO_E_HLE_DRILLDEPTH, op.at("depth"));
+            integer(com, PRO_E_HLE_DEPTH_DIM_TYPE, PRO_HLE_DEP_SHOULDER_DIM_SCHEME);
+        }
+        if (counterbore) {
+            real(com, PRO_E_HLE_CBOREDIAM, op["counterbore"].at("diameter"));
+            real(com, PRO_E_HLE_CBOREDEPTH, op["counterbore"].at("depth"));
+        }
+        if (countersink) {
+            real(com, PRO_E_HLE_CSINKDIAM, op["countersink"].at("diameter"));
+            real(com, PRO_E_HLE_CSINKANGLE, op["countersink"].at("angle"));
+        }
+    } else {
+        integer(com, PRO_E_HLE_MAKE_LIGHTWT, PRO_HLE_REGULAR);
+        real(com, PRO_E_DIAMETER, op.at("diameter"));
+        ProElement dep = node(com, PRO_E_HOLE_STD_DEPTH);
+        ProElement to = node(dep, PRO_E_HOLE_DEPTH_TO);
+        integer(to, PRO_E_HOLE_DEPTH_TO_TYPE,
+                op.contains("depth") ? PRO_HLE_STRGHT_BLIND_DEPTH : PRO_HLE_STRGHT_THRU_ALL_DEPTH);
+        if (op.contains("depth"))
+            real(to, PRO_E_EXT_DEPTH_TO_VALUE, op.at("depth"));
+        integer(node(dep, PRO_E_HOLE_DEPTH_FROM), PRO_E_HOLE_DEPTH_FROM_TYPE,
+                PRO_HLE_STRGHT_NONE_DEPTH);
+    }
     integer(com, PRO_E_HLE_CRDIR_FLIP,
             op.value("flip", false) ? PRO_HLE_CR_IN_SIDE_TWO : PRO_HLE_CR_IN_SIDE_ONE);
     integer(com, PRO_E_HLE_TOP_CLEARANCE, PRO_HOLE_GEN_CLRNCE);

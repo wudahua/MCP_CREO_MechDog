@@ -24,3 +24,7 @@
 ## 实现与证据
 
 本次只建卡，目标版本未排期，未新增字段、SDK 节点或模型。来源为 0.3.3 外部需求，当前 0.3.4 尚未实施或验收。
+
+## DEV-051 T12 离线阶段（2026-10-29）
+
+已在独立工具和计划的共享 `HoleOp` 中加入互斥的 `counterbore{diameter,depth}` 与 `countersink{diameter,angle}`。Creo 12.4 匹配 SDK 的 `ProHole.h` 将这些元素列于 custom hole；原生路径只创建一个 `PRO_FEAT_HOLE`，省略新字段时仍走旧 straight hole 树。离线构建、契约测试、解析几何算式已完成；元素树实际创建、原生尺寸编辑、几何、保存重载、回滚尚未连接 Creo 验收。详见 [T12 验收卡](../development/DEV051-T12-ACCEPTANCE.md)。本条保持开放，状态为实现待原生验收。
