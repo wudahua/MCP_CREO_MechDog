@@ -329,6 +329,75 @@ FLANGE_BODY_SURFACE id=122/124/126/127 smt_type=1 (SIDE)
 
 日期：2026-10-29（Asia/Shanghai）。分支 `codex/dev051-feedback070`，本批起点 HEAD `e5fe021`。本轮不合 main、不推标签、不 push、不发布；**未启动、未重启、未关闭 Creo**，未注入故障，未清 unknown 保护，未重提任何已受理 job。**本轮没有新增实机证据**，因此折边是否形成 90° 折弯仍未定，四壁与释放能力仍未完成。
 
+## 2026-10-30：释放有效场景离线阶段（实现与回归完成，实机未验）
+
+日期：2026-10-30（Asia/Shanghai）。分支 `codex/dev051-feedback070`，基线提交 `760aa9b`（T03 板厚同步）。按 [DEV-051 派发表](DEV051-CONTINUATION-TASKS-2026-10-30.md) 的 FEAT-014/T11 离线指派执行：只做离线定位、实现、单元/离线驱动与离线构建。未连接 MCP/Toolkit、未启动或操作 Creo、未改 `version.py`、未合 main、未 push、未发布。工作区其他会话的未提交改动未触碰。
+
+### 定位：自由端负结果与"参数未生效"仍是两个未分开的假设
+
+第六轮（2026-10-29）的 0.000000 体积差全部来自**自由端**折边（`f_px`/`f_nx` 两端都在板件自由角上），该处本来就不应有缺口，因此那一轮既不能证明也不能证伪释放生效。本轮离线核对：
+
+1. **元素树转写正确**（`ProSmtFlangeWall.h` 70–102、209–219 行）：`PRO_E_SMT_BEND_RELIEF → SIDE1/SIDE2 → TYPE/WIDTH/DEPTH_TYPE/DEPTH` 与实现写入一致；取值 `PRO_BEND_RLF_RECTANGULAR=3`、`PRO_BEND_RLF_DEPTH_BLIND=PRO_DIM_ENTER=-4`、`PRO_BEND_RLF_NONE=0` 均对。
+2. **关键未观察点**：Creo 会把未写的释放元素填成零件默认——失败探针树 `jobs/27c49456be824804a208b06660a4019b/output/flange_expected.xml` 显示默认是 `TYPE=5 (PARAM)`、宽/深/长度全 0。因此"写入的 TYPE=3/宽/深是否真的留在了创建出的特征里"此前从未被读过；若 Creo 静默重置，请求回显仍会说 rectangular。这只能靠**创建后回读特征树**回答。
+3. 未写的 `PRO_E_BEND_RELIEF_LENGTH_TYPE/LENGTH/ANGLE` 的生效默认值仍是开放问题（对 RECTANGULAR 大概率 NOT_USED，但离线无法证实）。
+
+### 实现（`native/advanced.cpp`，最小改动，几何行为不变）
+
+创建+再生成功后（仅当请求了释放时）：`ProFeatureElemtreeExtract` 取回已建特征树 → 按路径读回两侧的 `TYPE/WIDTH/DEPTH_TYPE/DEPTH/LENGTH_TYPE/LENGTH/ANGLE` → 与请求逐项核对（启用侧 TYPE=3、BLIND、宽深 ≤1e-6；未启用侧 TYPE=0），**不一致即失败**（消息 `flange relief did not persist into the created feature: sideN recorded type=... requested ...`），失败走既有回滚路径 → 一致则记录 `relief_element_echo{side1,side2}` 进特征别名并写原生日志 `SHEETMETAL_FLANGE_RELIEF_ELEMS`。LENGTH_TYPE/LENGTH/ANGLE 只记录不断言——它们的生效默认值正是要靠实机读回答的问题。这是对"参数进了有效原生节点"的直接验证（真实回读并核对，不是把回显改成请求值）。
+
+### 有效材料场景（可离线推导的独立 oracle）
+
+第六轮体积模型被本轮精确复算并锚定：折边增量 = 直段（h−t−R）+ 净弯区（四分之一环 − t×(R+t) 板角矩形），232 mm 跨距算得 **18 025.291233 mm³**，与实测 18 025.291234 吻合到 1e-6——模型可信。
+
+场景：底板 185×232×1 → `f_px`（+x，两端自由角，负对照）→ `f_ny`（−y，第二道；其 +x 链端撞上 `f_px` 折弯 = **1 个材料端**，−x 链端仍自由）。该场景不依赖已失败的第三壁四壁配置（`f_ny` 作为第二道壁尚未实测过，正是本轮要回答的）。每例新建模型，先建 base+f_px 计划，再单独提交 f_ny（重新取边）。
+
+| 用例 | 期望体积差（对同几何 none 基线） |
+| --- | --- |
+| `f_ny` none | 基线（预测增量 181.46 mm 跨距 ≈ 14 098.6 mm³，含 −3.54 链端缩短） |
+| `f_ny` rect both 1×1 | **−1 mm³**（1 个材料端 × 1×1×1） |
+| `f_ny` rect both 4×4 | **−16 mm³** |
+| `f_ny` rect side1 / side2 1×1 | 恰好一侧 −1、另一侧 0；由此确定 side1/side2 与材料端的映射 |
+| `f_px` rect both 4×4（自由端对照） | **0**；不作为释放证据 |
+
+判据（`relief_geometry_verdict`）：`relief_element_echo` 缺失或与请求不符 → 不通过；零件级板厚实测 ≠1.0 → 不通过（T03 规则）；材料端体积差 ≠ 期望（**含差为 0 的第六轮形状**）→ 不通过；体积差对但无缺口面 → 不通过；自由端对照差 0 → 记为对照通过、不计释放证据。单端对由 `single_end_pair_verdict` 判"恰好一端去料"。
+
+### 回归
+
+- `tests/unit/test_sheetmetal_relief.py`：68 项（旧 45 + 新 23）。新增：增量模型锚定第六轮实测（±1e-3）；材料场景计划与各变体校验；期望差表（0/−1/−16/单端 None）；verdict 全形状矩阵（第六轮形状被拒、回显缺失/偏离/重置 PARAM/板厚 3.71 均拒、一致则过）；单端对判定；原生回读的静态守卫（提取在 regenerate 之后、发散即抛、echo/log 入暂存、写路径仍不写 LENGTH/ANGLE）。
+- `tools/test_sheetmetal_relief.py`：离线报告新增 `material_scenario`（计划校验+oracle 表）与 `relief_verdict_matrix`（第六轮形状 = 拒绝形状）；`native_source` 守卫新增 4 项回读检查；`run_profile`/`four_wall_plan`/`relief_comparison` 的绝对与差分 oracle 换成材料端感知模型（`f_px`/`f_nx` 期望 0 差、`f_ny`/`f_py` 期望 −2×w×d×t）；live 新增 `run_material_scenario`（6 模型：基线、1×1、4×4、side1、side2、自由端对照），每例记录 `relief_element_echo`、`wall_contract.part_thickness_mm`、缺口面、差值与判定；`live_checklist` 同步。
+
+### 命令与真实结果
+
+| # | 命令 | 真实结果 |
+| --- | --- | --- |
+| 1 | `.venv\Scripts\python.exe -m unittest tests.unit.test_sheetmetal_relief` | 68 tests，OK |
+| 2 | `-m unittest tests.unit.test_sheetmetal_contract tests.unit.test_sheetmetal_flange tests.unit.test_sheetmetal_overlap tests.unit.test_sheetmetal_relief` | 146 tests，OK（共享模块无回归） |
+| 3 | `.venv\Scripts\python.exe tools\test_sheetmetal_relief.py` | exit 0；报告 `build/sheetmetal_relief/20261030T075103_5e2a84f2/report.json`（SHA256 `fd996b41cb8fe4f0454ab0996944611b5bf0870034dc6d26a63567744595e468`）；内置复跑 68/68 OK |
+| 4 | `.venv\Scripts\python.exe tools\dev_check.py` | 见 `build/development_check.json`；结论记录于交接说明 |
+| 5 | `.venv\Scripts\python.exe bridge.py build` | 成功×3（前两次暴露 API 误用并修复，最终一次以最终源码重建）；`build/build.log` 仅 3 条存量 C4819（`assembly_units.h`、`assembly_walk.h`、`generic.cpp`），无错误；`build/source.sha256 = 2bebcca1faafc1b3ed92e1272ce16a6c082356554f254fabd702435f16251b69` |
+| 6 | `clang-format --dry-run --Werror native/advanced.cpp`；`ruff format` + `ruff check`（两个 Python 文件） | 全部通过 |
+
+编译中修复的两处 API 误用（离线构建暴露）：`ProElementIntegerGet/ProElementDoubleGet` 需 `options=NULL` 三参形式；`ProFeatureElemtreeFree` 第二参是 `ProElement` 非指针。
+
+### 实际修改文件
+
+`native/advanced.cpp`；`tools/test_sheetmetal_relief.py`；`tests/unit/test_sheetmetal_relief.py`；本卡；`docs/work-items/FEAT-014.md`。未改 schema（`FlangeRelief` 契约不变、默认 none 保持）、`server.py`、`version.py`、`native/generic.cpp`、`docs/validation/` 原件、`docs/BACKLOG.md`。
+
+### 未验证（实机阶段待验，离线通过不等于整项验收通过）
+
+1. `f_ny` 作为**第二道**壁（仅 `f_px` 存在）能否建成：这是有效材料场景的成立前提；若与第三道同样回滚，按驱动记录交接并换垂直壁端夹具，不得猜因。
+2. `relief_element_echo` 是否与请求一致（即写入值是否留在创建特征中；若原生产生 "did not persist" 失败，记录原始读回值再定位，不得改回显绕过）。
+3. 材料端缺口：位置（`f_ny` +x 端、`f_px` 折弯相接处）、尺寸（1×1 / 4×4）、缺口面、体积差 −1 / −16 mm³（±0.2）；`side1`/`side2` 与材料端的映射；`LENGTH_TYPE/LENGTH/ANGLE` 读回值（回答默认值问题）。
+4. `wall_contract.part_thickness_mm=1.0`（T03 依赖）在所有场景成立；保存重载 true 且重载后差值保持。
+5. 自由端对照（`f_px` rect 4×4）体积差 0；四壁 profile 复测按新 oracle 的 0/−2 期望重取差分。
+6. 展开状态下的缺口形状、`height` 编辑、删除重建改释放、回滚——均未执行。
+
+### 给实机窗口的交接
+
+- 依赖：本批实现提交（见 git log，FEAT-014/T11 主题）+ `760aa9b`（T03 板厚同步）；受测执行器 `build/source.sha256 = 2bebcca1…`。
+- 入口：`.\.venv\Scripts\python.exe tools\test_sheetmetal_relief.py --live --confirm-session-usable`（唯一 dev 服务 `MCP_CREO_MechDog_dev`，先满足 BUG-001 会话条件；180 s 挂起预算，首 unknown 即停）。
+- 判读纪律：材料端差 0 = 释放未生效（失败），自由端差 0 = 预期行为（对照）；两者不得混用。任何"请求被接受且回显齐全"都不再构成释放证据。
+
 ### 4.1 阻塞现场（必须先读）
 
 交接前提是"Creo 已重新启动、新会话可用"，实际探测到的是会话再次消失：

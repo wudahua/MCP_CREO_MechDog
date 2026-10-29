@@ -4,6 +4,15 @@ Second-batch T11. Inputs: the T05 failure candidate (185 x 232 x 1 mm base wall,
 four flanges h80 / R2.54 / Y0.5, third flange returned
 ProFeatureWithoptionsCreate=-1) and the T03 contract for the thin wall.
 
+The 2026-10-29 round six proved only a negative: both measured flanges ended at
+free plate corners, where no notch is expected either way. The 2026-10-30 stage
+adds the valid-material scenario - f_px on +x (both bend ends at free corners)
+followed by f_ny on -y, whose +x chain end runs into f_px's bend while the wall
+itself stays buildable - with a differential oracle: the none baseline vs
+rectangular 1x1 / 4x4 / single ends on the same geometry, removal expectations
+derived from the actual intersecting material, and a verdict that rejects
+"parameters written but no material removed".
+
 The driver is offline only. It records:
 
 * what Creo 12.4 Toolkit exposes for bend relief and corners, read from the
@@ -12,21 +21,26 @@ The driver is offline only. It records:
 * the admission matrix -- the compatibility default none, the single supported
   rectangular shape, the end selection and every rejected combination;
 * the native element tree the implementation must produce, plus what it must
-  still not touch (corner relief, miter cuts, edge rip, parent body);
+  still not touch (corner relief, miter cuts, edge rip, parent body), and the
+  created-feature read-back that proves the values reached the tree;
 * the four-wall expectation with relief: wall volume, relief removal, shared
   corners and the depth needed to reach the T05 corner run;
+* the material-scenario plan, per-case removal expectations and the verdict
+  matrix, including the round-six shape (echo without geometry) as rejected;
 * the edit path: relief is fixed at creation, the named height dimension keeps
   its existing edit, and a change means deleting and re-creating the flange.
 
 Default use makes no Creo session, no Toolkit job and no native geometry.
-"--live --confirm-session-usable" runs the two profiles (relief omitted, and
-rectangular 1x1 on both ends) against the manually opened session: one base wall
-per profile, then the four flanges one job at a time, re-selecting each edge from
-a fresh snapshot. Each flange records the measured volume delta, the relief alias
-echo, the native feature types and, on failure, the raw code plus whether the
-model rolled back. It never launches, restarts or closes Creo, never injects a
-fault, never clears a protection and never resubmits a job; a failed base wall
-stops the remaining profile instead of repeating the same blocked submission.
+"--live --confirm-session-usable" runs the two four-wall profiles (relief
+omitted, and rectangular 1x1 on both ends) and then the material scenario
+against the manually opened session: one base wall per profile, then the
+flanges one job at a time, re-selecting each edge from a fresh snapshot. Each
+flange records the measured volume delta, the relief alias echo, the
+created-feature relief read-back, the native feature types and, on failure, the
+raw code plus whether the model rolled back. It never launches, restarts or
+closes Creo, never injects a fault, never clears a protection and never
+resubmits a job; a failed base wall stops the remaining profile instead of
+repeating the same blocked submission.
 """
 
 from __future__ import annotations
@@ -263,6 +277,7 @@ def native_source() -> dict:
     side = _function_body(advanced, "static void flange_relief_side")
     request = _function_body(advanced, "static FlangeReliefRequest flange_relief_request")
     record = _function_body(advanced, "static J flange_relief_record")
+    expect = _function_body(advanced, "static void flange_relief_expect")
     checks = {
         "relief_compound_both_ends": "PRO_E_SMT_BEND_RELIEF_SIDE1" in flange
         and "PRO_E_SMT_BEND_RELIEF_SIDE2" in flange,
@@ -272,6 +287,12 @@ def native_source() -> dict:
         "depth_type_blind": "PRO_E_BEND_RELIEF_DEPTH_TYPE" in side
         and "PRO_BEND_RLF_DEPTH_BLIND" in side,
         "depth_element": "PRO_E_BEND_RELIEF_DEPTH" in side,
+        "created_tree_echo_extracted": "ProFeatureElemtreeExtract" in flange
+        and flange.index("ProSolidRegenerate") < flange.index("ProFeatureElemtreeExtract"),
+        "created_tree_echo_verified": "flange_relief_expect(" in flange,
+        "created_tree_echo_staged": 'extra["relief_element_echo"]' in flange,
+        "echo_divergence_fails": "did not persist into the created feature" in expect,
+        "echo_only_when_requested": "if (relief_request.side1 || relief_request.side2)" in flange,
         "no_corner_relief": "PRO_E_SMT_CORNER_RELIEF" not in flange + side + record,
         "no_miter_cut": "PRO_E_SMT_MTR_CUTS" not in flange + side + record,
         "no_edge_rip": "PRO_E_SMT_EDGE_RIP" not in flange + side + record,
@@ -298,6 +319,11 @@ def native_source() -> dict:
             "rectangular": (
                 "type RECTANGULAR, width, depth type BLIND, depth on the selected ends"
             ),
+            "created_tree_read_back": (
+                "after create+regen the relief section is read from the created feature tree; "
+                "divergence from the request fails the feature and the read-back is staged as "
+                "relief_element_echo (length type/length/angle recorded, not asserted)"
+            ),
             "untouched": [
                 "PRO_E_SMT_CORNER_RELIEF",
                 "PRO_E_SMT_MTR_CUTS",
@@ -310,9 +336,10 @@ def native_source() -> dict:
             ),
         },
         "live_uncertainty": (
-            "the rectangular branch leaves PRO_E_BEND_RELIEF_LENGTH_TYPE/LENGTH/ANGLE unset; the "
-            "flange feature mapping table is not published in the SDK header, so the first live "
-            "creation must confirm the tree is accepted (fallback: set length type to not-used)"
+            "the rectangular branch leaves PRO_E_BEND_RELIEF_LENGTH_TYPE/LENGTH/ANGLE unset; "
+            "the created-feature read-back now records their effective values (the probe trees "
+            "show Creo filling unwritten relief elements with PARAM and zeros), but whether a "
+            "notch is cut at a material end stays a live measurement"
         ),
     }
 
@@ -334,7 +361,11 @@ def four_wall_plan(profile: str = "thickness_scale") -> dict:
         corners = fx.shared_corners(previous, side)
         previous.append(side)
         span = reference["geometry"]["span_mm"]
-        removed = relief.relief_removed_mm3(relief_value)
+        # Material-aware offline expectations over the full fixture span; live
+        # chains of later walls are shorter by R + t per already-built neighbour.
+        removed = relief.four_wall_removed_mm3(relief_value, label)
+        assert removed is not None, "offline four-wall profiles only use ends=both"
+        increment = relief.bent_wall_increment_mm3(span)
         rows.append(
             {
                 "label": label,
@@ -343,8 +374,10 @@ def four_wall_plan(profile: str = "thickness_scale") -> dict:
                 "relief": dict(relief_value),
                 "native_sides": relief.expected_native_sides(relief_value),
                 "wall_volume_mm3": fx.wall_volume_mm3(span),
+                "bent_increment_mm3": increment,
+                "material_ends": relief.FOUR_WALL_MATERIAL_ENDS[label],
                 "relief_removed_mm3": removed,
-                "expected_added_volume_mm3": fx.wall_volume_mm3(span) - removed,
+                "expected_added_volume_mm3": increment - removed,
                 "shared_corners": corners,
                 "corner_overlap_lower_bound_mm3": fx.corner_overlap_volume_mm3(corners),
                 "corner_overlap_run_mm": run,
@@ -362,9 +395,10 @@ def four_wall_plan(profile: str = "thickness_scale") -> dict:
         "expected_body_volume_mm3": fx.PLATE_VOLUME_MM3
         + sum(row["expected_added_volume_mm3"] for row in rows),
         "volume_note": (
-            "wall volume is span x height x thickness; a rectangular notch removes "
-            "width x depth x thickness per enabled end. The body total is an independent "
-            "expectation, not a native measurement"
+            "the increment model reproduces the measured 2026-10-29 walls (straight run plus "
+            "net bend zone); a rectangular notch removes width x depth x thickness only at "
+            "bend ends abuting existing walls - free plate corners remove nothing (2026-10-29 "
+            "round six). Live spans of f_ny/f_py are shorter than the fixture spans"
         ),
         "not_verified": (
             "the notch footprint relative to the bend line is a live measurement: only a live "
@@ -390,6 +424,182 @@ def profiles() -> dict:
         "statement": (
             "the thickness-scale notch is the ordinary Creo relief and cannot clear a 77.46 mm "
             "shared corner run; the corner-run profile is the diagnostic that can"
+        ),
+    }
+
+
+# --- DEV-051 T11 2026-10-30: valid-material scenario -----------------------
+
+
+def material_case_specs() -> tuple:
+    """The relief variants the material scenario runs, one fresh model each.
+
+    ``target`` names the flange carrying the relief: "second" (f_ny, one bend
+    end abutting f_px's bend) or "first" (f_px, both ends free - the negative
+    control that must remove nothing).
+    """
+    return (
+        ("mat_baseline", "second", None),
+        (
+            "mat_rect_both_1x1",
+            "second",
+            {"type": "rectangular", "width": 1.0, "depth": 1.0, "ends": "both"},
+        ),
+        (
+            "mat_rect_both_4x4",
+            "second",
+            {"type": "rectangular", "width": 4.0, "depth": 4.0, "ends": "both"},
+        ),
+        (
+            "mat_rect_side1_1x1",
+            "second",
+            {"type": "rectangular", "width": 1.0, "depth": 1.0, "ends": "side1"},
+        ),
+        (
+            "mat_rect_side2_1x1",
+            "second",
+            {"type": "rectangular", "width": 1.0, "depth": 1.0, "ends": "side2"},
+        ),
+        (
+            "free_rect_both_4x4",
+            "first",
+            {"type": "rectangular", "width": 4.0, "depth": 4.0, "ends": "both"},
+        ),
+    )
+
+
+def material_scenario() -> dict:
+    """Offline plan validation and oracle table for the valid-material scenario."""
+    from creo_mechdog.schema import validate_operations
+
+    plan_operations, first_reference = relief.material_scenario_plan()
+    validate_operations(plan_operations)
+    rows = []
+    for name, target, relief_value in material_case_specs():
+        if target == "second":
+            operation = relief.material_second_flange_op(relief_value)
+        else:
+            operations, _ = relief.material_scenario_plan()
+            operations[2]["relief"] = dict(relief_value)
+            operation = operations[2]
+        dumped = validate_operations([operation])
+        rows.append(
+            {
+                "case": name,
+                "target": target,
+                "relief": relief_value,
+                "validated": True,
+                "native_sides": relief.expected_native_sides(dumped[0].get("relief")),
+                "expected_delta_vs_baseline_mm3": relief.scenario_expected_delta_mm3(
+                    relief_value, target
+                ),
+            }
+        )
+    span = first_reference["geometry"]["span_mm"]
+    return {
+        "fixture": {
+            "base_wall_mm": [fx.PLATE_LENGTH_MM, fx.PLATE_WIDTH_MM, fx.PLATE_THICKNESS_MM],
+            "first_flange": relief.MATERIAL_SCENARIO["first"],
+            "second_flange": relief.MATERIAL_SCENARIO["second"],
+            "first_flange_edge_span_mm": span,
+            "why": (
+                "f_px (+x) keeps both bend ends at free plate corners; f_ny (-y) submitted "
+                "afterwards has its +x chain end run into f_px's bend - one material end - "
+                "while the wall itself stays buildable. The failing third wall of the "
+                "four-wall run is not the only relief entrance any more"
+            ),
+            "chain_trim_per_material_end_mm": relief.CHAIN_TRIM_MM,
+            "predicted_increment_full_span_mm3": relief.bent_wall_increment_mm3(span),
+            "predicted_increment_one_material_end_mm3": relief.bent_wall_increment_mm3(
+                span, trimmed_ends=1
+            ),
+            "increment_model": (
+                "straight run (height - t - R) plus net bend zone (quarter annulus minus the "
+                "t x (R + t) plate rectangle); reproduces the measured +18 025.291234 mm3 of "
+                "the 2026-10-29 run for the 232 mm span"
+            ),
+        },
+        "cases": rows,
+        "oracle": (
+            "differential on the same geometry: added_volume(relief) - added_volume(none). "
+            "A rectangular notch removes width x depth x thickness per bend end whose chain "
+            "end abuts material; free ends remove nothing (2026-10-29 round six), which is a "
+            "control, not relief evidence"
+        ),
+        "statement": (
+            "the request echo and the created-tree read-back are necessary but not sufficient: "
+            "a material-end case passes only when the measured delta matches the independent "
+            "removal and notch faces are observable"
+        ),
+        "not_verified": (
+            "no live run in this stage: whether f_ny builds after f_px, where the material end "
+            "sits among side1/side2, the notch position and the volume delta are live items"
+        ),
+    }
+
+
+def relief_verdict_matrix() -> dict:
+    """The verdict shapes the live run must reproduce, exercised offline."""
+    echo = lambda width, depth: {  # noqa: E731 - table fixture, not production code
+        "side1": {
+            "type": relief.RELIEF_TYPES["rectangular"],
+            "width_mm": width,
+            "depth_type": relief.RELIEF_DEPTH_TYPES["blind"],
+            "depth_mm": depth,
+            "length_type": 0,
+            "length_mm": 0.0,
+            "angle": 0.0,
+        },
+        "side2": {
+            "type": relief.RELIEF_TYPES["rectangular"],
+            "width_mm": width,
+            "depth_type": relief.RELIEF_DEPTH_TYPES["blind"],
+            "depth_mm": depth,
+            "length_type": 0,
+            "length_mm": 0.0,
+            "angle": 0.0,
+        },
+    }
+    both_1x1 = {"type": "rectangular", "width": 1.0, "depth": 1.0, "ends": "both"}
+    rows = {
+        "round_six_echo_without_geometry_rejected": relief.relief_geometry_verdict(
+            "material", both_1x1, echo(1.0, 1.0), 0.0, -1.0, 0, part_thickness_mm=3.71
+        ),
+        "echo_without_geometry_no_thickness_contradiction_rejected": (
+            relief.relief_geometry_verdict(
+                "material", both_1x1, echo(1.0, 1.0), 0.0, -1.0, 0, part_thickness_mm=1.0
+            )
+        ),
+        "consistent_removal_passes": relief.relief_geometry_verdict(
+            "material", both_1x1, echo(1.0, 1.0), -1.0, -1.0, 2, part_thickness_mm=1.0
+        ),
+        "free_control_zero_passes_as_no_evidence": relief.relief_geometry_verdict(
+            "free", both_1x1, echo(1.0, 1.0), 0.0, None, 0, part_thickness_mm=1.0
+        ),
+        "pair_split_resolves_material_end": relief.single_end_pair_verdict(
+            {"side1": -1.0, "side2": 0.0}, 1.0, 1.0
+        ),
+        "pair_without_split_fails": relief.single_end_pair_verdict(
+            {"side1": 0.0, "side2": 0.0}, 1.0, 1.0
+        ),
+    }
+    expected = {
+        "round_six_echo_without_geometry_rejected": False,
+        "echo_without_geometry_no_thickness_contradiction_rejected": False,
+        "consistent_removal_passes": True,
+        "free_control_zero_passes_as_no_evidence": True,
+        "pair_split_resolves_material_end": True,
+        "pair_without_split_fails": False,
+    }
+    wrong = [name for name, verdict in rows.items() if verdict["passed"] != expected[name]]
+    assert not wrong, f"verdict matrix disagrees: {wrong}"
+    return {
+        "rows": rows,
+        "expected_passed": expected,
+        "statement": (
+            "2026-10-29 round six (rectangular echoed, 0.000000 delta, no notch faces, part "
+            "thickness 3.71) is a rejection shape; only measured material removal with the "
+            "created-tree read-back counts as relief evidence"
         ),
     }
 
@@ -425,6 +635,11 @@ def live_checklist() -> list[str]:
         "submit flanges 2-4 with relief on both ends, re-inspecting each edge before submitting",
         "repeat with the corner-run profile (width 1, depth 77.46) and compare the third flange",
         "toggle ends side1/side2 on one flange to confirm one-sided relief material removal",
+        "material scenario: base + f_px(+x, no relief), then f_ny(-y) none vs rect 1x1 / 4x4 / "
+        "side1 / side2 on fresh models; expect -1 / -16 mm3 at the f_px-side material end",
+        "free-end control: f_px(+x) with rect 4x4 must remove nothing; do not count it as relief",
+        "check relief_element_echo from the created feature tree matches every request",
+        "wall_contract part_thickness_mm must read 1.0 (T03 sync) in every material case",
         "unbend/flat pattern and bend back with relief present; check the relief in the flat state",
         "edit the named height dimension with relief present; record revision before/after",
         "save, reload and verify the model; then suppress/delete a flange and re-create it",
@@ -543,8 +758,13 @@ async def run_profile(runner: LiveRunner, profile: str, relief_value: dict | Non
         before_volume = runner.volume(snapshot)
         before_revision = snapshot.get("revision")
         span = reference["geometry"]["span_mm"]
-        removed = relief.relief_removed_mm3(relief_value)
-        expected_added = fx.wall_volume_mm3(span) - removed
+        # Material-aware oracle: only bend ends abuting existing walls remove
+        # material (round six: f_px/f_nx free corners removed nothing), and the
+        # increment model is the one validated against the measured 2026-10-29
+        # walls; the live-measured span already carries any chain trim.
+        removed = relief.four_wall_removed_mm3(relief_value, label)
+        assert removed is not None, "live four-wall profiles only use ends=both"
+        expected_added = relief.bent_wall_increment_mm3(span) - removed
         submitted = await runner.submit(
             f"{profile}:{label}",
             "creo_sheetmetal_flange",
@@ -561,6 +781,7 @@ async def run_profile(runner: LiveRunner, profile: str, relief_value: dict | Non
             "volume_before_mm3": before_volume,
             "edge_span_mm": span,
             "wall_volume_mm3": fx.wall_volume_mm3(span),
+            "bent_increment_mm3": relief.bent_wall_increment_mm3(span),
             "relief_removed_mm3": removed,
             "expected_added_mm3": expected_added,
             "shared_corners": fx.shared_corners([s for s, _ in fx.FLANGE_SEQUENCE[:index]], side),
@@ -634,15 +855,17 @@ def relief_comparison(cases: list[dict]) -> dict:
     rect_rows = {
         row["label"]: row for row in (by_profile.get("relief_rect_1x1") or {}).get("flanges") or []
     }
-    removed = relief.relief_removed_mm3(
-        {"type": "rectangular", "width": 1.0, "depth": 1.0, "ends": "both"}
-    )
     rows = []
     for label, row in rect_rows.items():
         base = none_rows.get(label)
         if not base or row.get("added_mm3") is None or base.get("added_mm3") is None:
             continue
         delta = row["added_mm3"] - base["added_mm3"]
+        # Material-aware expectation: f_px/f_nx end at free corners and must take
+        # zero; f_ny/f_py run into both neighbours and take 2 x w x d x t.
+        removed = relief.four_wall_removed_mm3(
+            {"type": "rectangular", "width": 1.0, "depth": 1.0, "ends": "both"}, label
+        )
         rows.append(
             {
                 "label": label,
@@ -661,12 +884,254 @@ def relief_comparison(cases: list[dict]) -> dict:
     return {
         "oracle": (
             "same flange, relief omitted vs rectangular both 1x1: the measured volume delta "
-            "is the two notch volumes (width x depth x thickness each)"
+            "is the notch volume at the bend ends that actually abut material (f_px/f_nx: "
+            "free corners, zero; f_ny/f_py: two material ends)"
         ),
         "tolerance_mm3": 0.2,
         "rows": rows,
         "all_within_tolerance": bool(rows) and all(row["delta_error_mm3"] <= 0.2 for row in rows),
     }
+
+
+# --- live material scenario (2026-10-30) -----------------------------------
+
+
+async def run_material_case(
+    runner: LiveRunner, name: str, target: str, relief_value: dict | None
+) -> dict:
+    """One fresh model: base wall + f_px plan, then f_ny as its own job.
+
+    f_px carries the relief only for the free-end control (target "first"); the
+    material cases put the relief on f_ny, whose +x chain end abuts f_px's bend.
+    """
+    key = f"mat_{name}"
+    model_name = unique_name(f"t11_{name}")
+    plan_operations, _ = relief.material_scenario_plan()
+    if target == "first":
+        plan_operations[2]["relief"] = dict(relief_value)
+    created = await runner.submit(
+        f"{key}:base",
+        "creo_execute_plan",
+        {
+            "model_name": model_name,
+            "model_type": "sheetmetal",
+            "operations": plan_operations,
+        },
+    )
+    model_id = created["model_id"]
+    terminal = await runner.wait_job(created["job_id"], budget=HANG_BUDGET_SECONDS)
+    entry: dict = {
+        "case": name,
+        "target": target,
+        "relief": relief_value,
+        "model_name": model_name,
+        "model_id": model_id,
+        "plan_job_id": created["job_id"],
+        "plan_status": terminal.get("status"),
+    }
+    if terminal.get("status") != "succeeded":
+        entry.update(
+            failure=failure_text(terminal),
+            passed=False,
+            blocked="the base plan (wall + f_px) failed; nothing further was submitted",
+        )
+        return runner.case(entry)
+
+    after_plan = await runner.snapshot(model_id)
+    bounds = fx.active_bbox(runner.inspection(after_plan))
+    base_record = runner.record(after_plan, "base_wall") or {}
+    contract = base_record.get("wall_contract") or {}
+    px_record = runner.record(after_plan, relief.MATERIAL_SCENARIO["first"]["label"]) or {}
+    entry.update(
+        plan_revision=after_plan.get("revision"),
+        plan_volume_mm3=runner.volume(after_plan),
+        f_px_added_mm3=(
+            None
+            if runner.volume(after_plan) is None
+            else runner.volume(after_plan) - fx.PLATE_VOLUME_MM3
+        ),
+        f_px_relief_echo=px_record.get("relief_element_echo"),
+        wall_contract=contract,
+        plate_bounds_mm=[list(bounds[0]), list(bounds[1])],
+    )
+    notch_limit = 1.5
+    if relief_value is not None:
+        notch_limit = 1.5 + max(float(relief_value["width"]), float(relief_value["depth"]))
+
+    if target == "first":
+        # Free-end control: f_px itself carries the relief over free plate corners.
+        # The verdict is differential (vs the baseline model's f_px increment) and
+        # is assembled in material_summary once every case has run.
+        entry.update(
+            notch_faces=notch_faces(runner.inspection(after_plan), notch_limit),
+            passed=True,
+        )
+        return runner.case(entry)
+
+    snapshot = after_plan
+    try:
+        reference = fx.select_wall_edge(
+            runner.inspection(snapshot),
+            bounds,
+            relief.MATERIAL_SCENARIO["second"]["side"],
+            face="top",
+            allow_shortened=True,
+        )
+    except fx.EdgeSelectionError as error:
+        entry.update(f_ny={"selected": False, "error": str(error)}, passed=False)
+        return runner.case(entry)
+    before_volume = runner.volume(snapshot)
+    before_revision = snapshot.get("revision")
+    submitted = await runner.submit(
+        f"{key}:f_ny",
+        "creo_sheetmetal_flange",
+        flange_payload(
+            model_id,
+            before_revision,
+            relief.MATERIAL_SCENARIO["second"]["label"],
+            reference,
+            relief_value,
+        ),
+    )
+    ny_terminal = await runner.wait_job(submitted["job_id"], budget=HANG_BUDGET_SECONDS)
+    row: dict = {
+        "job_id": submitted["job_id"],
+        "status": ny_terminal.get("status"),
+        "revision_before": before_revision,
+        "volume_before_mm3": before_volume,
+        "edge": reference["geometry"],
+    }
+    entry["f_ny"] = row
+    if ny_terminal.get("status") != "succeeded":
+        after = await runner.snapshot(model_id)
+        row.update(
+            failure=failure_text(ny_terminal),
+            revision_after=after.get("revision"),
+            volume_after_mm3=runner.volume(after),
+            rolled_back=(
+                after.get("revision") == before_revision and runner.volume(after) == before_volume
+            ),
+        )
+        entry.update(passed=False, blocked="f_ny failed; baseline scenario not reproducible")
+        return runner.case(entry)
+    after = await runner.snapshot(model_id)
+    added = None
+    if runner.volume(after) is not None and before_volume is not None:
+        added = runner.volume(after) - before_volume
+    ny_record = runner.record(after, relief.MATERIAL_SCENARIO["second"]["label"]) or {}
+    row.update(
+        revision_after=after.get("revision"),
+        volume_after_mm3=runner.volume(after),
+        added_mm3=added,
+        relief_echo=ny_record.get("relief"),
+        relief_element_echo=ny_record.get("relief_element_echo"),
+        notch_faces=notch_faces(runner.inspection(after), notch_limit),
+        saved_file_reloaded_and_verified=(ny_terminal.get("result") or {}).get(
+            "saved_file_reloaded_and_verified"
+        ),
+    )
+    entry["passed"] = True
+    return runner.case(entry)
+
+
+def material_summary(cases: list[dict]) -> dict:
+    """Differential verdicts for the material scenario, from measured volumes."""
+    by_name = {case.get("case"): case for case in cases}
+    baseline = by_name.get("mat_baseline") or {}
+    baseline_ny = (baseline.get("f_ny") or {}).get("added_mm3")
+    baseline_px = baseline.get("f_px_added_mm3")
+    rows = []
+    for name, target, relief_value in material_case_specs():
+        case = by_name.get(name) or {}
+        row: dict = {"case": name, "target": target, "relief": relief_value}
+        if target == "first":
+            echo = case.get("f_px_relief_echo")
+            measured = (
+                None
+                if case.get("f_px_added_mm3") is None or baseline_px is None
+                else case["f_px_added_mm3"] - baseline_px
+            )
+            verdict = relief.relief_geometry_verdict(
+                "free",
+                relief_value,
+                echo,
+                measured,
+                None,
+                len(case.get("notch_faces") or []),
+                part_thickness_mm=(case.get("wall_contract") or {}).get("part_thickness_mm"),
+            )
+        else:
+            ny = case.get("f_ny") or {}
+            measured = (
+                None
+                if ny.get("added_mm3") is None or baseline_ny is None
+                else ny["added_mm3"] - baseline_ny
+            )
+            expected = relief.scenario_expected_delta_mm3(relief_value, target)
+            verdict = relief.relief_geometry_verdict(
+                "material",
+                relief_value,
+                ny.get("relief_element_echo"),
+                measured,
+                expected,
+                len(ny.get("notch_faces") or []),
+                part_thickness_mm=(case.get("wall_contract") or {}).get("part_thickness_mm"),
+            )
+        row.update(
+            measured_delta_vs_baseline_mm3=measured,
+            expected_delta_mm3=relief.scenario_expected_delta_mm3(relief_value, target),
+            verdict=verdict,
+            passed=bool(case) and verdict["passed"] and case.get("passed") is True,
+        )
+        rows.append(row)
+    side_deltas = {
+        "side1": (by_name.get("mat_rect_side1_1x1", {}).get("f_ny") or {}).get("added_mm3"),
+        "side2": (by_name.get("mat_rect_side2_1x1", {}).get("f_ny") or {}).get("added_mm3"),
+    }
+    pair = None
+    if baseline_ny is not None and all(value is not None for value in side_deltas.values()):
+        pair = relief.single_end_pair_verdict(
+            {name: value - baseline_ny for name, value in side_deltas.items()},
+            1.0,
+            1.0,
+        )
+    return {
+        "baseline_f_ny_added_mm3": baseline_ny,
+        "baseline_f_px_added_mm3": baseline_px,
+        "rows": rows,
+        "single_end_pair": pair,
+        "passed": bool(rows)
+        and all(row["passed"] for row in rows)
+        and (pair is None or pair["passed"]),
+    }
+
+
+async def run_material_scenario(runner: LiveRunner) -> dict:
+    """The 2026-10-30 valid-material relief scenario, one fresh model per case."""
+    cases = []
+    blocked = None
+    for name, target, relief_value in material_case_specs():
+        if blocked:
+            cases.append({"case": name, "passed": False, "not_executed": blocked})
+            runner.case(cases[-1])
+            continue
+        entry = await run_material_case(runner, name, target, relief_value)
+        cases.append(entry)
+        if entry.get("plan_status") != "succeeded":
+            message = (entry.get("failure") or {}).get("message") or "base plan failed"
+            blocked = (
+                "the base plan failed; remaining material cases were not submitted: "
+                + str(message)[:300]
+            )
+    summary = material_summary(cases)
+    for row in summary["rows"]:
+        for case in cases:
+            if case.get("case") == row["case"]:
+                case["verdict"] = row["verdict"]
+                case["passed"] = row["passed"]
+    runner.save()
+    runner.report["material_scenario"] = summary
+    return summary
 
 
 async def live(output: Path, run_id: str) -> int:
@@ -711,6 +1176,7 @@ async def live(output: Path, run_id: str) -> int:
                         "reason": blocked,
                         "evidence": "DEV-051 T03 live card: the first wall is rejected before modelling",
                     }
+            await run_material_scenario(runner)
         except BaseException as error:
             runner.report["stopped"] = f"{type(error).__name__}: {error}"
             runner.report["profile_comparison"] = relief_comparison(runner.report["cases"])
@@ -721,14 +1187,24 @@ async def live(output: Path, run_id: str) -> int:
     print(json.dumps(summary, ensure_ascii=False))
     rows = [
         {
-            "profile": case.get("profile"),
-            "base_status": case.get("base_status"),
+            "profile": case.get("profile") or case.get("case"),
+            "base_status": case.get("base_status") or case.get("plan_status"),
             "flanges": len(case.get("flanges") or []),
             "passed": case.get("passed"),
         }
         for case in runner.report["cases"]
     ]
     print(json.dumps({"passed": runner.report["passed"], "cases": rows}, ensure_ascii=False))
+    material = runner.report.get("material_scenario") or {}
+    print(
+        json.dumps(
+            {
+                "material_scenario_passed": material.get("passed"),
+                "single_end_pair": (material.get("single_end_pair") or {}).get("material_end"),
+            },
+            ensure_ascii=False,
+        )
+    )
     return 0 if runner.report["passed"] else 1
 
 
@@ -841,9 +1317,13 @@ def write_offline_report(output: Path, run_id: str, results: dict) -> dict:
         "live_checklist": live_checklist(),
         "not_verified": [
             "no flange or relief was created; the four walls remain unverified",
+            "the valid-material scenario (f_ny after f_px) was never executed live: build "
+            "success, the material end's side mapping, notch position and volume delta are "
+            "live items",
+            "whether Creo keeps the written relief values in the created feature is answered "
+            "only by the live relief_element_echo read-back",
             "unbend/flat pattern, bend back, dimension edit, revision, save/reload and rollback "
             "are untested",
-            "the notch footprint relative to the bend line and the volume delta are predictions",
             "corner relief, miter cuts and edge rips are unsupported, not alternative paths",
         ],
         "unit_module": run_unit_module(),
@@ -878,6 +1358,8 @@ def main(argv: list[str] | None = None) -> int:
         "profiles": profiles(),
         "four_wall_thickness_scale": four_wall_plan("thickness_scale"),
         "four_wall_corner_run": four_wall_plan("corner_run"),
+        "material_scenario": material_scenario(),
+        "relief_verdict_matrix": relief_verdict_matrix(),
         "edit_path": edit_path(),
     }
     report = write_offline_report(output, run_id, results)

@@ -525,6 +525,54 @@ static void flange_relief_side(ProElement relief, int side, bool enabled, double
     real(item, PRO_E_BEND_RELIEF_DEPTH, depth);
 }
 
+// DEV-051 T11 2026-10-30: Creo fills every relief element the tree omits with part
+// defaults - the flange_expected.xml probes show PARAM (5) and all-zero values - so a
+// silently reset request would leave a plain wall while the caller still reads
+// "rectangular" from its own request echo. After a successful create the relief
+// section is read back out of the created feature tree: values are recorded and the
+// request-vs-created comparison fails the feature when the written values did not
+// persist. Length type, length and angle are recorded but not asserted; leaving them
+// unset is deliberate and their effective defaults remain an open live question.
+static J flange_relief_side_echo(ProElement relief, int side) {
+    ProElement item = get_path(relief, J::array({side}));
+    int type = -1, depth_type = -1, length_type = -1;
+    double width = 0, depth = 0, length = 0, angle = 0;
+    CK(ProElementIntegerGet(get_path(item, J::array({PRO_E_BEND_RELIEF_TYPE})), nullptr, &type));
+    CK(ProElementDoubleGet(get_path(item, J::array({PRO_E_BEND_RELIEF_WIDTH})), nullptr, &width));
+    CK(ProElementIntegerGet(get_path(item, J::array({PRO_E_BEND_RELIEF_DEPTH_TYPE})), nullptr,
+                            &depth_type));
+    CK(ProElementDoubleGet(get_path(item, J::array({PRO_E_BEND_RELIEF_DEPTH})), nullptr, &depth));
+    CK(ProElementIntegerGet(get_path(item, J::array({PRO_E_BEND_RELIEF_LENGTH_TYPE})), nullptr,
+                            &length_type));
+    CK(ProElementDoubleGet(get_path(item, J::array({PRO_E_BEND_RELIEF_LENGTH})), nullptr, &length));
+    CK(ProElementDoubleGet(get_path(item, J::array({PRO_E_BEND_RELIEF_ANGLE})), nullptr, &angle));
+    return {{"type", type},      {"width_mm", width},          {"depth_type", depth_type},
+            {"depth_mm", depth}, {"length_type", length_type}, {"length_mm", length},
+            {"angle", angle}};
+}
+
+static void flange_relief_expect(const char *name, const J &side, bool enabled,
+                                 const FlangeReliefRequest &request) {
+    int expected_type = enabled ? PRO_BEND_RLF_RECTANGULAR : PRO_BEND_RLF_NONE;
+    int type = side.at("type").get<int>();
+    if (type == expected_type &&
+        (!enabled || (side.at("depth_type").get<int>() == PRO_BEND_RLF_DEPTH_BLIND &&
+                      fabs(side.at("width_mm").get<double>() - request.width) <= 1e-6 &&
+                      fabs(side.at("depth_mm").get<double>() - request.depth) <= 1e-6)))
+        return;
+    throw std::runtime_error(
+        "flange relief did not persist into the created feature: " + std::string(name) +
+        " recorded type=" + std::to_string(type) +
+        " width=" + std::to_string(side.at("width_mm").get<double>()) +
+        " depth_type=" + std::to_string(side.at("depth_type").get<int>()) +
+        " depth=" + std::to_string(side.at("depth_mm").get<double>()) + "; requested " +
+        (enabled ? "rectangular" : "none") + " width=" + std::to_string(request.width) +
+        " depth=" + std::to_string(request.depth));
+}
+
+// DEV-051 T11 2026-10-30: the only measured value here stays the part thickness; the
+// corner run and the two comparisons are request arithmetic against the T05 overlap
+// bound ((height - radius) x thickness^2 at a shared corner), not native geometry.
 static J flange_relief_record(const J &op, const FlangeReliefRequest &request) {
     J sides = J::array();
     for (int index = 0; index < 2; index++) {
@@ -538,9 +586,6 @@ static J flange_relief_record(const J &op, const FlangeReliefRequest &request) {
         }
         sides.push_back(row);
     }
-    // The part thickness is the only measured value here; the corner run and the
-    // two comparisons are request arithmetic against the T05 overlap bound
-    // ((height - radius) x thickness^2 at a shared corner), not native geometry.
     double thickness = 0;
     bool thickness_known =
         ProSmtPartThicknessValueGet(ProMdlToPart(board), &thickness) == PRO_TK_NO_ERROR;
@@ -800,6 +845,29 @@ static void generic_sheetmetal_flange(const J &op) {
     }
     CK(ProSolidRegenerate((ProSolid)board, PRO_REGEN_NO_FLAGS));
     CK(ProElementFree(&root));
+    // DEV-051 T11 2026-10-30: read the relief section back out of the created feature
+    // tree. A silent Creo-side reset to the part defaults would otherwise leave a plain
+    // wall while the request echo still says rectangular, so divergence fails here
+    // instead of passing a relief that is not in the model.
+    if (relief_request.side1 || relief_request.side2) {
+        ProElement created = nullptr;
+        CK(ProFeatureElemtreeExtract(&f, nullptr, PRO_FEAT_EXTRACT_NO_OPTS, &created));
+        ProElement relief_tree = get_path(created, J::array({PRO_E_SMT_BEND_RELIEF}));
+        J side1 = flange_relief_side_echo(relief_tree, PRO_E_SMT_BEND_RELIEF_SIDE1);
+        J side2 = flange_relief_side_echo(relief_tree, PRO_E_SMT_BEND_RELIEF_SIDE2);
+        CK(ProFeatureElemtreeFree(&f, created));
+        flange_relief_expect("side1", side1, relief_request.side1, relief_request);
+        flange_relief_expect("side2", side2, relief_request.side2, relief_request);
+        log("SHEETMETAL_FLANGE_RELIEF_ELEMS side1_type=%d side1_width=%.6f "
+            "side1_depth_type=%d side1_depth=%.6f side1_length_type=%d side2_type=%d "
+            "side2_width=%.6f side2_depth_type=%d side2_depth=%.6f side2_length_type=%d\n",
+            side1.at("type").get<int>(), side1.at("width_mm").get<double>(),
+            side1.at("depth_type").get<int>(), side1.at("depth_mm").get<double>(),
+            side1.at("length_type").get<int>(), side2.at("type").get<int>(),
+            side2.at("width_mm").get<double>(), side2.at("depth_type").get<int>(),
+            side2.at("depth_mm").get<double>(), side2.at("length_type").get<int>());
+        extra["relief_element_echo"] = {{"side1", side1}, {"side2", side2}};
+    }
     extra["section_path"] = J::array({PRO_E_STD_SECTION, PRO_E_SKETCHER});
     extra["bend_side"] = sec_flip == PRO_B_TRUE ? "outward" : "inward";
     extra["sec_flip_element"] = sec_flip;

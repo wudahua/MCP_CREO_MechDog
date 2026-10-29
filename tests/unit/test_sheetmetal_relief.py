@@ -22,6 +22,7 @@ independent arithmetic on the T05 geometry, not native measurements.
 
 from __future__ import annotations
 
+import math
 import unittest
 from pathlib import Path
 
@@ -126,6 +127,208 @@ def relief_removed_mm3(relief: dict | None, thickness: float = fx.PLATE_THICKNES
 def corner_overlap_run_mm() -> float:
     """Wall run that shares a corner: height minus the bend radius (T05 bound)."""
     return max(0.0, fx.FLANGE_HEIGHT_MM - fx.FLANGE_RADIUS_MM)
+
+
+# --- DEV-051 T11 2026-10-30: valid-material relief scenario ----------------
+#
+# The 2026-10-29 round six proved only that free plate corners remove nothing:
+# both measured flanges terminated at plate corners, so "no notch" was the
+# expected outcome there and says nothing about whether a relief cuts material.
+# This scenario gives every relief variant a bend end that abuts existing
+# material while the wall itself stays buildable - without using the failing
+# third wall as the only entrance.
+#
+# Geometry: base wall 185x232x1, then f_px on +x (both bend ends at free plate
+# corners), then f_ny on -y. f_ny's chain end at the +x corner runs into f_px's
+# bend (one material end); its -x chain end stays a free plate corner. The
+# 2026-10-29 run observed such chains trimmed by R + t per material end.
+
+MATERIAL_SCENARIO = {
+    "first": {"side": "+x", "label": "f_px", "material_ends": 0},
+    "second": {"side": "-y", "label": "f_ny", "material_ends": 1},
+}
+
+# Per-material-end chain shortening observed on 2026-10-29: the bend of the
+# existing wall occupies R + t of the neighbour edge.
+CHAIN_TRIM_MM = fx.FLANGE_RADIUS_MM + fx.PLATE_THICKNESS_MM
+
+# Round six of 2026-10-29 measured +18 025.291234 mm3 for the untrimmed h80 /
+# R2.54 / Y0.5 flange over a 232 mm span; the model below reproduces it.
+ROUND_SIX_MEASURED_INCREMENT_MM3 = 18_025.291234
+ROUND_SIX_MEASURED_SPAN_MM = 232.0
+
+# A rectangular notch only removes material where the notch footprint sits in
+# material; the delta verdict never accepts a request echo alone.
+RELIEF_DELTA_TOLERANCE_MM3 = 0.2
+
+
+def bent_wall_increment_mm3(span_mm: float, trimmed_ends: float = 0.0) -> float:
+    """Independent bent-flange increment, validated against the 2026-10-29 run.
+
+    Cross-section = straight run (height - t - R) plus the net bend zone. The
+    bend zone replaces the plate corner rectangle it occupies, so its net
+    contribution is the quarter annulus minus the t x (R + t) rectangle. Each
+    material end shortens the sweep by the observed chain trim (R + t).
+    """
+    t = fx.PLATE_THICKNESS_MM
+    r = fx.FLANGE_RADIUS_MM
+    h = fx.FLANGE_HEIGHT_MM
+    effective = span_mm - trimmed_ends * CHAIN_TRIM_MM
+    flat = h - t - r
+    bend_net = math.pi / 4.0 * ((r + t) ** 2 - r**2) - t * (r + t)
+    return effective * (flat + bend_net)
+
+
+def notch_removed_mm3(width: float, depth: float, ends_with_material: int) -> float:
+    """w x d x t per bend end whose chain end actually abuts material."""
+    return ends_with_material * width * depth * fx.PLATE_THICKNESS_MM
+
+
+# Material ends of the four-wall sequence: f_px/f_nx terminate at free plate
+# corners (2026-10-29 round six measured zero removal there), while f_ny and
+# f_py run into the bends of both neighbours on each end (round six observed
+# the f_ny chain shortened by R + t per end).
+FOUR_WALL_MATERIAL_ENDS = {"f_px": 0, "f_nx": 0, "f_ny": 2, "f_py": 2}
+
+
+def four_wall_removed_mm3(relief_value: dict | None, label: str) -> float | None:
+    """Removal expectation for one four-wall flange, from its actual material ends.
+
+    Returns None for a single-end request on a flange with material ends: which
+    native side is the material end is only observable live.
+    """
+    if relief_value is None or relief_value.get("type", "none") == "none":
+        return 0.0
+    ends = FOUR_WALL_MATERIAL_ENDS.get(label, 0)
+    width = float(relief_value["width"])
+    depth = float(relief_value["depth"])
+    if relief_value.get("ends", "both") == "both":
+        return notch_removed_mm3(width, depth, ends)
+    return None if ends else 0.0
+
+
+def scenario_expected_delta_mm3(relief_value: dict | None, which: str) -> float | None:
+    """Expected added-volume delta vs the none baseline for one scenario flange.
+
+    Returns None when the offline evidence cannot pin a single number: a
+    side1/side2 request enables exactly one end and which of the two sides is
+    the material end is only observable live. The pair check
+    (:func:`single_end_pair_verdict`) covers that pair instead.
+    """
+    spec = MATERIAL_SCENARIO[which]
+    if relief_value is None or relief_value.get("type", "none") == "none":
+        return 0.0
+    width = float(relief_value["width"])
+    depth = float(relief_value["depth"])
+    if spec["material_ends"] == 0:
+        return 0.0  # free ends: removing nothing is the expected outcome, not evidence
+    ends = relief_value.get("ends", "both")
+    if ends == "both":
+        return -notch_removed_mm3(width, depth, 1)
+    return None  # single enabled end: removing side resolved live
+
+
+def relief_geometry_verdict(
+    scenario: str,
+    relief_value: dict | None,
+    echo: dict | None,
+    measured_delta_mm3: float | None,
+    expected_delta_mm3: float | None,
+    notch_face_count: int | None,
+    part_thickness_mm: float | None = None,
+    tolerance_mm3: float = RELIEF_DELTA_TOLERANCE_MM3,
+) -> dict:
+    """Judge one relief case: request, created-tree echo and geometry must agree.
+
+    ``scenario`` is ``"material"`` (the flange has a bend end abutting material)
+    or ``"free"`` (the negative control). The 2026-10-29 round six shape - a
+    rectangular request accepted and echoed, zero volume delta, no notch faces -
+    fails here: parameters written but no material removed is not a pass.
+    """
+    reasons: list[str] = []
+    requested = relief_value is not None and relief_value.get("type", "none") == "rectangular"
+    if requested:
+        if not echo or not (echo.get("side1") and echo.get("side2")):
+            reasons.append("no relief_element_echo from the created feature tree")
+        else:
+            sides = {
+                name: echo[name]
+                for name in ("side1", "side2")
+                if relief_value.get("ends", "both") in ("both", name)
+            }
+            for name, side in sides.items():
+                if side.get("type") != RELIEF_TYPES["rectangular"]:
+                    reasons.append(f"{name} did not keep type rectangular in the created feature")
+                elif (
+                    side.get("depth_type") != RELIEF_DEPTH_TYPES["blind"]
+                    or abs(float(side.get("width_mm", 0)) - float(relief_value["width"])) > 1e-6
+                    or abs(float(side.get("depth_mm", 0)) - float(relief_value["depth"])) > 1e-6
+                ):
+                    reasons.append(f"{name} width/depth diverged from the request")
+    if part_thickness_mm is None or abs(part_thickness_mm - fx.PLATE_THICKNESS_MM) > 1e-6:
+        # T03 rule: a contradicting thickness source invalidates any width/thickness
+        # comparison, so a relief case cannot pass on a wrong part thickness.
+        reasons.append("measured part thickness missing or not the requested sheet thickness")
+    if scenario == "free":
+        if measured_delta_mm3 is None or abs(measured_delta_mm3) > tolerance_mm3:
+            reasons.append("free-end control must remove nothing")
+    elif scenario == "material":
+        if expected_delta_mm3 is not None:
+            if (
+                measured_delta_mm3 is None
+                or abs(measured_delta_mm3 - expected_delta_mm3) > tolerance_mm3
+            ):
+                reasons.append(
+                    f"geometry removed {measured_delta_mm3} mm3, expected {expected_delta_mm3}"
+                )
+            elif requested and expected_delta_mm3 < 0 and not notch_face_count:
+                reasons.append("volume moved but no notch faces are observable")
+        # else: a single enabled end leaves the delta to the pair verdict, which
+        # resolves which native side the material end lives on.
+    else:
+        reasons.append(f"unknown scenario {scenario!r}")
+    return {
+        "scenario": scenario,
+        "relief": relief_value,
+        "passed": not reasons,
+        "reasons": reasons,
+        "evidence_class": ("none" if not requested or scenario == "free" else "relief_geometry"),
+    }
+
+
+def single_end_pair_verdict(
+    side_results: dict, width: float, depth: float, tolerance_mm3=RELIEF_DELTA_TOLERANCE_MM3
+) -> dict:
+    """side1/side2 must split into exactly one removing and one dormant end.
+
+    ``side_results`` maps "side1"/"side2" to a measured delta (mm3, positive when
+    material was added relative to the none baseline). Exactly one side must
+    remove w*d*t and that side is the material end; this is how the live run
+    resolves which native side the material end lives on.
+    """
+    removed = notch_removed_mm3(width, depth, 1)
+    deltas = {name: side_results.get(name) for name in ("side1", "side2")}
+    removing = sorted(
+        name for name, delta in deltas.items() if delta is not None and -delta > tolerance_mm3
+    )
+    dormant = sorted(
+        name for name, delta in deltas.items() if delta is None or abs(delta) <= tolerance_mm3
+    )
+    reasons: list[str] = []
+    if len(removing) != 1 or len(dormant) != 1:
+        reasons.append(
+            f"expected exactly one end to remove {removed} mm3 and one to remove nothing; "
+            f"got {deltas}"
+        )
+    elif abs(-deltas[removing[0]] - removed) > tolerance_mm3:
+        reasons.append(f"the removing end took {deltas[removing[0]]} mm3, expected {-removed}")
+    return {
+        "deltas_mm3": deltas,
+        "material_end": removing[0] if len(removing) == 1 else None,
+        "removed_mm3": removed,
+        "passed": not reasons,
+        "reasons": reasons,
+    }
 
 
 def _function_body(source: str, signature: str) -> str:
@@ -399,13 +602,29 @@ class ReliefGeometryTest(unittest.TestCase):
         self.assertAlmostEqual(relief_removed_mm3(relief), 2 * 1.0 * run * 1.0, places=6)
 
     def test_four_wall_volume_expectation_with_relief(self):
+        # Offline prediction over the full fixture spans; live chains of f_ny/f_py
+        # are shorter (R + t per material end), so the live spans are authoritative.
         spans = [232.0, 232.0, 185.0, 185.0]
-        relief = relief_rectangular(1.0, 1.0)
-        walls = sum(fx.wall_volume_mm3(span) for span in spans)
-        removed = sum(relief_removed_mm3(relief) for _ in spans)
-        self.assertAlmostEqual(walls, 66_720.0, places=6)
-        self.assertAlmostEqual(removed, 8.0, places=6)
-        self.assertAlmostEqual(fx.PLATE_VOLUME_MM3 + walls - removed, 109_632.0, places=6)
+        labels = ["f_px", "f_nx", "f_ny", "f_py"]
+        relief_value = relief_rectangular(1.0, 1.0)
+        walls = sum(bent_wall_increment_mm3(span) for span in spans)
+        removed = sum(four_wall_removed_mm3(relief_value, label) for label in labels)
+        self.assertAlmostEqual(bent_wall_increment_mm3(185.0), 14_373.615854, places=4)
+        self.assertAlmostEqual(removed, 4.0, places=6)
+        self.assertAlmostEqual(fx.PLATE_VOLUME_MM3 + walls - removed, 107_713.814175, places=4)
+
+    def test_free_ends_remove_nothing_and_material_ends_drive_removal(self):
+        self.assertEqual(four_wall_removed_mm3(relief_rectangular(4.0, 4.0), "f_px"), 0.0)
+        self.assertEqual(four_wall_removed_mm3(relief_rectangular(4.0, 4.0), "f_nx"), 0.0)
+        self.assertAlmostEqual(
+            four_wall_removed_mm3(relief_rectangular(1.0, 1.0), "f_ny"), 2.0, places=6
+        )
+        self.assertAlmostEqual(
+            four_wall_removed_mm3(relief_rectangular(4.0, 4.0), "f_py"), 32.0, places=6
+        )
+        self.assertIsNone(four_wall_removed_mm3(relief_rectangular(1.0, 1.0, "side1"), "f_ny"))
+        self.assertEqual(four_wall_removed_mm3(relief_rectangular(1.0, 1.0, "side1"), "f_px"), 0.0)
+        self.assertEqual(four_wall_removed_mm3(None, "f_ny"), 0.0)
 
     def test_corner_overlap_bound_is_unchanged_by_the_contract(self):
         self.assertAlmostEqual(fx.corner_overlap_volume_mm3(1), 77.46, places=6)
@@ -435,6 +654,330 @@ class FourWallReliefPlanTest(unittest.TestCase):
         operations, _ = fx.four_wall_plan(fx.box_inspection())
         dumped = validate_operations(operations)
         self.assertTrue(all("relief" not in item for item in dumped))
+
+
+# --- 2026-10-30 material-scenario oracle -----------------------------------
+
+
+def material_first_flange_reference() -> dict:
+    inspection = fx.box_inspection()
+    return fx.select_wall_edge(
+        inspection, fx.PLATE_BOUNDS, MATERIAL_SCENARIO["first"]["side"], face="top"
+    )
+
+
+def material_scenario_plan() -> tuple:
+    """One material-scenario model: base wall plus f_px (+x, free bend ends).
+
+    f_ny (-y) is submitted as its own job after f_px exists so its edge is
+    re-selected from a fresh snapshot; see :func:`material_second_flange_op`.
+    """
+    reference = material_first_flange_reference()
+    operations = [
+        fx.wall_sketch(),
+        fx.wall_base_op(),
+        fx.flange_op(
+            MATERIAL_SCENARIO["first"]["side"], MATERIAL_SCENARIO["first"]["label"], reference
+        ),
+    ]
+    return operations, reference
+
+
+def material_second_flange_op(relief_value: dict | None) -> dict:
+    """The f_ny (-y) request; the live edge is re-selected after f_px exists."""
+    inspection = fx.box_inspection()
+    reference = fx.select_wall_edge(
+        inspection, fx.PLATE_BOUNDS, MATERIAL_SCENARIO["second"]["side"], face="top"
+    )
+    operation = fx.flange_op(
+        MATERIAL_SCENARIO["second"]["side"], MATERIAL_SCENARIO["second"]["label"], reference
+    )
+    if relief_value is not None:
+        operation["relief"] = dict(relief_value)
+    return operation
+
+
+class BentWallVolumeTest(unittest.TestCase):
+    def test_increment_model_reproduces_the_round_six_measurement(self):
+        # 2026-10-29 22:27 run: f_px over the 232 mm span added 18 025.291234 mm3.
+        self.assertAlmostEqual(
+            bent_wall_increment_mm3(ROUND_SIX_MEASURED_SPAN_MM),
+            ROUND_SIX_MEASURED_INCREMENT_MM3,
+            delta=1e-3,
+        )
+
+    def test_each_material_end_shortens_the_sweep_by_the_observed_trim(self):
+        full = bent_wall_increment_mm3(fx.PLATE_WIDTH_MM)
+        trimmed = bent_wall_increment_mm3(fx.PLATE_WIDTH_MM, trimmed_ends=1)
+        area = full / fx.PLATE_WIDTH_MM
+        self.assertAlmostEqual(full - trimmed, CHAIN_TRIM_MM * area, places=6)
+        self.assertAlmostEqual(trimmed, (fx.PLATE_WIDTH_MM - CHAIN_TRIM_MM) * area, places=6)
+
+    def test_increment_is_smaller_than_the_flat_span_proxy(self):
+        # The old span x height x t oracle over-counts by the bend geometry; the
+        # material scenario must use the model that matches the measured walls.
+        self.assertLess(
+            bent_wall_increment_mm3(ROUND_SIX_MEASURED_SPAN_MM),
+            fx.wall_volume_mm3(ROUND_SIX_MEASURED_SPAN_MM),
+        )
+
+
+class MaterialScenarioTest(unittest.TestCase):
+    def test_first_flange_has_only_free_ends_and_second_has_one_material_end(self):
+        self.assertEqual(MATERIAL_SCENARIO["first"]["material_ends"], 0)
+        self.assertEqual(MATERIAL_SCENARIO["second"]["material_ends"], 1)
+
+    def test_scenario_plan_and_second_flange_validate_for_every_variant(self):
+        operations, _ = material_scenario_plan()
+        dumped = validate_operations(operations + [material_second_flange_op(None)])
+        self.assertEqual([item["op"] for item in dumped][2:], ["sheetmetal_flange"] * 2)
+        for variant in (
+            relief_rectangular(1.0, 1.0),
+            relief_rectangular(4.0, 4.0),
+            relief_rectangular(1.0, 1.0, "side1"),
+            relief_rectangular(1.0, 1.0, "side2"),
+        ):
+            with self.subTest(variant=variant):
+                validate_operations([material_second_flange_op(variant)])
+
+    def test_free_first_flange_never_removes_material(self):
+        self.assertEqual(scenario_expected_delta_mm3(None, "first"), 0.0)
+        self.assertEqual(scenario_expected_delta_mm3(relief_rectangular(4.0, 4.0), "first"), 0.0)
+
+    def test_second_flange_expectations_follow_the_intersecting_material(self):
+        self.assertEqual(scenario_expected_delta_mm3(None, "second"), 0.0)
+        self.assertEqual(scenario_expected_delta_mm3(relief_rectangular(1.0, 1.0), "second"), -1.0)
+        self.assertEqual(scenario_expected_delta_mm3(relief_rectangular(4.0, 4.0), "second"), -16.0)
+        self.assertIsNone(
+            scenario_expected_delta_mm3(relief_rectangular(1.0, 1.0, "side1"), "second")
+        )
+        self.assertIsNone(
+            scenario_expected_delta_mm3(relief_rectangular(1.0, 1.0, "side2"), "second")
+        )
+
+    def test_notch_removal_is_width_by_depth_by_thickness_per_material_end(self):
+        self.assertAlmostEqual(notch_removed_mm3(1.0, 1.0, 1), 1.0, places=6)
+        self.assertAlmostEqual(notch_removed_mm3(4.0, 4.0, 1), 16.0, places=6)
+        self.assertAlmostEqual(notch_removed_mm3(4.0, 4.0, 0), 0.0, places=6)
+
+
+def _echo(width=1.0, depth=1.0, ends="both", side_type=3, dormant_type=0) -> dict:
+    def enabled_side():
+        return {
+            "type": side_type,
+            "width_mm": width,
+            "depth_type": RELIEF_DEPTH_TYPES["blind"],
+            "depth_mm": depth,
+            "length_type": 0,
+            "length_mm": 0.0,
+            "angle": 0.0,
+        }
+
+    dormant = {"type": dormant_type, "width_mm": 0.0, "depth_type": 0, "depth_mm": 0.0}
+    if ends == "both":
+        side1, side2 = enabled_side(), enabled_side()
+    elif ends == "side1":
+        side1, side2 = enabled_side(), dormant
+    else:
+        side1, side2 = dormant, enabled_side()
+    return {"side1": side1, "side2": side2}
+
+
+class ReliefGeometryVerdictTest(unittest.TestCase):
+    def test_request_echo_alone_is_never_a_pass(self):
+        verdict = relief_geometry_verdict(
+            "material",
+            relief_rectangular(1.0, 1.0),
+            _echo(),
+            0.0,
+            -1.0,
+            0,
+            part_thickness_mm=1.0,
+        )
+        self.assertFalse(verdict["passed"])
+        self.assertTrue(any("geometry removed 0.0" in reason for reason in verdict["reasons"]))
+
+    def test_volume_without_notch_faces_is_not_a_pass(self):
+        verdict = relief_geometry_verdict(
+            "material",
+            relief_rectangular(1.0, 1.0),
+            _echo(),
+            -1.0,
+            -1.0,
+            0,
+            part_thickness_mm=1.0,
+        )
+        self.assertFalse(verdict["passed"])
+        self.assertTrue(any("no notch faces" in reason for reason in verdict["reasons"]))
+
+    def test_missing_created_feature_echo_fails(self):
+        for echo in (None, {}, {"side1": _echo()["side1"]}):
+            with self.subTest(echo=echo):
+                verdict = relief_geometry_verdict(
+                    "material",
+                    relief_rectangular(1.0, 1.0),
+                    echo,
+                    -1.0,
+                    -1.0,
+                    2,
+                    part_thickness_mm=1.0,
+                )
+                self.assertFalse(verdict["passed"])
+                self.assertTrue(any("relief_element_echo" in r for r in verdict["reasons"]))
+
+    def test_diverged_echo_fails_even_with_a_matching_delta(self):
+        verdict = relief_geometry_verdict(
+            "material",
+            relief_rectangular(1.0, 1.0),
+            _echo(width=3.71),
+            -1.0,
+            -1.0,
+            2,
+            part_thickness_mm=1.0,
+        )
+        self.assertFalse(verdict["passed"])
+        self.assertTrue(any("diverged" in reason for reason in verdict["reasons"]))
+
+    def test_reset_to_param_type_fails(self):
+        verdict = relief_geometry_verdict(
+            "material",
+            relief_rectangular(1.0, 1.0),
+            _echo(side_type=RELIEF_TYPES["param"]),
+            -1.0,
+            -1.0,
+            2,
+            part_thickness_mm=1.0,
+        )
+        self.assertFalse(verdict["passed"])
+        self.assertTrue(any("rectangular" in reason for reason in verdict["reasons"]))
+
+    def test_contradicting_part_thickness_fails(self):
+        verdict = relief_geometry_verdict(
+            "material",
+            relief_rectangular(1.0, 1.0),
+            _echo(),
+            -1.0,
+            -1.0,
+            2,
+            part_thickness_mm=3.71,
+        )
+        self.assertFalse(verdict["passed"])
+        self.assertTrue(any("part thickness" in reason for reason in verdict["reasons"]))
+
+    def test_consistent_material_removal_passes(self):
+        verdict = relief_geometry_verdict(
+            "material",
+            relief_rectangular(1.0, 1.0),
+            _echo(),
+            -1.0,
+            -1.0,
+            2,
+            part_thickness_mm=1.0,
+        )
+        self.assertTrue(verdict["passed"], verdict["reasons"])
+        self.assertEqual(verdict["evidence_class"], "relief_geometry")
+
+    def test_free_end_control_requires_zero_and_stays_no_evidence(self):
+        passed = relief_geometry_verdict(
+            "free",
+            relief_rectangular(4.0, 4.0),
+            _echo(4.0, 4.0),
+            0.0,
+            None,
+            0,
+            part_thickness_mm=1.0,
+        )
+        self.assertTrue(passed["passed"], passed["reasons"])
+        self.assertEqual(passed["evidence_class"], "none")
+        removed = relief_geometry_verdict(
+            "free",
+            relief_rectangular(4.0, 4.0),
+            _echo(4.0, 4.0),
+            -16.0,
+            None,
+            4,
+            part_thickness_mm=1.0,
+        )
+        self.assertFalse(removed["passed"])
+        self.assertTrue(any("remove nothing" in reason for reason in removed["reasons"]))
+
+    def test_round_six_shape_is_reproduced_and_rejected(self):
+        # 2026-10-29: rectangular both 1x1 accepted and echoed, delta 0.000000,
+        # no notch faces, thickness read 3.71 - the exact contradiction this
+        # verdict exists to reject.
+        verdict = relief_geometry_verdict(
+            "material",
+            relief_rectangular(1.0, 1.0),
+            _echo(),
+            0.0,
+            -1.0,
+            0,
+            part_thickness_mm=3.71,
+        )
+        self.assertFalse(verdict["passed"])
+        self.assertGreaterEqual(len(verdict["reasons"]), 2)
+
+
+class SingleEndPairVerdictTest(unittest.TestCase):
+    def test_exactly_one_side_removing_is_the_material_end(self):
+        verdict = single_end_pair_verdict({"side1": -1.0, "side2": 0.0}, 1.0, 1.0)
+        self.assertTrue(verdict["passed"], verdict["reasons"])
+        self.assertEqual(verdict["material_end"], "side1")
+        self.assertAlmostEqual(verdict["removed_mm3"], 1.0, places=6)
+        mirrored = single_end_pair_verdict({"side1": 0.0, "side2": -1.0}, 1.0, 1.0)
+        self.assertTrue(mirrored["passed"], mirrored["reasons"])
+        self.assertEqual(mirrored["material_end"], "side2")
+
+    def test_both_or_neither_sides_removing_fails(self):
+        for deltas in (
+            {"side1": -1.0, "side2": -1.0},
+            {"side1": 0.0, "side2": 0.0},
+            {"side1": None, "side2": 0.0},
+        ):
+            with self.subTest(deltas=deltas):
+                verdict = single_end_pair_verdict(deltas, 1.0, 1.0)
+                self.assertFalse(verdict["passed"])
+
+    def test_a_side_removing_the_wrong_amount_fails(self):
+        verdict = single_end_pair_verdict({"side1": -16.0, "side2": 0.0}, 1.0, 1.0)
+        self.assertFalse(verdict["passed"])
+        self.assertTrue(any("expected" in reason for reason in verdict["reasons"]))
+
+
+class NativeReliefEchoTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.source = NATIVE.read_text(encoding="utf-8", errors="replace")
+        cls.flange = _function_body(cls.source, "static void generic_sheetmetal_flange")
+        cls.expect = _function_body(cls.source, "static void flange_relief_expect")
+        cls.side_echo = _function_body(cls.source, "static J flange_relief_side_echo")
+
+    def test_created_tree_is_extracted_after_the_successful_regen(self):
+        self.assertIn("ProFeatureElemtreeExtract", self.flange)
+        self.assertIn("ProFeatureElemtreeFree", self.flange)
+        self.assertLess(
+            self.flange.index("ProSolidRegenerate"),
+            self.flange.index("ProFeatureElemtreeExtract"),
+        )
+
+    def test_echo_is_only_read_when_relief_was_requested(self):
+        self.assertIn("if (relief_request.side1 || relief_request.side2)", self.flange)
+
+    def test_divergence_fails_with_a_named_message(self):
+        self.assertIn("did not persist into the created feature", self.expect)
+        self.assertIn("PRO_BEND_RLF_RECTANGULAR", self.expect)
+        self.assertIn("PRO_BEND_RLF_NONE", self.expect)
+
+    def test_echo_and_log_are_staged_into_the_result(self):
+        self.assertIn('extra["relief_element_echo"]', self.flange)
+        self.assertIn("SHEETMETAL_FLANGE_RELIEF_ELEMS", self.flange)
+        self.assertIn("PRO_E_BEND_RELIEF_LENGTH_TYPE", self.side_echo)
+
+    def test_write_path_still_only_writes_type_width_depth(self):
+        # The read-back may look at length/angle; the write path must not set them.
+        side = _function_body(self.source, "static void flange_relief_side")
+        for token in ("PRO_E_BEND_RELIEF_LENGTH", "PRO_E_BEND_RELIEF_ANGLE"):
+            self.assertNotIn(token, side)
 
 
 # --- edit path ------------------------------------------------------------
