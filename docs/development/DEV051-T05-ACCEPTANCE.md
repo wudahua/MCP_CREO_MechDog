@@ -174,3 +174,14 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；pydantic 
 - 接口变化：无（无工具、字段、错误码变化）。
 - 静态断言是变更检测：`check_native_source` 把当前元素值（无 `PRO_E_BODY`、`PRO_BEND_RLF_NONE`、壁厚侧/截面侧固定 FALSE）记为事实。T11 引入 relief 或开放壁厚侧时这些断言会按设计失败，须随 T11 同步更新断言与本卡，不得据此判定回退。
 - 文档冲突面：`docs/work-items/FEAT-014.md`、`docs/work-items/BUG-047.md` 由本任务更新；如其他会话也要改同两文件，以先读后追加为准，不要覆盖。
+
+## 2026-10-29 第三轮实机：元素树取证、根因定位与基体契约修正
+
+本节补充 T05 的实机阶段。详细证据、job/model 与命令见 [T11 验收卡](DEV051-T11-ACCEPTANCE.md)"第 3 轮"；结论如下。
+
+- **第一道折边 `-1` 的根因已定**（不再是"未定"）。失败路径取回的两份元素树（本实现 `flange_attempt.xml`、Creo 用 `PRO_FEAT_CR_INCOMPLETE_FEAT` 补全的 `flange_expected.xml`）逐项一致：`PRO_FEAT_WALL`、`PRO_E_SMT_WALL_TYPE=17`、`PRO_E_SMT_FLANGE_TYPE=1`、`PRO_E_SMT_FLANGE_DEPTH` 两侧 `DEPTH_TYPE=4`（TO_END）、`PRO_E_SMT_WALL_HEIGHT_TYPE=0`（NONE）、`SHARPS_TO_BENDS=1`、`SEC_FLIP=0`、`THICKNESS_FLIP=0`；Creo 多出的只是角部释放/斜接/边撕裂/弯表等默认值。没有元素缺失或取值错误能解释 `-1`，Creo 的 `ProErrorlist` 也是空的。
+- **承载对象才是原因**：`ProSmtedgeContourGet(edge 125)=-8`（`PRO_TK_BAD_CONTEXT`，"该边不在 green/white 壁面上"），`ProSmtSurfaceTypeGet` 显示 green(101)/white(111) 相距 **232 mm**、四块 185×232 大面全是 `SIDE`。即 T03 以来的"185×232×1 底板"实际是 **232 mm 厚的钣金件**：`sheetmetal_wall(depth=1, thickness=232)` 把板厚写成了 232。体积 42 920 与 bbox 相同，历次验收只核这两个数，因此没被发现。
+- **修复**：夹具改为 `plane="XZ"` + `sheetmetal_wall(depth=232, thickness=1)`（真正的 1 mm 板）；折边入口在建树前用 `ProSmtedgeContourGet` 拒绝不在壁面上的边（带 `-8` 原始码与可行做法）。
+- **修正后的实机**：底板 42 920（rev 1）→ `f_px` 61 480（+18 560，rev 2）→ `f_nx` 80 040（+18 560，rev 3），两次都 `saved_file_reloaded_and_verified=true`、`smt_contour=4`。
+- **仍未定**：两道折边的 bbox 只在 X 增长 80 mm、Z 不变，说明是平铺延伸而不是折弯；体积 232×80×1 与折弯同值，所以 T05 原"体积 oracle"无法区分这两种几何。第三道 `f_ny` 在 `ProFeatureWithoptionsCreate` 内挂起（job `bb5543fb3c66404e95172876fa1ac9aa` 仍 running、`toolkit.lock` 被占用），按规则停止实机。
+- **T05 假设表的状态更新**：H1（引用漂移）与 H2（角部重叠）**在本轮均未成立/未验证**——失败发生在第一道，既无边漂移也无相邻壁；H3/H4 未验证。新增结论是"失败可以来自基体不是薄板 / 边不在壁面"，这一条已写进准入错误。

@@ -508,16 +508,168 @@ static J flange_relief_record(const J &op, const FlangeReliefRequest &request) {
             {"depth_covers_corner_run", enabled ? J(request.depth >= corner_run) : J()}};
 }
 
+// DEV-051 T05/T11: a flange wall can only attach to an edge that borders a
+// sheetmetal face, so record Creo's own sheetmetal typing of the body's surfaces and
+// the attachment edge's sheetmetal contour code next to the element trees.
+static ProError smt_surface_type_cb(ProSurface s, ProError status, ProAppData data) {
+    if (status)
+        return PRO_TK_NO_ERROR;
+    int id = -1;
+    ProSurfaceIdGet(s, &id);
+    ProSmtSurfType type = PRO_SMT_SURF_NON_SMT;
+    ProError code = ProSmtSurfaceTypeGet((ProPart)board, s, &type);
+    log("FLANGE_BODY_SURFACE id=%d smt_type=%d code=%d\n", id, (int)type, code);
+    ((J *)data)->push_back({{"id", id}, {"smt_type", (int)type}, {"code", code}});
+    return PRO_TK_NO_ERROR;
+}
+static void flange_attachment_evidence(const J &op, J *evidence) {
+    try {
+        ProSelection sel = resolve(op["edge"]);
+        ProModelitem item;
+        CK(ProSelectionModelitemGet(sel, &item));
+        ProSelectionFree(&sel);
+        ProEdge edge;
+        CK(ProEdgeInit((ProSolid)board, item.id, &edge));
+        ProEdge *contour = nullptr;
+        ProError code = ProSmtedgeContourGet((ProPart)board, edge, &contour);
+        int count = 0;
+        if (!code) {
+            CK(ProArraySizeGet((ProArray)contour, &count));
+            ProArrayFree((ProArray *)&contour);
+        }
+        log("FLANGE_ATTACH_EDGE id=%d smt_contour_code=%d contour=%d\n", item.id, code, count);
+        (*evidence)["attachment_edge"] = {
+            {"id", item.id}, {"smt_edge_contour_code", code}, {"smt_edge_contour_count", count}};
+    } catch (ProError code) {
+        log("FLANGE_ATTACH_EDGE_FAILED=%d\n", code);
+        (*evidence)["attachment_edge"] = {{"edge_error", code}};
+    }
+    try {
+        auto body = active_body();
+        J types = J::array();
+        ProError code = ProSolidBodySurfaceVisit(&body, smt_surface_type_cb, &types);
+        log("FLANGE_BODY_SURFACES code=%d count=%d\n", code, (int)types.size());
+        (*evidence)["body_surface_code"] = code;
+        (*evidence)["body_surfaces"] = types;
+    } catch (ProError code) {
+        log("FLANGE_BODY_SURFACES_FAILED=%d\n", code);
+        (*evidence)["body_surface_code"] = code;
+    }
+}
+// DEV-051 T05/T11 evidence: Creo answers the flange create with a bare -1
+// (PRO_TK_GENERAL_ERROR) and an empty ProFeature error list, so neither the code nor
+// the element errors name the rejected element. On the failing path only, this records
+// both sides of the comparison the card asks for:
+//   flange_attempt.xml  - the tree this implementation builds, before create;
+//   flange_expected.xml - the tree Creo itself completes for a minimal incomplete
+//                         flange feature (PRO_FEAT_CR_INCOMPLETE_FEAT + extract).
+// Both files go to the job output directory and their paths, with every raw code, are
+// staged into the failed operation record so the MCP result carries them. The probe
+// feature is deleted again; a probe failure is logged and never replaces the original
+// create error.
+static void flange_tree_evidence(ProElement attempted, const J &op) {
+    J evidence = J::object();
+    flange_attachment_evidence(op, &evidence);
+    auto dump = [&](ProElement root, const std::wstring &name, const std::string &key) {
+        ProPath output;
+        path(output, generic_job + L"\\output\\" + name);
+        ProError code = ProElemtreeWrite(root, PRO_ELEMTREE_XML, output);
+        log("FLANGE_TREE_%s code=%d file=%s\n", key.c_str(), code, utf8(output).c_str());
+        evidence[key] = {{"code", code}, {"file", utf8(output)}};
+    };
+    dump(attempted, L"flange_attempt.xml", "attempted");
+    ProElement probe = nullptr;
+    try {
+        probe = node(nullptr, PRO_E_FEATURE_TREE);
+        integer(probe, PRO_E_FEATURE_TYPE, PRO_FEAT_WALL);
+        integer(probe, PRO_E_SMT_WALL_TYPE, PRO_SMT_WALL_TYPE_FLANGE);
+        integer(probe, PRO_E_SMT_FLANGE_TYPE, PRO_FLANGE_WALL_TYPE_2D_SWEPT);
+        text(probe, PRO_E_STD_FEATURE_NAME,
+             wide(op["label"].get<std::string>() + "_probe").c_str());
+        ProFeature incomplete = create(probe, PRO_FEAT_CR_INCOMPLETE_FEAT);
+        CK(ProElementFree(&probe));
+        probe = nullptr;
+        evidence["probe_feature_id"] = incomplete.id;
+        ProElement expected = nullptr;
+        ProError extracted =
+            ProFeatureElemtreeExtract(&incomplete, nullptr, PRO_FEAT_EXTRACT_NO_OPTS, &expected);
+        log("FLANGE_TREE_EXTRACT_INCOMPLETE_FEAT=%d\n", extracted);
+        evidence["extract_code"] = extracted;
+        if (!extracted && expected) {
+            dump(expected, L"flange_expected.xml", "expected");
+            ProFeatureElemtreeFree(&incomplete, expected);
+        }
+        ProIntlist ids = nullptr;
+        CK(ProArrayAlloc(1, sizeof(int), 1, (ProArray *)&ids));
+        ids[0] = incomplete.id;
+        ProFeatureDeleteOptions *options = nullptr;
+        CK(ProArrayAlloc(1, sizeof(ProFeatureDeleteOptions), 1, (ProArray *)&options));
+        options[0] = PRO_FEAT_DELETE_NO_OPTS;
+        ProError removed =
+            ProFeatureWithoptionsDelete((ProSolid)board, ids, options, PRO_REGEN_NO_FLAGS);
+        ProArrayFree((ProArray *)&ids);
+        ProArrayFree((ProArray *)&options);
+        log("FLANGE_TREE_PROBE_DELETE=%d\n", removed);
+        evidence["probe_delete_code"] = removed;
+    } catch (ProError code) {
+        log("FLANGE_TREE_PROBE_FAILED=%d\n", code);
+        evidence["probe_error"] = code;
+        if (probe)
+            ProElementFree(&probe);
+    } catch (...) {
+        log("FLANGE_TREE_PROBE_FAILED=exception\n");
+        evidence["probe_error"] = "exception";
+        if (probe)
+            ProElementFree(&probe);
+    }
+    stage_operation_result(evidence);
+}
+
 static void generic_sheetmetal_flange(const J &op) {
     // Validate the relief request before any feature exists so an unsupported
     // combination cannot leave a created-but-wrong wall behind.
     FlangeReliefRequest relief_request = flange_relief_request(op);
+    // DEV-051 T05/T11: a flange can only attach to an edge that borders a sheetmetal
+    // wall face. Creo's own query answers PRO_TK_BAD_CONTEXT (-8) for an edge of a side
+    // (rim) surface, and ProFeatureWithoptionsCreate then fails with a bare -1 and an
+    // empty element error list. Reject that input here, carrying the raw code, so the
+    // caller is not sent back to guessing.
+    {
+        ProSelection probe = resolve(op["edge"]);
+        ProModelitem item;
+        CK(ProSelectionModelitemGet(probe, &item));
+        ProSelectionFree(&probe);
+        ProEdge handle;
+        CK(ProEdgeInit((ProSolid)board, item.id, &handle));
+        ProEdge *contour = nullptr;
+        ProError code = ProSmtedgeContourGet((ProPart)board, handle, &contour);
+        int count = 0;
+        if (!code) {
+            CK(ProArraySizeGet((ProArray)contour, &count));
+            ProArrayFree((ProArray *)&contour);
+        }
+        log("FLANGE_ATTACH_EDGE id=%d smt_contour_code=%d smt_contour=%d\n", item.id, code, count);
+        if (code == PRO_TK_BAD_CONTEXT)
+            throw std::runtime_error(
+                "sheetmetal_flange cannot attach to edge " + std::to_string(item.id) +
+                ": ProSmtedgeContourGet returned PRO_TK_BAD_CONTEXT (-8), so this edge is not "
+                "on a sheetmetal wall face (green/white contour). Pick an edge on a wall face "
+                "boundary: an edge shared by two side/rim surfaces cannot carry a flange. "
+                "Build the base with sheetmetal_wall(depth=plate size, thickness=sheet "
+                "thickness) so the wall faces are the ones the flange attaches to.");
+    }
     ProSection section;
     CK(ProSection2DAlloc(&section));
     ProName section_name;
     wcscpy_s(section_name, wide(op["label"]).c_str());
     CK(ProSectionNameSet(section, section_name));
-    double a = (90 - op["angle"].get<double>()) * acos(-1.0) / 180, h = op["height"];
+    // DEV-051 T05/T11: the section's horizontal centerline is the alignment with the
+    // attachment wall and the coordinate system is the attachment point, so the leg is
+    // measured from that alignment and angle 90 is perpendicular to the wall. The
+    // previous (90 - angle) form put the leg along +x for every 90 degree request, i.e.
+    // collinear with the centerline (native.log LINE_wall 0,0 -> 80,0): no bend exists,
+    // and Creo rejects that complete tree with a bare -1.
+    double a = op["angle"].get<double>() * acos(-1.0) / 180, h = op["height"];
     J profile = {{"profile", J::array({{{"type", "centerline"},
                                         {"name", "attachment"},
                                         {"start", J::array({-10, 0})},
@@ -578,7 +730,15 @@ static void generic_sheetmetal_flange(const J &op) {
     integer(dev, PRO_E_SMT_DEV_LEN_SOURCE, PRO_DVL_SRC_FEAT_YF_ONLY);
     real(node(dev, PRO_E_SMT_DEV_LEN_Y_FACTOR), PRO_E_SMT_DEV_LEN_Y_FACTOR_VALUE,
          op.value("y_factor", 0.5));
-    ProFeature f = create(root);
+    ProFeature f = {};
+    try {
+        f = create(root);
+    } catch (...) {
+        // Record both element trees before the failure leaves this scope; the original
+        // Toolkit error is rethrown unchanged.
+        flange_tree_evidence(root, op);
+        throw;
+    }
     CK(ProSolidRegenerate((ProSolid)board, PRO_REGEN_NO_FLAGS));
     CK(ProElementFree(&root));
     extra["section_path"] = J::array({PRO_E_STD_SECTION, PRO_E_SKETCHER});

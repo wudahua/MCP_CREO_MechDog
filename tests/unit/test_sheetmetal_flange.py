@@ -398,7 +398,11 @@ def wall_sketch() -> dict:
     return {
         "op": "sketch",
         "label": "wall_sketch",
-        "plane": "XY",
+        # DEV-051 T05/T11: the sketch plane decides where the sheet thickness lives.
+        # An XZ sketch keeps the 1 mm thin width in Z and the extrusion in Y, so
+        # sheetmetal_wall(depth=232, thickness=1) gives the 185 x 232 x 1 plate whose
+        # 185 x 232 faces are the sheetmetal wall faces.
+        "plane": "XZ",
         "entities": [
             {
                 "type": "line",
@@ -411,12 +415,19 @@ def wall_sketch() -> dict:
 
 
 def wall_base_op() -> dict:
+    # DEV-051 T05/T11: "thickness" is the sheet metal thickness written as
+    # PRO_E_STD_SMT_THICKNESS and "depth" is the extrusion, so a 185 x 232 x 1 plate is
+    # sheetmetal_wall(depth=232, thickness=1). The pre-fix fixture passed
+    # depth=1/thickness=232: volume and bbox still matched 185 x 232 x 1, but Creo typed
+    # the part as a 232 mm thick sheet (green/white faces 185 x 1 at y=-116/+116, the four
+    # 185 x 232 faces as side surfaces), so every flange edge was a rim edge and
+    # ProSmtedgeContourGet answered PRO_TK_BAD_CONTEXT (-8).
     return {
         "op": "sheetmetal_wall",
         "label": "base_wall",
         "sketch": "wall_sketch",
-        "depth": PLATE_THICKNESS_MM,
-        "thickness": PLATE_WIDTH_MM,
+        "depth": PLATE_WIDTH_MM,
+        "thickness": PLATE_THICKNESS_MM,
         "direction": "positive",
     }
 
@@ -994,6 +1005,37 @@ class OracleTest(unittest.TestCase):
         flat = ([0.0, 0.0, 0.0], [185.0 + FLANGE_HEIGHT_MM, 232.0, 1.0])
         self.assertEqual(classify_direction(flat), "in_plane")
         self.assertEqual(classify_direction(PLATE_BOUNDS), "ambiguous")
+
+
+class BaseWallContractTest(unittest.TestCase):
+    """DEV-051 T05/T11: the fixture must build a 1 mm sheet, not a 232 mm one."""
+
+    def test_base_wall_puts_sheet_thickness_on_the_thickness_axis(self) -> None:
+        sketch = wall_sketch()
+        base = wall_base_op()
+        self.assertEqual(sketch["plane"], "XZ")
+        self.assertEqual(base["depth"], PLATE_WIDTH_MM)
+        self.assertEqual(base["thickness"], PLATE_THICKNESS_MM)
+        volume = PLATE_LENGTH_MM * base["thickness"] * base["depth"]
+        self.assertAlmostEqual(volume, PLATE_VOLUME_MM3)
+
+    def test_swapped_base_parameters_keep_the_volume_but_not_the_sheet(self) -> None:
+        # depth=1/thickness=232 (the pre-fix fixture) has exactly the same volume and
+        # bbox, so only Creo's sheetmetal typing separates the two cases: the sheet is
+        # 232 mm thick, the 185 x 232 faces become side surfaces and every flange edge
+        # is a rim edge (ProSmtedgeContourGet = -8, PRO_TK_BAD_CONTEXT).
+        swapped = dict(wall_base_op(), depth=PLATE_THICKNESS_MM, thickness=PLATE_WIDTH_MM)
+        self.assertEqual(
+            PLATE_LENGTH_MM * swapped["thickness"] * swapped["depth"], PLATE_VOLUME_MM3
+        )
+        self.assertNotEqual(swapped["thickness"], PLATE_THICKNESS_MM)
+
+    def test_in_plane_wall_also_satisfies_the_volume_oracle(self) -> None:
+        # 232 x 80 x 1 mm3 is added by a bent flange and by a flat in-plane extension
+        # alike, so the live gate must require direction == "up" as well.
+        self.assertEqual(wall_volume_mm3(PLATE_WIDTH_MM), 18_560.0)
+        flat = ([0.0, -232.0, -0.5], [PLATE_LENGTH_MM + FLANGE_HEIGHT_MM, 0.0, 0.5])
+        self.assertEqual(classify_direction(flat), "in_plane")
 
 
 class HypothesisTest(unittest.TestCase):

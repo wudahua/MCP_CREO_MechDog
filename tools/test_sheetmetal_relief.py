@@ -554,6 +554,12 @@ async def run_profile(runner: LiveRunner, profile: str, relief_value: dict | Non
         if runner.volume(after) is not None and before_volume is not None:
             added = runner.volume(after) - before_volume
         saved = (terminal.get("result") or {}).get("saved_file_reloaded_and_verified")
+        # DEV-051 T11: the volume oracle alone cannot tell a bend from a flat
+        # extension - 232 x 80 x 1 is the same number either way, and the 2026-10-29
+        # round produced exactly that in-plane wall. The measured bbox decides the
+        # direction, and only "up" counts as a bent flange.
+        after_bounds = fx.active_bbox(runner.inspection(after))
+        direction = fx.classify_direction(after_bounds)
         row.update(
             revision_after=after.get("revision"),
             volume_after_mm3=runner.volume(after),
@@ -561,10 +567,14 @@ async def run_profile(runner: LiveRunner, profile: str, relief_value: dict | Non
             abs_error_mm3=None if added is None else abs(added - expected_added),
             relief_echo=(runner.record(after, label) or {}).get("relief"),
             feature_types=runner.feature_types(after),
+            body_bbox_after=[list(after_bounds[0]), list(after_bounds[1])],
+            direction=direction,
+            material_side=fx.classify_material_side(after_bounds, side),
             saved_file_reloaded_and_verified=saved,
             passed=bool(
                 added is not None
                 and abs(added - expected_added) <= max(0.01, abs(expected_added) * 1e-3)
+                and direction == "up"
                 and saved is True
             ),
         )

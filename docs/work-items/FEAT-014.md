@@ -1,6 +1,6 @@
 # FEAT-014：钣金折弯释放与四壁能力
 
-日期：2026-10-28（Asia/Shanghai）补工作卡，沿用既有 ID。类型：功能。优先级：P2（既有台账）；状态：**离线实现完成、实机未通过**（2026-10-29 两轮底板已建成，第一道折边报 `ProFeatureWithoptionsCreate=-1`；四壁与释放能力未完成，根因未定）。目标版本：未排期。
+日期：2026-10-28（Asia/Shanghai）补工作卡，沿用既有 ID。类型：功能。优先级：P2（既有台账）；状态：**第一道折边可创建、折弯几何未定**（2026-10-29 第三轮：第一道 `-1` 的根因已定——验收基体实为 232 mm 厚板、所选边不在壁面上——已改基体并在准入层拒绝该类边；修正后两道折边 succeeded 但几何是平铺延伸而非折弯，第三道挂起；四壁与释放能力未完成）。目标版本：未排期。
 
 来源：[统一台账](../BACKLOG.md)既有 FEAT-014 行、[0.7.0 R1 S3](../validation/feedback-0.7.0-2026-10-28/2026-10-27_CREO_0.7.0_钣金增料与四壁折边仍未修复验收报告.md)、[逐章映射](../validation/feedback-0.7.0-2026-10-28/MAPPING.md)。关联 [BUG-047](BUG-047.md) 的折边方向/材料侧缺陷与 [BUG-032](BUG-032.md) 的有效薄底板契约。
 
@@ -55,3 +55,15 @@ T05 可交付可复现/未复现结论与根因证据，但只有四壁原生特
 与 0.7.0 R1 S3 原件的关键差异：原件前两道 ±X 成功、第三道 `f_ny` 才 -1；本轮**第一道**就 -1，此时还没有相邻壁、没有角部。因此 T05 的角部重叠假设不能解释本轮失败，四壁能力仍未完成，`relief` 两档也无法比较（失败早于释放生效）。报告 `build/sheetmetal_relief/20261029T161528_cc1fda94/report.json`。
 
 下一步：用 `PRO_FEAT_CR_INCOMPLETE_FEAT` + `ProFeatureElemtreeExtract` 取回 Creo 补齐的折边元素树，与写入的树比对（flange 类型与 2D 扫掠截面的配对、`PRO_E_SMT_WALL_HEIGHT=NONE`、TAN 曲线集合在转换型壁边上的合法性、SIDE1/SIDE2 TO_END 组合）。
+
+## 2026-10-29 第三轮实机：第一道折边 `-1` 根因（已定）与无折弯（未定）
+
+按 [T11 验收卡](../development/DEV051-T11-ACCEPTANCE.md) 与 [T05 验收卡](../development/DEV051-T05-ACCEPTANCE.md) 的实机记录：
+
+- **`-1` 根因已定**：折边失败路径取回本实现写入的树与 Creo 用 `PRO_FEAT_CR_INCOMPLETE_FEAT` 补全的树，两者在 `PRO_FEAT_WALL`、`PRO_E_SMT_WALL_TYPE=17`、`PRO_E_SMT_FLANGE_TYPE=1`、`DEPTH_TYPE=4/4`（TO_END）、`WALL_HEIGHT_TYPE=0`（NONE）、`SHARPS_TO_BENDS`、`SEC_FLIP`、`THICKNESS_FLIP` 上逐项一致；Creo 的 `ProErrorlist` 为空。真正原因是承载对象：`ProSmtedgeContourGet(edge 125)=-8`（`PRO_TK_BAD_CONTEXT`，边不在 green/white 壁面），因为验收基体 `sheetmetal_wall(depth=1, thickness=232)` 实际是 **232 mm 厚的钣金件**（green/white 相距 232 mm、185×232 大面全是 `SIDE`）。R=2.54 折弯 232 mm 厚板不可能。
+- **已改**：① 夹具基体改 `plane="XZ"` + `sheetmetal_wall(depth=232, thickness=1)`（真正的 1 mm 板，体积/bbox 不变）；② 折边入口用 `ProSmtedgeContourGet` 拒绝不在壁面上的边，消息带 `-8` 原始码与可行做法（不再以裸 `-1` 失败）；③ 截面腿按"中心线=对齐线、坐标系=贴附点"量取角度（原 `(90-angle)` 让 90° 请求得到与中心线共线的零折弯腿）；④ 失败路径保留元素树与面类型取证。
+- **实机（1 mm 板）**：底板 42 920（rev 1）→ `f_px` 61 480（+18 560，rev 2）→ `f_nx` 80 040（+18 560，rev 3），两次 `saved_file_reloaded_and_verified=true`、`ProSmtedgeContourGet=0`（4 条轮廓边）。
+- **未定（关键）**：两道折边是**平铺延伸**：bbox 只在 X 增长 80 mm（185→265、0→-80），Z 仍 ±0.5；体积 232×80×1 与折弯同值，体积断言无法区分。截面如何让 Creo 形成折弯仍未定；候选探针见 T11 卡"仍未决项"。
+- **新阻塞**：第三道 `f_ny` 在 `ProFeatureWithoptionsCreate` 内挂起（job `bb5543fb3c66404e95172876fa1ac9aa` 仍 running、`toolkit.lock` 被占用），驱动按规则停止；四壁与释放仍未验证。
+
+状态口径：FEAT-014 = **第一道折边可创建（根因已定并修复准入），折弯几何未定，第三道挂起，四壁与释放未完成**。不得表述为"折边已修复"或"四壁能力已具备"。

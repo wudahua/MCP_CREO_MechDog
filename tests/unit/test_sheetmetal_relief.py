@@ -343,6 +343,17 @@ class NativeTreeTest(unittest.TestCase):
     def test_parent_body_stays_implicit(self):
         self.assertNotIn("PRO_E_BODY", self.flange + self.side + self.record)
 
+    def test_attachment_edge_must_border_a_wall_face(self):
+        # DEV-051 T05/T11: an edge between side/rim surfaces answers
+        # PRO_TK_BAD_CONTEXT (-8) and Creo then fails the create with a bare -1 and an
+        # empty element error list, so the edge is checked before the tree exists.
+        self.assertIn("ProSmtedgeContourGet", self.flange)
+        self.assertIn("PRO_TK_BAD_CONTEXT", self.flange)
+        self.assertLess(
+            self.flange.index("ProSmtedgeContourGet"),
+            self.flange.index("node(nullptr, PRO_E_FEATURE_TREE)"),
+        )
+
     def test_unknown_type_and_ends_throw_instead_of_falling_back(self):
         self.assertIn("Unsupported sheetmetal flange relief type", self.request)
         self.assertIn("relief ends must be both, side1 or side2", self.request)

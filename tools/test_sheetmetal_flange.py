@@ -251,9 +251,16 @@ def check_native_source() -> dict:
         and 'op["radius"]' in body,
         "y_factor_exposed": 'op.value("y_factor", 0.5)' in body
         and "PRO_DVL_SRC_FEAT_YF_ONLY" in body,
-        "angle_in_section_frame": '(90 - op["angle"].get<double>())' in body,
+        # DEV-051 T05/T11 (2026-10-29): the section's horizontal centerline is the
+        # alignment with the attachment wall and its coordinate system is the attachment
+        # point, so the leg angle is measured from that alignment. The pre-fix
+        # (90 - angle) form made every 90 degree request collinear with the centerline
+        # (native.log LINE_wall 0,0 -> 80,0): a zero-bend profile.
+        "angle_in_section_frame": 'op["angle"].get<double>() * acos(-1.0) / 180' in body,
         "regenerate_after_create": "ProSolidRegenerate" in body,
         "parent_is_the_model_not_a_body_element": "PRO_E_BODY" not in body,
+        "attachment_edge_checked_on_a_wall_face": "ProSmtedgeContourGet" in body
+        and "PRO_TK_BAD_CONTEXT" in body,
         "create_uses_model_selection": "ProMdlToModelitem(board, &mi)" in geometry
         and "PRO_FEAT_CR_NO_OPTS" in geometry,
         "section_path_recorded": 'extra["section_path"]' in body,

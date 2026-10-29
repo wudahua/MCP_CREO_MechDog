@@ -229,3 +229,98 @@ not supported for the first wall
 1. 折边定因（建议按 sweep 已有的做法）：先用 `PRO_FEAT_CR_INCOMPLETE_FEAT` 建不完整壁特征，`ProFeatureElemtreeExtract` 取回 Creo 自己补齐的元素树，与本实现写入的树逐项比对（重点：`PRO_E_SMT_FLANGE_TYPE` 与 2D 扫掠截面是否必须成对、`PRO_E_SMT_WALL_HEIGHT` 取 NONE 时是否仍需要高度元素、`PRO_E_SMT_FLANGE_TRAJ_CRV_NORM`/曲线集合的 TAN 指令在“转换型壁”的边是否合法、`PRO_E_SMT_FLANGE_DEPTH=SIDE1/SIDE2 TO_END` 的组合）。
 2. 定因后再谈 relief 是否被接受；本轮不对 `PRO_E_BEND_RELIEF_LENGTH_TYPE/LENGTH/ANGLE` 的待验风险下结论。
 3. 底板几何已确认（bbox `[0,-116,0]`–`[185,116,1]`），后续 `corner_run`（宽 1、深 77.46）与 `ends=side1/side2` 对照可在此基体上直接跑，不必再等第一壁。
+
+## 2026-10-29 第三轮实机：元素树取证 → 第一道折边 `-1` 根因，以及"能创建但不折弯"
+
+日期：2026-10-29。分支 `codex/dev051-feedback070`。本轮不改版本、不合 main、不推标签、不 push、不发布；未启动/关闭/重启 Creo，未注入故障，未清 unknown 保护，未重提已受理 job。**不得读作"四壁能力已具备"**：两道折边能创建但几何是平铺延伸（无折弯），第三道在 `ProFeatureWithoptionsCreate` 内挂起。
+
+### 3.1 取证手段（原生，失败路径专用）
+
+`native/advanced.cpp` 的折边失败路径新增两块诊断，只在 `create(root)` 抛错后执行，原始 Toolkit 错误原样重抛：
+
+- `flange_tree_evidence()`：把**本实现写入的树**写成 `output/flange_attempt.xml`；再用最小树（`PRO_FEAT_WALL` + `PRO_SMT_WALL_TYPE_FLANGE` + `PRO_FLANGE_WALL_TYPE_2D_SWEPT` + 名称）以 `PRO_FEAT_CR_INCOMPLETE_FEAT` 创建不完全特征，`ProFeatureElemtreeExtract` 取回 Creo 补全的树写成 `output/flange_expected.xml`，随后 `ProFeatureWithoptionsDelete` 删除该探针特征。
+- `flange_attachment_evidence()`：记录所选边的 `ProSmtedgeContourGet` 返回码与轮廓边数，并逐个面调用 `ProSmtSurfaceTypeGet`（0 NON_SMT / 1 SIDE / 2 FACE-green / 3 OFFSET-white）。
+- 两份 XML 的路径、探针 id、每个原始返回码都 `stage_operation_result` 进失败操作记录，因此 `creo_get_job` 的结果里直接可见；`native.log` 另有 `FLANGE_TREE_*`、`FLANGE_ATTACH_EDGE`、`FLANGE_BODY_SURFACE` 行。
+
+### 3.2 元素差异清单（job `2ca158056a3f4590b23e43cbaab8a4ed`，模型 `49e509e02c5e47eebdb2411ce33cc453`）
+
+| 元素 | 本实现 `flange_attempt.xml` | Creo 补全 `flange_expected.xml` | 判定 |
+| --- | --- | --- | --- |
+| `PRO_E_FEATURE_TYPE` | `PRO_FEAT_WALL` | `PRO_FEAT_WALL` | 一致（没有 `PRO_FEAT_FLANGE`，折边就是 wall+flange type） |
+| `PRO_E_SMT_WALL_TYPE` | 17 | 17 | 一致 |
+| `PRO_E_SMT_FLANGE_TYPE` | 1（2D_SWEPT） | 1 | 一致 |
+| `PRO_E_STD_CURVE_COLLECTION_APPL` | TAN 指令 102 + 边 125 引用 | 空集合（不完全特征不接受输入） | 无法据此判定 |
+| `PRO_E_SMT_FLANGE_TRAJ_CRV_NORM` | 1 | 1 | 一致 |
+| `PRO_E_STD_SECTION.PRO_E_STD_SEC_METHOD` | 25（`PRO_SEC_SKETCH`，`ProStdSection.h` 唯一受支持值） | 0（未初始化模板） | 本实现取值符合 SDK |
+| `PRO_E_STD_SEC_SETUP_PLANE` | 无 | 有（引用全空） | 用户自定义截面按文档不需要 |
+| `PRO_E_SKETCHER` | pointer `**` | pointer `0x0` | — |
+| `PRO_E_SMT_FLANGE_DEPTH` side1/side2 `DEPTH_TYPE` | 4 / 4（`PRO_WALL_LEN_TYPE_TO_END`） | 4 / 4 | 一致，与官方样例相同 |
+| `PRO_E_SMT_FILLETS_VALUE` | 2.54（请求 R） | 3.71（会话默认） | 本实现按请求 |
+| `PRO_E_SMT_WALL_HEIGHT_TYPE` | 0（`PRO_SMT_WALL_HEIGHT_NONE`） | 0 | 一致 |
+| `PRO_E_SMT_BEND_RELIEF` 两端类型 | 0（`PRO_BEND_RLF_NONE`） | 5（`PRO_BEND_RLF_PARAM`） | 本实现默认关闭，T11 契约内 |
+| `PRO_E_SMT_DEV_LEN_SOURCE` | -6（`PRO_DVL_SRC_FEAT_YF_ONLY`） | -2 | 本实现按 y_factor 契约 |
+| 角部释放 / 斜接 / 边撕裂 / `CORNERS_ARR` / `DEV_LEN_BEND_TABLE` / `WALL_DIM_SCHEME` | 无 | 有默认值 | 本实现不支持，已在准入拒绝 |
+
+结论：**请求侧元素与 Creo 自己的默认模板逐项一致**（wall type 17、flange type 1、depth type 4/4、height 0、sharps→bends 1、sec flip 0、thickness flip 0），差异只在 Creo 会补的释放/角部/斜接默认值；Creo 的 `ProErrorlist` 为空。因此 `-1` 不能用"元素缺失或取值错误"解释。
+
+### 3.3 定位到承载对象：所选边不在壁面上
+
+同一棵树（去掉截面）能创建**不完全**折边（`ProFeatureWithoptionsCreate=0`），说明结构本身可接受。承载对象的证据：
+
+```text
+FLANGE_ATTACH_EDGE id=125 smt_contour_code=-8 contour=0
+FLANGE_BODY_SURFACE id=101 smt_type=2   (FACE, green)
+FLANGE_BODY_SURFACE id=111 smt_type=3   (OFFSET, white)
+FLANGE_BODY_SURFACE id=122/124/126/127 smt_type=1 (SIDE)
+```
+
+`ProSmtedgeContourGet=-8` 是 `PRO_TK_BAD_CONTEXT`，SDK 原文即"该边不在 green/white 面上"。查该基体：green(101) 在 y=-116、white(111) 在 y=+116，相距 **232 mm**；四块 185×232 大面全是 `SIDE`。即验收基体不是 1 mm 板，而是**板厚 232 mm 的钣金件**，只有 185×1 的壁面，所选 `z=1` 边是厚度侧（rim）边。
+
+根因：`tests/unit/test_sheetmetal_flange.py` 的 `wall_base_op()` 传了 `depth=1, thickness=232`。`sheetmetal_wall` 的 `thickness` 写进 `PRO_E_STD_SMT_THICKNESS`（板厚）、`depth` 是拉伸深度，所以体积与 bbox 仍是 185×232×1、42 920 mm³（历次 T03/T04/T11 验收只核这两个数），但钣金语义是 232 mm 厚板；R=2.54 折弯 232 mm 厚板几何上不可能。
+
+### 3.4 修复（两处，均有上节证据）
+
+1. **基体契约**（`tests/unit/test_sheetmetal_flange.py`、`tests/unit/test_sheetmetal_overlap.py`）：草图改 `plane="XZ"`、`sheetmetal_wall(depth=232, thickness=1)`。XZ 让 1 mm 薄宽落在 Z、232 mm 拉伸落在 Y，得到真正的 185×232×1 板（green/white 相距 1 mm，185×232 面是壁面）。
+2. **贴边面准入**（`native/advanced.cpp` `generic_sheetmetal_flange`）：建树前用 `ProSmtedgeContourGet` 检查所选边，`PRO_TK_BAD_CONTEXT` 时直接拒绝，消息带原始码与可行做法。实测回显（job `ec93d1b14bf741c2918c39e63b96b26f`、`dd0cc5db45514470b41f7c71a7f0d194`）：
+
+   `sheetmetal_flange cannot attach to edge 125: ProSmtedgeContourGet returned PRO_TK_BAD_CONTEXT (-8), so this edge is not on a sheetmetal wall face (green/white contour). ...`
+
+此外保留 3.1 的取证代码，并修正截面腿方向：中心线是与贴附壁的对齐线、坐标系是贴附点，因此 `angle` 应从对齐线量起；原 `(90 - angle)` 让每个 90° 请求得到与中心线共线的腿（`LINE_wall 0,0 -> 80,0`，零折弯截面）。
+
+### 3.5 修正后的实机结果（job/model/revision/体积/误差/回显）
+
+| 步骤 | job | 模型 | 结果 |
+| --- | --- | --- | --- |
+| 底板 | `579dc118e3354f838297cea5fd4758c1` | `6512c820cf674516912024ac5855610a` | succeeded，42 920 mm³，rev 1，bbox `[0,-232,-0.5]`–`[185,0,0.5]` |
+| `f_px`（边 105，+X 上边，232） | `07b5ec2570c84dd6b5ce295653d2e5f1` | 同上 | succeeded，61 480 mm³（+18 560，误差 0），rev 2，bbox `[0,-232,-0.5]`–`[265,0,0.5]` |
+| `f_nx`（边 104，-X 上边，232） | `b57c115d72a14686895c4332874a16e5` | 同上 | succeeded，80 040 mm³（+18 560，误差 0），rev 3，bbox `[-80,-232,-0.5]`–`[265,0,0.5]` |
+| `f_ny`（边 103，-Y 上边，185） | `bb5543fb3c66404e95172876fa1ac9aa` | 同上 | **挂起**：job 仍 `running`、`stage=executing_feature_plan`，`native.log` 停在 `ProFeatureWithoptionsCreate` 前的最后一次 `ProArrayAlloc`，>420 s 无输出；驱动抛 `LiveStop` 并停止 |
+
+- 两个成功的折边都 `ProSmtedgeContourGet=0`（`smt_contour=4`）、`saved_file_reloaded_and_verified=true`（`inspection_source=saved_reloaded`），revision 逐次 +1。
+- **但几何是平铺延伸，不是折弯**：两次之后 bbox 只在 X 增长 80 mm（`185→265`、`0→-80`），Z 仍是 ±0.5。体积 +18 560 = 232×80×1 对"折弯"和"平铺"同值，体积断言无法区分，因此驱动成功分支已改为记录 `body_bbox_after`/`direction`/`material_side`，并要求 `direction=="up"` 才算通过。
+- 第三道挂起是 0.7.0 时代"第三道 `-1`"的新形态（`-1` → 挂起）。按交接规则不重提、不清保护、不动 Creo；`toolkit.lock` 仍被该作业持有，本轮后续实机（含 T04 的 BUG-046 隔离）因此全部无法执行。
+
+报告：`build/sheetmetal_relief/20261029T165319_74073f09/report.json`（SHA256 `D80E018E582C37B8B72D42AB4AF810BD4E53ADB0FDEB8225F27C7F7107829505`；`stopped=LiveStop`、`cases=[]`，因为挂起发生在第一个 profile 的第一道折边之后；作业序列可从 `calls` 还原）。
+
+### 3.6 结论
+
+| 项目 | 结论 |
+| --- | --- |
+| 第一道折边 `-1` 的根因 | **已定**：验收基体是 232 mm 厚板（`sheetmetal_wall` 的 `thickness`/`depth` 用反），所选边不在壁面上（`ProSmtedgeContourGet=-8`）。已修基体 + 加准入拒绝 |
+| 折边能否创建 | 在真正的 1 mm 板上**能**：两道折边 succeeded，体积/重载/revision 全部正确 |
+| 折边几何是否正确 | **否 / 未定**：两道都是平铺延伸（bbox 只在 X 增长），没有折弯；根因未定 |
+| 四壁能力 | 仍未完成：第三道挂起，第四道未执行 |
+| 释放（relief） | 仍未验证：只有第一个 profile 到达折边，第二个 profile 未开始 |
+
+### 3.7 仍未决项与下一步
+
+1. **折边无折弯（P1）**：需在同一个 1 mm 板上确定"截面如何让 Creo 形成折弯"。候选探针（未执行，因会话挂起）：① 只读加载 `<creo>/Common Files/text/smt/flange_shapes/i_wall.sec` 作对照截面，比较其实体构成（是否含弯弧/短水平段）；② `PRO_FLANGE_WALL_TYPE_3D_SWEPT` + 显式方向/起点；③ `PRO_E_SMT_FLANGE_SEC_FLIP=TRUE` 正交对照；④ `PRO_E_SMT_WALL_HEIGHT` 由 NONE 改成 `PRO_SMT_WALL_HEIGHT_AUTO` 对照。每项都必须 bbox 在 Z 增长 80 mm 才判通过，体积相同不算通过。
+2. **第三道挂起（P0，新）**：等会话恢复后先确认 `ProFeatureWithoptionsCreate` 是否弹出对话框；拿到根因前不得重试该边。建议登记为独立缺陷（挂起 + 占用通道），与 BUG-001 会话恢复记录一并核对。
+3. **未验证**：`relief` 两档（none / rectangular 1×1）在真实折弯几何下的体积与缺口位置、单端释放、展开/折回、`height` 编辑、删除重建、四壁角部。
+4. 本轮原生有改动，已 `bridge.py build` 重建执行器；`native/advanced.cpp` 通过 `clang-format --dry-run --Werror`，改动的 Python 文件通过 `ruff format/check`，`tools/dev_check.py` 为 `success=true`。
+
+### 3.8 构建身份
+
+- 实机作业使用的执行器由本轮 16:53 的源码构建；之后只有 `clang-format` 重排与注释整理，语义未变。
+- 本轮共 `bridge.py build` 6 次（取证版、腿方向、不完全特征试验、贴边面准入、格式化后、注释整理后）；最终 `build/source.sha256` = `541a9657d24055c80763b47985c5b37a18a094216ef97d44ace8e28f39118f13`，`build/creo_worker.exe` 已按该源码重建。
+- 最终 `tools/dev_check.py`：`success=true`、`unit_tests=passed`（详见本卡"`docs/development`"之外的 `build/development_check.json`）。
