@@ -161,7 +161,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -CreoRoot 'C
 
 重启后核对以下四项，任一不符按未完成部署处理：
 
-1. **版本**：`creo_capabilities` 的 `version` 等于所装 Release 标签去掉 `v` 前缀（例如标签 `v0.7.1` → `0.7.1`），并与该源码 `version.py` 一致。版本号本身不足以证明部署正确。
+1. **版本**：`creo_capabilities` 的 `version` 等于所装 Release 标签去掉 `v` 前缀（例如标签 `v0.8.0` → `0.8.0`），并与该源码 `version.py` 一致。版本号本身不足以证明部署正确。
 2. **路径**：`runtime.python_executable`、`runtime.server_entry`、`runtime.code_root` 指向本次解压目录及其 `.venv`，不是其他副本；移动目录后必须重跑安装。
 3. **启动身份**：`runtime.source_changed_since_startup=false`，`runtime.source_fingerprints_at_startup` 已生成；为 `true` 时磁盘源码已变化，重启服务再验收。客户端配置改动不会替换已运行的服务进程。
 4. **工具清单**：`creo_capabilities` 的工具数与 `unavailable_operations` 与该版本说明一致（0.8.0 为 94 个工具），而不是沿用上一版本的可见清单。
