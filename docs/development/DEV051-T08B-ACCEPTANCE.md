@@ -106,3 +106,29 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；ruff 0.17
   - `counts.bodies` 语义未变（记录数）；新增 `inspection_summary()["body_counts"]`，未知为 `null`，不要用 `counts.bodies` 代替材料体数量。
   - `section_records(model, "metadata")` 的排除集合会自动包含 `body_counts`（因为它出现在摘要里），无需另外登记。
   - 无新工具、无 schema 变更、无版本变更；摘要体积增加约 150 字节，`test_the_separated_block_fits_the_response_budget` 覆盖 40 体仍 < 32 KiB。
+
+## 2026-10-29 实机：五类模型 body_counts 实测（驱动 `tools/test_body_counts_live.py`）
+
+环境：手动打开的 Creo 12.4.0.0、`auto_start_creo=false`、唯一 dev 服务 0.8.4、`ready/connected=true`；未启动/关闭/重启 Creo，未重提作业；每例一个新建模型，挂起预算 180 s。命令：
+
+```text
+.\.venv\Scripts\python.exe tools\test_body_counts_live.py --live --confirm-session-usable
+```
+
+报告：`build/body_counts/20261029T230048_c2a6bb7b/report.json`，SHA256 `265bb0587fe4cfd9e685ce16976ce2be9bccb032a63995e5d815072b81e39361`，退出码 0，5/5 通过。
+
+| 例 | 模型 / job | 体积 / rev | `body_counts` | body 记录 |
+| --- | --- | --- | --- | --- |
+| `part_single` 单实体件 | `e9f5d4b46bbf4ccf9a02082bc9fca3a4` / `85638bcfa8da4046af9503c738362144` | 20 000 / 1 | objects=1 records=1 active=1 with_material=1 without_material=0 | 1 条：id 52、`active`、surface_count 6、material true、bbox 50×40×10 |
+| `part_two_body` 两实体件 | `85b714d806b441499a5a0b24d48e8c97` / `22f387273d274678b736e5f5ce702d28` | 21 000 / 1 | objects=2 records=2 active=2 with_material=2 without_material=0 | 2 条 ACTIVE（id 52、id 90），各 6 面，`counts.bodies=2` |
+| `sheetmetal_wall` 1 mm 钣金壁 | `888c3fe1b2c840d2a5699ae9f0519580` / `c357c07324614ecab5ad58c4e101cac9` | 42 920 / 1 | **objects=2 records=2 active=1 with_material=1 without_material=1** | id −5778 `no_geometry`（material false、bbox null、surface_count null）+ id 49 `active`（6 面、bbox x0…185 / y−232…0 / z−0.5…0.5） |
+| `part_surface_quilt` 曲面拉伸叠加 | `01be14ce918e4be79e57db109514b6a7` / `b891e917944d4159be6942902019fe46` | 20 000 / 1 | objects=1 records=1 active=1 with_material=1 without_material=0 | 仍 1 条 ACTIVE，`counts.bodies=1` |
+| `assembly_two` 两组件装配 | `d33bdac0d25f4a1e89a75b762c82246d` / `7783bb1cb3fc46388423403d6cea864a` | 40 000 / 1 | **null** | 无 body 记录；components=2（`component_a`/`component_b`，feature_id 40/43） |
+
+结论：
+
+- **幽灵 body 复现**：钣金第一壁后确实是 2 条记录、1 个材料体。`counts.bodies=2` 是记录数，`body_counts.with_material=1` 是材料体数，两者不再混为一个字段；`id=-5778` 的 `no_geometry` 记录就是历史报告里的“无 bbox body”，现在有 `state_name`、`material=false`、`has_geometry=null` 可区分“没有这个键”和“测出来是空”。
+- **构造/面组不误计**：曲面（quilt）拉伸叠加后 body 记录仍为 1、体积不变，未把面组算成材料体；装配返回 `null` 而非 0，也未把组件算成 body。
+- **多实体装配**：`body_counts` 为 `null`、组件数由 `components` 独立给出，两种口径没有互相顶替。
+- **部分验证**：`part_surface_quilt` 的作业成功且 body 不增加，但该模型后续只读巡检返回的 `features` 列表为空，**未独立确认 quilt 特征存在**；这里只能记“未增加 body 记录”，不记“面组已建”。
+- 未测：`compact` 与 `full` 两种 detail 的逐字一致性（本轮只走 full 快照）、`surface_count` 与 bbox 的 `bbox_query_code` 异常分支、0.3.0 原 job 的 `id=-5778` 逐字重放、sweep(add) 后 2→1 的真实状态变化、Creo 9/10。BUG-040 的“材料归属”不再需要实机继续调查：本次已给出三类件的真实数值。
