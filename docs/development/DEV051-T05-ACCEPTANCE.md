@@ -185,3 +185,10 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；pydantic 
 - **修正后的实机**：底板 42 920（rev 1）→ `f_px` 61 480（+18 560，rev 2）→ `f_nx` 80 040（+18 560，rev 3），两次都 `saved_file_reloaded_and_verified=true`、`smt_contour=4`。
 - **仍未定**：两道折边的 bbox 只在 X 增长 80 mm、Z 不变，说明是平铺延伸而不是折弯；体积 232×80×1 与折弯同值，所以 T05 原"体积 oracle"无法区分这两种几何。第三道 `f_ny` 在 `ProFeatureWithoptionsCreate` 内挂起（job `bb5543fb3c66404e95172876fa1ac9aa` 仍 running、`toolkit.lock` 被占用），按规则停止实机。
 - **T05 假设表的状态更新**：H1（引用漂移）与 H2（角部重叠）**在本轮均未成立/未验证**——失败发生在第一道，既无边漂移也无相邻壁；H3/H4 未验证。新增结论是"失败可以来自基体不是薄板 / 边不在壁面"，这一条已写进准入错误。
+
+## 2026-10-29 第四轮：四壁未执行（无 Creo 会话）
+
+- 本轮未能执行四壁：Creo 会话在 2026-10-29 19:51:03 由 Windows 关闭（`xtop.exe` `AppHangB1`），`creo_session_status` 返回 `connected=false`、`toolkit_code=-4`，`creo_process_snapshot.processes=[]`；现场见 [T11 验收卡](DEV051-T11-ACCEPTANCE.md) §4.1。
+- 折边截面已按库存 `flange_shapes` 重建（单线、无 centerline、腿放在父壁法向）并重建执行器，但**没有实机结果**；四道折边、每道体积增量、角部干涉、H1–H4 假设表全部保持未验证（不得读作通过）。
+- 新增 `tools/test_flange_direction.py`：单模型单折边、只看 bbox（Z 增长 ≥72 mm 且向上）、180 s 挂起预算。四壁之前必须先用它确认"折边真的折弯"，否则四壁的体积增量没有判别力（平铺与折弯体积同为 232×80×1 = 18 560 mm³）。
+- 下一步：会话恢复 → `tools/test_flange_direction.py --live --confirm-session-usable` 通过 → 再跑四壁。

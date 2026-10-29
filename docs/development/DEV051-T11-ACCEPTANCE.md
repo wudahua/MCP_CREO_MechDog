@@ -324,3 +324,97 @@ FLANGE_BODY_SURFACE id=122/124/126/127 smt_type=1 (SIDE)
 - 实机作业使用的执行器由本轮 16:53 的源码构建；之后只有 `clang-format` 重排与注释整理，语义未变。
 - 本轮共 `bridge.py build` 6 次（取证版、腿方向、不完全特征试验、贴边面准入、格式化后、注释整理后）；最终 `build/source.sha256` = `541a9657d24055c80763b47985c5b37a18a094216ef97d44ace8e28f39118f13`，`build/creo_worker.exe` 已按该源码重建。
 - 最终 `tools/dev_check.py`：`success=true`、`unit_tests=passed`（详见本卡"`docs/development`"之外的 `build/development_check.json`）。
+
+## 2026-10-29 第四轮：库存截面比对、截面重建与探针待命（实机被会话消失阻塞）
+
+日期：2026-10-29（Asia/Shanghai）。分支 `codex/dev051-feedback070`，本批起点 HEAD `e5fe021`。本轮不合 main、不推标签、不 push、不发布；**未启动、未重启、未关闭 Creo**，未注入故障，未清 unknown 保护，未重提任何已受理 job。**本轮没有新增实机证据**，因此折边是否形成 90° 折弯仍未定，四壁与释放能力仍未完成。
+
+### 4.1 阻塞现场（必须先读）
+
+交接前提是"Creo 已重新启动、新会话可用"，实际探测到的是会话再次消失：
+
+| 时间 | 证据 | 取值 |
+| --- | --- | --- |
+| 2026-10-29 19:51:03 | Windows 事件日志 Application / Windows Error Reporting 1001 | `AppHangB1`，`P1: xtop.exe`、`P2: 40.0.2025.111` |
+| 2026-10-29 19:51:03 | Windows 事件日志 Application / Application Hang 1002 | "程序 xtop.exe 版本 40.0.2025.111 停止与 Windows 交互并已关闭" |
+| 2026-10-29 19:53 / 20:06 | `tasklist /FI "IMAGENAME eq parametric.exe"`、`eq xtop.exe` | 两次均为"没有运行的任务匹配指定标准"；只剩 `nmsd`（pid 6504） |
+| 2026-10-29 20:04 | `creo_startup_status`（只读快照，未提交作业） | `state=timeout`、`connected=false`、`auto_start_enabled=false`、`launch_attempt=48`、`launch_reserved=false` |
+| 2026-10-29 20:04 | `creo_session_status`（9 秒只读探测） | `connected=false`、`connection_state=not_found_or_unreadable`、`toolkit_code=-4`、`worker_exit_code=20`、`creo_process_snapshot.processes=[]`（`uncertain=false`） |
+
+即 MCP 侧枚举不到任何 Creo 进程，不是"IPC 端点坏了但有进程"的情况。上一轮挂起的第三道折边作业 `bb5543fb3c66404e95172876fa1ac9aa` 随该会话一起消失，已无法再读到终态或对话框证据；`jobs/bb5543fb3c66404e95172876fa1ac9aa/native.log` 保留在 `ProFeatureWithoptionsCreate` 之前的位置，作为最后一次现场。
+
+处置：按交接规则"必须人工才能过"的条款，本轮**不启动 Creo**（服务侧 `auto_start_creo=false`、`automatic_launch_allowed=false`），不重提、不清锁、不动进程；依赖实机的步骤（A 探针、T05 四壁、T11 两档 relief、T04 隔离）全部暂停，转为离线部分。
+
+### 4.2 离线：库存折边截面到底包含什么
+
+读取本机 `C:\Program Files\PTC\Creo 12.4.0.0\Common Files\text\smt\flange_shapes\` 全部 9 个 `.sec`（`#UGC:2 SECTION` 段文件，实体表为二进制），按实体类型计数并取出尺寸文本（尺寸值以 ASCII 出现在 `text_value` 槽中）：
+
+| 文件 | line | arc | coord_sys | point | dimen | 尺寸文本 | 读作 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `i_wall.sec` | 1 | 0 | 1 | 0 | 1 | `5.00`、`90.00` | 一条 90° 直腿（直壁） |
+| `flushed_hem.sec` | 1 | 0 | 1 | 0 | 1 | `1.00` | 一条直腿（压平包边） |
+| `c_hem.sec` | 1 | 1 | 1 | 0 | 1 | `0.50` | 直腿 + 1 段弯弧 |
+| `open_hem.sec` | 1 | 1 | 1 | 1 | 1 | `0.50` | 直腿 + 弯弧 + 点 |
+| `s_wall.sec` | 1 | 1 | 1 | 1 | 1 | `1.27` | 直腿 + 弯弧（S 形） |
+| `arc_wall.sec` | 1 | 1 | 1 | 1 | 1 | `5.00` | 直腿 + 弯弧（圆弧壁） |
+| `joggle_hem.sec` | 1 | 1 | 1 | 0 | 1 | `2.24` | 直腿 + 弯弧（错位） |
+| `z_hem.sec` | 1 | 1 | 1 | 0 | 1 | `0.50` | 直腿 + 弯弧（Z 形） |
+| `duck_hem.sec` | 1 | 1 | 1 | 0 | 1 | — | 直腿 + 弯弧（鸭嘴） |
+
+可离线确定的结构事实：
+
+- **每个库存截面都只有 1 条 line、1 个 `coord_sys`、1 个尺寸，且都没有 centerline**。此前实现写入的 `centerline(-10,0 → 10,0) + 腿线` 不是 Creo 库存截面的形状。
+- **弯弧只出现在 hem 类**（C/open/S/Z/joggle/duck/arc），`i_wall` 与 `flushed_hem` 不含 arc：折弯弧由特征按半径生成，不需要画进截面，**截面只描述直腿**。
+- `i_wall` 的尺寸是 `5.00`（腿长）与 `90.00`（角度），即**一条 90° 的直腿就是"平铺延伸/直壁"**的形状，而不是"折 90°"的形状——正好对应上一轮实测到的"能建出但是平的"。
+
+### 4.3 离线：方向推断（把上一轮的现象接上）
+
+上一轮 `native.log` 记录 `LINE_wall=0.000000000,0.000000000 -> 0.000000000,80.000000000`（腿在草图 +y、长 80），而实机 bbox 只在 +X 增长 80 mm、Z 仍 0..1。两者合起来只有一个解释：
+
+- 折边截面的**草图 +y ⇒ 父壁平面内方向**（+X 外伸）；
+- **草图 +x ⇒ 父壁法向**（板厚/竖直方向）。
+
+所以 90° 请求必须把腿放在草图 +x；上一轮放在 +y 等于"沿父壁平铺 80 mm"，与 `i_wall`（90° 直腿 = 直壁）自洽。上一轮把 `(90-angle)` 判为"零折弯腿"并据 `-1` 反推不成立——那一轮 `-1` 的根因已由第三轮定为厚基体/边不在壁面，与腿方向无关。
+
+### 4.4 代码改动（唯一原生改动，已重建执行器）
+
+`native/advanced.cpp` 的 `generic_sheetmetal_flange`：
+
+- 截面改为**单条线** `(0,0) → (h·sinA, h·cosA)` + 一个 `height` 长度尺寸（`PRO_TK_DIM_LINE`），**去掉 centerline**；坐标系仍在贴附点；角度按"从父壁平面量起"取值，90° ⇒ 腿落在草图 +x，0° ⇒ 沿父壁（等价旧行为）。
+- 元素树其余部分一律不动（`PRO_E_SMT_FLANGE_SEC_FLIP=PRO_B_FALSE`、`PRO_E_SMT_WALL_HEIGHT=NONE`、两侧 `TO_END`、`FILLETS=R2.54 内侧`、`THICKNESS_FLIP=FALSE`、`y_factor=0.5`、relief 分支原样），本轮只改"截面构成 + 腿方向"一个变量。
+- `bridge.py build` 已重建 `build/creo_worker.exe`（2026-10-29 19:58:15）；`clang-format --dry-run --Werror native/advanced.cpp` 通过。
+
+### 4.5 新增探针驱动 `tools/test_flange_direction.py`
+
+- 一个模型只建一条折边：底板 `185×232×1`（`plane="XZ"`、`sheetmetal_wall(depth=232, thickness=1)`）+ `f_px`（+X 上边，由 `creo_inspect_model` 现选，不硬编码 id）。两例各用新模型名：`angle90`（不翻）、`angle90_flip`（`flip=true`，即 `PRO_E_SMT_FLANGE_TRAJ_CRV_NORM` 取 FLIP）。
+- **判定只看 bbox**：`z_growth ≥ 0.9 × height`（72 mm）且 `direction=="up"` 才算通过；包络按上下两向取大值，因此"往下折"记为"是折弯但不通过"（材料侧缺陷，BUG-047），体积相同明确不算通过。
+- **挂起规则**：`wait_job(budget=180)`；超时或状态未知即 `LiveStop`，把 job/阶段/`native_log_tail` 写进报告并停止后续提交；不重提、不杀 Creo、不重启、不清锁。
+- **离线守卫**：`native_section()` 直接读 `native/advanced.cpp` 的折边函数体，断言"腿在法向""无 centerline""单线""`WALL_HEIGHT_NONE`"；单测 `tests/unit/test_flange_direction.py`（6 项：结构守卫、上/下/平铺三种 bbox 判定、计划与 180 s 预算）。
+- 离线运行：`build/flange_direction/offline_20261029.json`（SHA256 `79FA450740BF10B68567B24A0E9AFB4BEAEDCFD4B0CDF95BA9CEE8BAABCD1A36`），`mode=offline`、`not_executed` 明确写"无 MCP 客户端、无 Creo 连接"。
+
+### 4.6 本轮结论
+
+| 项目 | 结论 |
+| --- | --- |
+| A 折边形成 90° 折弯 | **未定**：截面已按库存形状重建并编译，但**没有实机结果**，不得读作已修复 |
+| 截面构成（离线） | **已定**：库存 9 个截面均为"1 line + coord_sys + 尺寸、无 centerline"，弯弧由特征生成；`i_wall` 的 90° 直腿就是直壁 |
+| 方向约定（离线） | **已定**（依据上一轮 `LINE_wall 0,0→0,80` 与 bbox 只增 X）：草图 +x = 父壁法向，+y = 壁面内 |
+| 四壁（T05） | 未执行；无会话 |
+| 释放（T11 两档） | 未执行；无会话 |
+| 第三道挂起 | 会话已消失，无新增证据；该 job 不会再读到终态 |
+
+### 4.7 下一步（会话恢复后按顺序）
+
+1. 人工重开 Creo → `creo_startup_status` 到 `ready`、`creo_session_status` `connected=true`。
+2. `.venv\Scripts\python.exe tools\test_flange_direction.py --live --confirm-session-usable`：先看 `angle90` 是否 `z_growth≈80` 且 `direction=="up"`。
+   - 若向下折（`direction=="down"`）：下一变量是 `PRO_E_SMT_FLANGE_SEC_FLIP=TRUE`（需按新事实给该元素开口子），不是改角度。
+   - 若仍是平铺（`direction=="in_plane"`）：按 §3.7 的顺序试 `WALL_HEIGHT` NONE→AUTO、`PRO_FLANGE_WALL_TYPE_3D_SWEPT`。
+3. 折边成立后再跑四壁（`tools/test_sheetmetal_relief.py --live`，first profile 四道）与 T11 两档 `relief`（省略 / rectangular both 1×1），记录体积增量与缺口位置。
+4. T04 隔离（`sheetmetal_add_offgroup` → `sheetmetal_add_new_body`）同一通道串行，一次只跑一条路线。
+
+### 4.8 本批交付检查
+
+- `clang-format --dry-run --Werror native/advanced.cpp` → 通过。
+- `ruff format` → `2 files left unchanged`；`ruff check` → `All checks passed!`。
+- `bridge.py build` → `build/creo_worker.exe`；`tests.unit.test_flange_direction` 6 项通过。
+- `tools/dev_check.py` → `success=true`、`unit_tests=passed`（超时上限 900 s）、`style_summary` 为 `lint_findings=30`、`unformatted_files=16`（与本批前基线一致，本批无新增）、`cpp_files_checked=33`、`python_files_checked=249`；`source.commit=e5fe021`、`dirty=true`（本机会话数据未提交）；报告 `build/development_check.json`（SHA256 `CD69C6909234F711B12BEE5FC210E664C52E6001C5BBBE4036ABA0332CF94F85`）。

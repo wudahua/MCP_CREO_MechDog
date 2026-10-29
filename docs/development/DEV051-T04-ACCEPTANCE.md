@@ -220,3 +220,9 @@ Sketch: 'overlap_sketch'.
 - 结论不变：**钣金件上实体 add 的 `-1` 仍无新增实机证据**，既未复现也未排除；不得据此在准入层声明"不支持"。拒绝码与指引必须等本轮隔离结果出来后再定，避免以猜测替代证据。
 
 下一轮（会话恢复后，先确认 `ProFeatureWithoptionsCreate` 挂起原因）：按 `sheetmetal_add_offgroup` → `sheetmetal_add_new_body` → 原有三路的顺序串行执行，逐例记录 job/model/revision/体积/回显；若两条隔离路线都失败且元素错误为空，再考虑"钣金体不支持实体增料"的支持边界，并同时给出 `sheetmetal_wall`/`sheetmetal_flange` 指引。
+
+## 2026-10-29 第四轮：T04 隔离用例未执行（无 Creo 会话）
+
+- 两条隔离路线（`sheetmetal_add_offgroup`、`sheetmetal_add_new_body`）本轮仍未提交：会话消失（见 [T11 验收卡](DEV051-T11-ACCEPTANCE.md) §4.1），同一 Toolkit 通道不可用，交接规则也禁止在无会话时启动/重启或重提。
+- 因此"钣金件上实体 add 的 `-1`"仍**既未复现也未排除**；本轮不改准入层、不写支持边界、不加拒绝码——按 BUG-046 既有条款，须先有隔离结果。
+- 下一步：会话恢复后按 `sheetmetal_add_offgroup` → `sheetmetal_add_new_body` → 三路原样重跑；两条都失败且元素错误为空时，才补可识别拒绝码与 `sheetmetal_wall`/`sheetmetal_flange` 指引。
