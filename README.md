@@ -1,4 +1,4 @@
-# MCP_CREO_MechDog 0.8.3
+# MCP_CREO_MechDog 0.8.4
 
 开发维护从 [开发入口](docs/DEVELOPMENT.md) 和 [统一功能台账](docs/BACKLOG.md) 开始。每项工作先定义验收；语言与单元检查、Creo 实机验收分别记录。项目采用渐进布局整理，当前支持环境见 [兼容矩阵](docs/COMPATIBILITY.md)。
 
@@ -6,7 +6,7 @@
 
 当前注册 **94 个工具**，实际可见清单以 `creo_capabilities` 为准。接口覆盖常见实体特征、磁盘模型打开、受管副本接管、会话枚举、**装配只读检查与回放规划**、受控恢复、**显式世代回收**及直接混合，**尚未完成所有 Creo 操作和参数组合的覆盖**。禁用操作从工具列表隐藏，并在提交前拒绝。服务使用官方 Python MCP SDK 2.3.0、stdio 传输，采用 [MIT 许可证](LICENSE)。使用者在自己的 Windows 电脑上安装依赖并编译 Toolkit 执行器，由本地 AI 客户端调用。
 
-当前正式版 0.8.3 是 DEV-051 实机验收证据与测试驱动的 PATCH 交付，沿用 0.8.0 的能力，保持 **94 个工具**，无生产代码、API 或几何语义变更。T02 弧方向四例、T06 新件倾斜草图九例、T07 多环替代夹具三例和 T08A 预览文件四例已在本机 Creo 12.4.0.0 实测；各自未测范围见[0.8.3 版本说明](docs/RELEASE_NOTES_0.8.3.md)和[发布记录](docs/validation/RELEASE-0.8.3.md)。升级请使用 0.8.3 种子包。其他原生能力仍待实机验收，WorkBuddy 未执行，BUG-085 断连根因仍未确定。0.7.2 的实机证据保持历史归属。
+当前正式版 0.8.4 修复 0.8.0—0.8.3 的钣金首壁准入阻断；本机 Creo 12.4.0.0 的 T03 五组首壁参数已精确通过并保存重载。公开工具仍为 **94 个**。旧折边夹具实际是 232 mm 厚板，已改为真正 1 mm 板并补贴边面准入；两道折边虽可创建，几何仍是平铺延伸，四壁与钣金 add 均未修复。19:51 的 `xtop.exe` AppHangB1 后会话无法重新挂接，其余指定实机未执行。T02/T06/T07/T08A 的通过范围保留 [0.8.3 证据](docs/validation/RELEASE-0.8.3.md)。升级请使用 0.8.4 种子包；详情见[0.8.4 版本说明](docs/RELEASE_NOTES_0.8.4.md)与[发布记录](docs/validation/RELEASE-0.8.4.md)。WorkBuddy 未执行，BUG-085 断连根因仍未确定。
 
 服务后台检测已有会话、协调启动并检查建模就绪；成功建模及保存重载才证明相应操作在该环境可用。启动配置和排错见[安装说明](docs/INSTALL.md)。
 
@@ -81,7 +81,7 @@ MCP 不会代为注册、加载 DLL 或修改 Creo 安全策略。完整流程�
 | 修饰特征 | `creo_round`、`creo_chamfer`、`creo_shell`：恒定半径圆角、等距倒角、恒定厚度抽壳；用查询得到的边/面 ID 选引用 |
 | 基准与重复 | `creo_datum_plane`、`creo_datum_axis`、`creo_dimension_pattern`：偏移/角度基准面、基准轴、一方向尺寸阵列 |
 | 镜像、扫掠、拔模 | `creo_mirror`：整体/几何镜像；`creo_sweep`：恒定截面及命名截面尺寸；`creo_draft`：恒角、不分割拔模 |
-| 钣金 | `creo_new_sheetmetal`、`creo_sheetmetal_wall`、`creo_sheetmetal_flange`、`creo_sheetmetal_unbend`、`creo_sheetmetal_bend_back`、`creo_sheetmetal_flat_pattern`：首壁参数建模前校验、可选 `relief`（默认 `none`）、弯曲法兰、展开、折弯回去和平展；新分支待实机验收 |
+| 钣金 | `creo_new_sheetmetal`、`creo_sheetmetal_wall`、`creo_sheetmetal_flange`、`creo_sheetmetal_unbend`、`creo_sheetmetal_bend_back`、`creo_sheetmetal_flat_pattern`：首壁参数建模前校验、可选 `relief`（默认 `none`）、折边、展开、折弯回去和平展；首壁五组已在 0.8.4 实机通过，折边几何仍是平铺，四壁与 relief 待验 |
 | 装配 | `creo_new_assembly`、`creo_assemble_component`、`creo_component_placement`、`creo_component_constraints`、`creo_remove_component`、`creo_list_components`：组件版本快照、定位（Euler 或互斥的嵌套 3×3 `rotation_matrix`）、约束、删除和查询；含组件操作的作业附 `component_changes` 有界变更摘要（committed/rolled_back/unknown_outcome），`list_components` 约束保留数字 `type` 并附 `type_name` 符号；单作业插入多个组件与官方重建管线见 [ASSEMBLY_REBUILD.md](docs/ASSEMBLY_REBUILD.md)；矩阵放置子项已在本机 Creo 12.4 实机通过（0.6.0 交付，38 父作业含故意失败回滚），显式源件更新与嵌套装配仍开放，见 [FEAT-012](docs/work-items/FEAT-012.md) |
 | 新增曲面与实体 | `creo_surface_fill`、`creo_thicken`、`creo_solidify`、`creo_boolean_bodies`、`creo_rib` |
 | 新增基准 | `creo_datum_csys`、`creo_datum_points` |
@@ -104,7 +104,7 @@ MCP 不会代为注册、加载 DLL 或修改 Creo 安全策略。完整流程�
 
 特征保存为 Creo 可编辑的草图、拉伸、旋转、孔、圆角等，保留尺寸及依赖。多段线和矩形会展开为原生直线，不能将 `polyline` 名字当作单个尺寸引用；例如 `box_0` 是矩形第一条边。
 
-0.8.0 接口增量：圆弧 `dir` 只接受严格整数，零扫角和整圆输入拒绝；弧结果回显原生几何而非按输入推算。钣金首壁不再静默改写不一致参数，而是在建模前拒绝；`relief` 省略时为 `none`。装配组件可使用业务标签定位，回转特征返回实际原生轴查询结果；未知几何明确保持未知。多操作请求、`feature_state`、独立 `draft` 及失败后 `rolled_back` 的前置重建边界以各工具实际返回为准。上述新增原生行为尚待实机验收。
+0.8.0 接口增量：圆弧 `dir` 只接受严格整数，零扫角和整圆输入拒绝；弧结果回显原生几何而非按输入推算。钣金首壁不再静默改写不一致参数，而是在建模前拒绝；`relief` 省略时为 `none`。0.8.4 修复首壁准入将草图坐标系误计为几何的阻断，本机 T03 五组已通过。装配组件可使用业务标签定位，回转特征返回实际原生轴查询结果；未知几何明确保持未知。多操作请求、`feature_state`、独立 `draft` 及失败后 `rolled_back` 的前置重建边界以各工具实际返回为准。其余原生行为按各项实机证据与未测范围判断。
 
 提供接口不等于所有参数组合都已验证。[直线混合摘要](docs/validation_loft_seed.json) 与 [平滑混合摘要](docs/validation_loft_smooth.json) 保留两截面的历史测试；[其他开发功能摘要](docs/validation_development.json) 和 `build/capability_evidence.json` 是此前测试的历史证据，本轮未重跑其完整套件。已测试非矩形支架、带内孔和沟槽的轴类件、多实体圆弧/椭圆实体、样条拉伸曲面、薄壁对称拉伸、抽壳、边圆角和倒角、尺寸阵列及参数关系驱动。高级树接口需要符合 SDK 的具体特征定义，不能自动补齐任意缺失的草图或集合。
 
@@ -222,7 +222,7 @@ Toolkit 操作共用一个通道，提交时忙碌会立即拒绝；响应保持
 - 各类尺寸/约束的复杂组合、极端几何及外部人工修改的自动接管仍需后续扩展。
 - 孔支持直孔及可选原生沉孔／沉头；螺纹与标准孔系列未封装。倒角为等距，阵列支持一方向尺寸阵列和原生轴阵列。
 - 普通混合支持平行 XY 截面的种子复用及直接创建/追加。随包九个种子覆盖 2/3/4/6 截面的直线和平滑，以及 5 截面平滑；其他数量需显式兼容种子或直接创建并本机验证。直接混合仅支持受管草图、Z 严格递增和默认实体增材。不支持自动增减种子截面、转换连接模式、非平行截面或端点相切/曲率控制。数量上限不代表每种数量都已实测。新零件整体可用原生定位特征移动或旋转。
-- 钣金已验证首壁、90° 法兰、高度编辑、展开、折弯回去和平展；其他形状和折弯规则未全部验证。镜像、扫掠、拔模、装配、筋和工程图各自具有明确范围，见能力说明；复杂自由曲面及专业模块仍未完整封装。
+- 钣金首壁 T03 五组已在本机验证；修正的 1 mm 板上两道折边特征可创建并保存重载，但几何仍平铺，不能作为 90° 折弯通过证据。其他钣金能力及历史验证范围见版本说明和能力文档。镜像、扫掠、拔模、装配、筋和工程图各自具有明确范围；复杂自由曲面及专业模块仍未完整封装。
 - 装配插入源模型的版本快照，源模型后续修改不更新组件；子装配复制尚未开放。
 - `creo_create_feature_tree` 可扩展符合本机 SDK 的特征结构，但无法保证所有 PTC 特征类型和选项均可创建。
 - 不承诺任意文字描述都自动成功。AI 需要规划有效的轮廓、基准、尺寸和特征顺序；无效几何由 Creo 返回错误。
