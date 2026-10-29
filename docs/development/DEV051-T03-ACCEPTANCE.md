@@ -1,6 +1,6 @@
 # DEV-051 T03 验收卡：钣金壁参数（BUG-032，离线阶段）
 
-日期：2026-10-28 离线，2026-10-29 两轮实机（Asia/Shanghai）。阶段：**第一壁准入修复已实机通过（五个矩阵全过）**；仍未完成三轴 bbox/重心、厚壁分支与下游折边/展开。分支：`codex/dev051-feedback070`；工作区：`E:\Projects\MCP_CREO_MechDog`。第一轮（2026-10-29 早）五个矩阵全部被准入拒绝，见下文“实机验收失败”节；第二轮修复 `first_wall_line_length` 的实体计数口径后原样重跑，五例全部建壁成功且体积与独立 oracle 完全一致，见“第二轮实机”节。
+日期：2026-10-28 离线，2026-10-29 两轮实机，2026-10-30 板厚同步离线阶段（Asia/Shanghai）。阶段：**第一壁准入修复已实机通过（五个矩阵全过）；2026-10-30 完成零件级板厚同步的离线定因、实现与回归（见文末 2026-10-30 节），实机未验**；仍未完成三轴 bbox/重心、厚壁分支与下游折边/展开。分支：`codex/dev051-feedback070`；工作区：`E:\Projects\MCP_CREO_MechDog`。第一轮（2026-10-29 早）五个矩阵全部被准入拒绝，见下文“实机验收失败”节；第二轮修复 `first_wall_line_length` 的实体计数口径后原样重跑，五例全部建壁成功且体积与独立 oracle 完全一致，见“第二轮实机”节。
 
 ## 输入与来源
 
@@ -243,3 +243,63 @@ T11 两轮底板（同一 `sheetmetal_wall(depth=1, thickness=232)`）的 active
 
 1. 补 bbox/重心与 `direction=negative` 断言（驱动已具备快照能力，只需新增断言，不改期望口径）。
 2. 把 T11 的折边 `-1` 作为独立条目跟进（本轮已确认不再是第一壁问题）。
+
+## 2026-10-30：BUG-032/T03 板厚同步离线阶段（实现与回归完成，实机未验）
+
+日期：2026-10-30（Asia/Shanghai）。分支 `codex/dev051-feedback070`，基线提交 `4ffdd5d9907afe719c174c234df765664dc04f7f`。按 [DEV-051 派发表](DEV051-CONTINUATION-TASKS-2026-10-30.md) 的 BUG-032/T03 离线指派执行：只做离线定位、实现、单元/离线驱动与离线构建；未连接 MCP/Toolkit、未启动或操作 Creo、未实例化 MCP 客户端、未改 `version.py`、未合 main、未 push、未发布。工作区其他会话的未提交改动（`docs/BACKLOG.md`、`docs/DEVELOPMENT.md`、`0.7.x-*.md`、`RELEASE-0.8.5.md`、`DEV-051.md`、`session_activity.json`、`session_erase/`、`trail.txt.*` 等）未触碰。
+
+### 定位：矛盾出现在转换完成之后的零件级参数
+
+复现证据取自 T11 第六轮（`build/sheetmetal_relief/20261029T222754_44e6ab6a/report.json`）：`sheetmetal_wall(depth=232, thickness=1)` 几何正确（bbox z ±0.5、42 920 mm³），但 `ProSmtPartThicknessValueGet` 读到 3.71。逐阶段核对（`native/advanced.cpp` `generic_sheetmetal_wall`）：
+
+1. 请求层无覆写：Python 与原生按名分别传 `depth`/`thickness`（此前 T03 已证）。
+2. 薄壁拉伸：`PRO_E_THICKNESS` 正确驱动 1 mm 薄宽。
+3. `PRO_DTM_SRF_AS_WALL` 转换：`PRO_E_STD_SMT_THICKNESS=1` 只驱动**转换出的几何体**；五组矩阵体积全部正确也证明几何层无误。
+4. **零件级板厚没有任何写入路径**：`ProSmtPartThicknessGet` 返回的定义维度（`ProSmtPartThicknessValueGet` 的读源）从未被本流程设置，保留模型模板/会话默认值 3.71 mm（对照：T11 第三轮 `flange_expected.xml` 中 `PRO_E_SMT_FILLETS_VALUE=3.71` 同为会话默认来源）。
+
+结论：不是"查询读错参数"，是**零件级板厚参数真实未被同步**；折边回显只是把它暴露出来。SDK 核对：`ProSheetmetal.h` 的 `ProSmtPartThicknessGet`（返回"defines the thickness of a sheet metal part"的维度）与 `ProDimension.h` 的 `ProDimensionValueSet` + `ProSolidRegenerate`（仓库既有 `set_dimensions` 同一写入模式，`generic.cpp:2761/2872`）。
+
+### 实现（`native/advanced.cpp`，最小改动）
+
+`generic_sheetmetal_wall` 在既有体积恒等式校验（未改）之后新增同步块：
+
+1. `ProSmtPartThicknessValueGet` 实测零件级板厚；读不到即失败（不能证明厚度生效就不放行）。
+2. 与请求 `thickness` 偏差 >1e-6 时：`ProSmtPartThicknessGet` 取定义维度 → `ProDimensionValueSet` 写入请求值 → `ProSolidRegenerate` → 重新校验体积仍满足 `线长×thickness×depth`（容差不变），否则失败（"part thickness sync changed the wall geometry"）。
+3. 回读确认零件级板厚 == 请求值，否则失败（"did not sync the part thickness parameter"）。
+4. `wall_contract` 新增：`part_thickness_before_mm`（同步前实测）、`part_thickness_mm`（同步后实测）、`part_thickness_synced`；记录的是原生实测，不是请求回显。
+5. 新增原生日志 `SHEETMETAL_WALL_PART_THICKNESS before_mm=… requested_mm=…`、`synced_mm=… regenerated_mm3=…`。
+
+未改：转换元素树（含 `PRO_E_STD_SMT_THICKNESS`）、驱动面选择、体积恒等式、`flange_relief_record`（其 `ProSmtPartThicknessValueGet` 读源在本修复生效后即为正确值，无需改诊断）、schema、`server.py`。**这是对原生定义参数的真实写入并带回读验证，不是把回显替换成请求值**；同步后几何体积被再次证明未变。
+
+### 回归（厚度来源矛盾不允许判通过）
+
+- `tools/test_sheetmetal_contract.py` 新增纯判定 `thickness_verdict(thickness_mm, contract)`：`wall_contract` 缺原生实测板厚、或实测 ≠ 请求（>1e-6）时判失败并给出"thickness source contradiction"理由；实机驱动的每例 `passed` 现为 `体积 ∧ 厚度来源一致 ∧ saved_file_reloaded_and_verified`。**五组 depth/thickness 几何契约断言未放宽**。
+- `tests/unit/test_sheetmetal_contract.py` 新增 `PartThicknessSyncTest` 5 项：3.71/1.0 矛盾判不通过（BUG-032 形状）、缺原生实测判不通过、一致判通过、矩阵逐项对照、原生源码静态守卫（`part_thickness_read/dimension_sync/regen_recheck/mismatch_fails` 四项，复用 `check_native_source`，静态守卫只证明提交在树中、非原生验证）。
+
+### 命令与真实结果
+
+| # | 命令 | 真实结果 |
+| --- | --- | --- |
+| 1 | `.venv\Scripts\python.exe -m unittest tests.unit.test_sheetmetal_contract -v` | exit 0，Ran 23 tests，OK（18 旧 + 5 新） |
+| 2 | `.venv\Scripts\python.exe tools\test_sheetmetal_contract.py` | exit 0；报告 `build/sheetmetal_contract/20261030T072009_d9584c4d/report.json`（SHA256 `33cf1feb29b9d2c0760199eff9c221b1289f1e76451d59101556cdaf323f732f`）；`native_source` 九项守卫全 true；内置复跑 23/23 OK |
+| 3 | `-m unittest tests.unit.test_sheetmetal_contract tests.unit.test_sheetmetal_flange tests.unit.test_sheetmetal_overlap tests.unit.test_sheetmetal_relief` | exit 0，Ran 120 tests，OK（共享文件相关模块无回归） |
+| 4 | `.venv\Scripts\python.exe bridge.py build` | 成功；`build/build.log` 仅 3 条存量 C4819（`assembly_units.h`、`assembly_walk.h`、`generic.cpp`），无错误；`build/creo_worker.exe` 重新生成（2026-10-30 07:20:54，12 905 984 字节）；`build/source.sha256 = 2d7cd1d3f4678e7469f600f3c1c5fac6aa055d3cacb55741259d543089c4b213` |
+| 5 | `.venv\Scripts\clang-format.exe --dry-run --Werror native/advanced.cpp`；`ruff format` + `ruff check`（两个 Python 文件） | 全部通过（ruff format 重排了驱动一处换行，语义未变） |
+
+### 实际修改文件
+
+`native/advanced.cpp`；`tools/test_sheetmetal_contract.py`；`tests/unit/test_sheetmetal_contract.py`；本卡；`docs/work-items/BUG-032.md`。未改 `version.py`、schema、`server.py`、`native/generic.cpp`、`flange_relief_record`。提交仅按这些精确路径暂存。
+
+### 未验证（实机阶段待验，离线通过不等于整项验收通过）
+
+1. 原生零件级板厚 = 1.0：`thickness=1` 建壁后 `wall_contract.part_thickness_mm=1.0`、`part_thickness_before_mm=3.71`（若模板默认仍为 3.71）、`part_thickness_synced=true`；原生日志出现 `SHEETMETAL_WALL_PART_THICKNESS`。
+2. green/white 面距 = 1.0（`creo_inspect_model` 的 `ProSmtSurfaceTypeGet` 2/3 面距离）。
+3. 五组矩阵几何不变：体积、三轴 bbox、`wall_contract` 既有字段与第六轮同值；`saved_file_reloaded_and_verified=true` 且**保存重载后**板厚仍为请求值。
+4. `ProSmtPartThicknessGet`/`ProDimensionValueSet` 在真实会话中的返回码与再生行为（离线只能静态与编译验证；若 Creo 拒绝该写入，按失败消息定位，不得改为回显替代）。
+5. 下游联动：`relief` 回显 `part_thickness_mm` 变 1.0、`width_at_least_thickness` 在宽 1 mm 时即 true；T11 两档释放按修正后口径复测。
+
+### 给 T11 窗口的交接
+
+- 依赖提交：本批实现提交（见 git log，`BUG-032`主题）+ 基线 `4ffdd5d`；受测执行器 `build/source.sha256 = 2d7cd1d3…`（2026-10-30 07:20:54 构建）。
+- 复验入口：`.venv\Scripts\python.exe tools\test_sheetmetal_contract.py --live --confirm-session-usable`（唯一 dev 服务 `MCP_CREO_MechDog_dev`，先满足 BUG-001 会话条件）；每例报告新增 `thickness_source` 字段，`passed` 已含厚度一致性。
+- 若实机显示 `ProSmtPartThicknessGet` 返回错误或再生改写几何，失败消息会明确区分三种形态（读不到 / 同步改几何 / 回读不符），不要用"改回显"绕过；先记录原始码再定位。

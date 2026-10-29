@@ -21,6 +21,7 @@ from pydantic import ValidationError
 
 from creo_mechdog.schema import validate_operations
 from creo_mechdog.sheetmetal import first_wall_section_problem
+from tools import test_sheetmetal_contract as contract_driver
 
 LINE_LENGTH_MM = 185.0
 # (depth, thickness) with the reported open-line matrix.
@@ -288,6 +289,54 @@ class FirstWallSectionPredicateTest(unittest.TestCase):
                 problem = first_wall_section_problem(entities)
                 self.assertIsNotNone(problem)
                 self.assertIn("exactly one open straight line", problem)
+
+
+class PartThicknessSyncTest(unittest.TestCase):
+    """BUG-032: geometry thickness and native part thickness must agree.
+
+    A thickness source contradiction - geometry 1 mm while the part-level
+    sheetmetal thickness keeps the 3.71 mm template default (2026-10-29 T11
+    round 6) - must fail, even when the volume and bounding box are correct.
+    """
+
+    def test_three_point_seven_one_native_thickness_cannot_pass(self) -> None:
+        verdict = contract_driver.thickness_verdict(1.0, {"part_thickness_mm": 3.71})
+        self.assertFalse(verdict["passed"])
+        self.assertAlmostEqual(verdict["abs_error_mm"], 2.71, places=9)
+        self.assertIn("thickness source contradiction", verdict["reason"])
+        self.assertIn("does not prove the parameter", verdict["reason"])
+
+    def test_missing_native_measurement_cannot_pass(self) -> None:
+        for contract in ({}, {"part_thickness_mm": None}):
+            with self.subTest(contract=contract):
+                verdict = contract_driver.thickness_verdict(1.0, contract)
+                self.assertFalse(verdict["passed"])
+                self.assertIn("no measured native part thickness", verdict["reason"])
+
+    def test_matching_native_thickness_passes(self) -> None:
+        verdict = contract_driver.thickness_verdict(
+            1.0, {"part_thickness_mm": 1.0, "part_thickness_synced": True}
+        )
+        self.assertTrue(verdict["passed"])
+        self.assertAlmostEqual(verdict["abs_error_mm"], 0.0, places=9)
+
+    def test_matrix_thicknesses_are_judged_against_the_request(self) -> None:
+        for depth, thickness in MATRIX:
+            with self.subTest(depth=depth, thickness=thickness):
+                ok = contract_driver.thickness_verdict(thickness, {"part_thickness_mm": thickness})
+                bad = contract_driver.thickness_verdict(thickness, {"part_thickness_mm": 3.71})
+                self.assertTrue(ok["passed"])
+                self.assertFalse(bad["passed"])
+
+    def test_native_source_keeps_part_thickness_sync(self) -> None:
+        checks = contract_driver.check_native_source()["static_source_assertions"]
+        for name in (
+            "part_thickness_read",
+            "part_thickness_dimension_sync",
+            "part_thickness_regen_recheck",
+            "part_thickness_mismatch_fails",
+        ):
+            self.assertTrue(checks[name], name)
 
 
 if __name__ == "__main__":

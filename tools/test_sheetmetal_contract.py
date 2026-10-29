@@ -275,6 +275,13 @@ def check_native_source() -> dict:
         "volume_identity_guard": "SHEETMETAL_WALL_VOLUME" in source,
         "contract_recorded": '"wall_contract"' in source,
         "largest_face_heuristic_removed": "std::sort(e.begin(), e.end());" not in source,
+        # BUG-032/T03: the native wall must read, sync and re-prove the
+        # part-level sheetmetal thickness instead of trusting the geometry.
+        "part_thickness_read": "ProSmtPartThicknessValueGet" in source,
+        "part_thickness_dimension_sync": "ProSmtPartThicknessGet" in source
+        and "ProDimensionValueSet" in source,
+        "part_thickness_regen_recheck": "SHEETMETAL_WALL_PART_THICKNESS" in source,
+        "part_thickness_mismatch_fails": "did not sync the part thickness parameter" in source,
     }
     missing = [name for name, present in checks.items() if not present]
     assert not missing, f"native source guard missing: {missing}"
@@ -328,6 +335,42 @@ def volume_verdict(depth: float, thickness: float, measured: float | None) -> di
     }
 
 
+THICKNESS_TOLERANCE_MM = 1e-6
+
+
+def thickness_verdict(thickness_mm: float, contract: dict) -> dict:
+    """BUG-032: the native part-level thickness must agree with the request.
+
+    A wall may only pass when its contract carries a *measured* native part
+    thickness equal to the requested wall thickness. The 2026-10-29 round 6
+    defect shape - geometry 1 mm while ProSmtPartThicknessValueGet reads the
+    3.71 mm template default - is a thickness source contradiction and must
+    fail here, even when the volume and bounding box are correct.
+    """
+    native = contract.get("part_thickness_mm")
+    entry: dict = {
+        "requested_thickness_mm": thickness_mm,
+        "native_part_thickness_mm": native,
+        "part_thickness_synced": contract.get("part_thickness_synced"),
+    }
+    if native is None:
+        entry.update(
+            passed=False,
+            reason="wall_contract carries no measured native part thickness",
+        )
+        return entry
+    error = abs(float(native) - float(thickness_mm))
+    entry["abs_error_mm"] = error
+    entry["passed"] = error <= THICKNESS_TOLERANCE_MM
+    if not entry["passed"]:
+        entry["reason"] = (
+            "thickness source contradiction: the part-level sheetmetal thickness "
+            f"({native} mm) does not match the requested wall thickness "
+            f"({thickness_mm} mm); geometry alone does not prove the parameter"
+        )
+    return entry
+
+
 async def run_matrix_case(runner: LiveRunner, case: dict) -> dict:
     """One fresh model, one first wall, one measured volume."""
     depth, thickness = case["depth"], case["thickness"]
@@ -372,14 +415,20 @@ async def run_matrix_case(runner: LiveRunner, case: dict) -> dict:
     measured = runner.volume(snapshot)
     verdict = volume_verdict(depth, thickness, measured)
     contract = (runner.record(snapshot, "wall1") or {}).get("wall_contract") or {}
+    thickness_check = thickness_verdict(thickness, contract)
     entry.update(
         measured_volume_mm3=measured,
         expected_volume_mm3=verdict["expected_volume_mm3"],
         tolerance_mm3=verdict["tolerance_mm3"],
         abs_error_mm3=verdict["abs_error_mm3"],
         wall_contract=contract,
+        thickness_source=thickness_check,
         feature_types=runner.feature_types(snapshot),
-        passed=bool(verdict["passed"] and entry["saved_file_reloaded_and_verified"] is True),
+        passed=bool(
+            verdict["passed"]
+            and thickness_check["passed"]
+            and entry["saved_file_reloaded_and_verified"] is True
+        ),
     )
     if (depth, thickness) == (1.0, 232.0):
         reproduces = measured is not None and abs(float(measured) - REPORTED_VOLUME_MM3) <= 0.5

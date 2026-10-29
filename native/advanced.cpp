@@ -362,6 +362,51 @@ static void generic_sheetmetal_wall(const J &op) {
             "Sheetmetal wall volume " + std::to_string(measured) +
             " mm3 does not match line length x thickness x depth (" + std::to_string(expected) +
             " mm3); the native conversion changed the requested depth or thickness");
+    // BUG-032/T03: the PRO_E_STD_SMT_THICKNESS element above only drives the
+    // converted body geometry. The part-level sheetmetal thickness - the
+    // dimension ProSmtPartThicknessGet returns and ProSmtPartThicknessValueGet
+    // reads - keeps the template default (3.71 mm was read back on a 1 mm wall,
+    // T11 round 6), so every downstream thickness rule computes against the
+    // wrong value. Sync that dimension to the requested thickness, re-prove the
+    // geometry, and fail when either side disagrees; wall_contract records what
+    // the part actually reports, never a request echo.
+    ProPart part = ProMdlToPart(board);
+    double part_before = 0;
+    if (ProSmtPartThicknessValueGet(part, &part_before) != PRO_TK_NO_ERROR)
+        throw std::runtime_error(
+            "sheetmetal_wall could not read the part-level sheetmetal thickness after the "
+            "conversion, so the requested thickness cannot be proven to be in effect");
+    log("SHEETMETAL_WALL_PART_THICKNESS before_mm=%.9f requested_mm=%.9f\n", part_before,
+        thickness);
+    bool synced = false;
+    if (fabs(part_before - thickness) > 1e-6) {
+        ProDimension dimension;
+        CK(ProSmtPartThicknessGet(part, &dimension));
+        CK(ProDimensionValueSet(&dimension, thickness));
+        CK(ProSolidRegenerate((ProSolid)board, PRO_REGEN_NO_FLAGS));
+        double regenerated = volume();
+        log("SHEETMETAL_WALL_PART_THICKNESS synced_mm=%.9f regenerated_mm3=%.9f\n", thickness,
+            regenerated);
+        if (fabs(regenerated - expected) > std::max(0.01, expected * 1e-3))
+            throw std::runtime_error(
+                "sheetmetal_wall part thickness sync changed the wall geometry: volume " +
+                std::to_string(regenerated) +
+                " mm3 no longer matches line length x thickness x depth (" +
+                std::to_string(expected) + " mm3)");
+        measured = regenerated;
+        synced = true;
+    }
+    double part_after = 0;
+    if (ProSmtPartThicknessValueGet(part, &part_after) != PRO_TK_NO_ERROR)
+        throw std::runtime_error("sheetmetal_wall could not re-read the part-level sheetmetal "
+                                 "thickness after the sync");
+    if (fabs(part_after - thickness) > 1e-6)
+        throw std::runtime_error(
+            "sheetmetal_wall left the part-level sheetmetal thickness at " +
+            std::to_string(part_after) + " mm instead of the requested wall thickness " +
+            std::to_string(thickness) +
+            " mm; the conversion did not sync the part thickness parameter, so thickness "
+            "rules must not run against this wall");
     remember(op, f,
              {{"base_feature", base},
               {"construction", "thin_extrude_then_native_sheetmetal_conversion"},
@@ -370,7 +415,10 @@ static void generic_sheetmetal_wall(const J &op) {
                 {"expected_volume_mm3", expected},
                 {"measured_volume_mm3", measured},
                 {"driving_face_id", face["id"]},
-                {"driving_axis", axis}}}});
+                {"driving_axis", axis},
+                {"part_thickness_before_mm", part_before},
+                {"part_thickness_mm", part_after},
+                {"part_thickness_synced", synced}}}});
 }
 static void generic_sheetmetal_unbend(const J &op) {
     bool back = op["op"] == "sheetmetal_bend_back", flat = op["op"] == "sheetmetal_flat_pattern";
