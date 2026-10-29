@@ -1,5 +1,11 @@
 # 换电脑、换 Agent
 
+## 升级到 0.8.0
+
+同时下载并核对 0.8.0 源码包与种子包的 SHA256；用目标机匹配的 Creo Toolkit SDK 重跑 `setup.ps1`，重新安装 editable 包并重启 MCP 服务。通过 `creo_capabilities` 核对 `version=0.8.0`、工具数 94 和实际运行路径，再通过 `creo_list_seeds` 核对九个种子。不要混用旧版种子压缩包；旧版步骤和版本号保留在下文作为历史迁移记录。
+
+请求不兼容面：弧 `dir` 必须是严格整数，零扫角与整圆改为明确拒绝；钣金首壁冲突参数由静默改写变为建模前拒绝，`relief` 缺省为 `none`。调用方若依赖旧容错，应先修正请求。`creo_export_model(format="native_bundle")` 是已登记装配的新显式导出选项，检查 manifest 的 `complete` 和缺件清单后再交付；它不是原有 STEP/STL 导出的替代。新增原生分支本批未做实机验收，边界见[0.8.0 版本说明](RELEASE_NOTES_0.8.0.md)。
+
 MCP_CREO_MechDog 0.3.0 在安装 Creo 的 Windows 电脑上运行，通过本地 stdio MCP 调用。种子是可复制的原生 PRT 文件，不依赖某个 Agent 的聊天记录。本版没有远程 HTTP 服务入口。
 
 ## 同一电脑换 Agent

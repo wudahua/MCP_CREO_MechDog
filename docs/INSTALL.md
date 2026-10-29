@@ -1,6 +1,6 @@
 # 源码安装与接入
 
-当前服务／源码版本为 0.7.1（DEV-048 反馈修复），以 [version.py](../version.py) 为准；功能与边界见[版本说明](RELEASE_NOTES_0.7.1.md)，发布与安装证据见[发布验收记录](validation/RELEASE-0.7.1.md)。安装或升级后请按下文「升级与部署核对」确认所装版本、实际路径、启动身份和工具清单，不要只凭版本号判断。0.6.1 验收中出现的通道断连（[BUG-085](work-items/BUG-085.md)）根因未定，发布不意味着完整兼容或稳定性已验收。
+当前目标服务／源码版本为 0.8.0（DEV-051），以 [version.py](../version.py) 为准；新增接口和未测范围见[版本说明](RELEASE_NOTES_0.8.0.md)，发布记录见[验收记录](validation/RELEASE-0.8.0.md)。安装或升级后请按下文「升级与部署核对」确认实际路径、启动身份和 94 个工具。0.6.1 验收中出现的通道断连（[BUG-085](work-items/BUG-085.md)）根因未定。
 
 ## 需要的环境
 
@@ -102,7 +102,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -CreoRoot 'C
 
 启动客户端中的 MCP 服务，后台自动复用已有会话或启动配置的 Creo。处理启动时出现的登录、许可及其他模态对话框，然后让 AI：
 
-1. 调用 `creo_capabilities`，确认运行版本与所装 Release 标签一致、工具数与清单符合该版本（0.7.1 为 94 个工具）；核对 `runtime.python_executable`、`runtime.server_entry`、`runtime.code_root` 的实际路径与 `runtime.source_changed_since_startup`，再查看 `families`、`seed_library` 和 `unavailable_operations`。直接混合及已有零件追加已开放，受范围限制；见 [版本说明](RELEASE_NOTES_0.7.1.md)。
+1. 调用 `creo_capabilities`，确认运行版本与所装 Release 标签一致、工具数与清单符合该版本（0.8.0 为 94 个工具）；核对 `runtime.python_executable`、`runtime.server_entry`、`runtime.code_root` 的实际路径与 `runtime.source_changed_since_startup`，再查看 `families`、`seed_library` 和 `unavailable_operations`。新增接口边界见 [版本说明](RELEASE_NOTES_0.8.0.md)。
 2. 调用 `creo_check_environment`，确认 SDK、模板和编译器路径正确。
 3. 调用 `creo_startup_status` 等待 `state == "ready"`，再调用 `creo_session_status` 确认 `connected == true`。等待时建模请求明确拒绝，未创建任务。
 4. 提交一个新零件建模计划；只提交一次，使用 `creo_get_job` 查询任务进度。
@@ -164,7 +164,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -CreoRoot 'C
 1. **版本**：`creo_capabilities` 的 `version` 等于所装 Release 标签去掉 `v` 前缀（例如标签 `v0.7.1` → `0.7.1`），并与该源码 `version.py` 一致。版本号本身不足以证明部署正确。
 2. **路径**：`runtime.python_executable`、`runtime.server_entry`、`runtime.code_root` 指向本次解压目录及其 `.venv`，不是其他副本；移动目录后必须重跑安装。
 3. **启动身份**：`runtime.source_changed_since_startup=false`，`runtime.source_fingerprints_at_startup` 已生成；为 `true` 时磁盘源码已变化，重启服务再验收。客户端配置改动不会替换已运行的服务进程。
-4. **工具清单**：`creo_capabilities` 的工具数与 `unavailable_operations` 与该版本说明一致（0.7.1 为 94 个工具），而不是沿用上一版本的可见清单。
+4. **工具清单**：`creo_capabilities` 的工具数与 `unavailable_operations` 与该版本说明一致（0.8.0 为 94 个工具），而不是沿用上一版本的可见清单。
 
 随后按「安装步骤」第 4 条用 `creo_startup_status` 等到 `ready`、`creo_session_status` 确认 `connected=true`，并完成一次保存重载验证。
 
