@@ -1,6 +1,6 @@
 # DEV-051 T03 验收卡：钣金壁参数（BUG-032，离线阶段）
 
-日期：2026-10-28（Asia/Shanghai）。阶段：**离线阶段完成 / 实现待原生验收**。分支：`codex/dev051-feedback070`；工作区：`E:\Projects\MCP_CREO_MechDog`。状态不是“已修复”：depth/thickness 矩阵的实机体积、三轴 bbox/重心、驱动面回显、下游折边/展开、revision 与保存重载均未执行，见“未测项”。
+日期：2026-10-28 离线，2026-10-29 实机（Asia/Shanghai）。阶段：**实机验收失败（阻断）/ 需改原生准入后重跑**。分支：`codex/dev051-feedback070`；工作区：`E:\Projects\MCP_CREO_MechDog`。状态不是“已修复”：depth/thickness 矩阵的实机体积、三轴 bbox/重心、驱动面回显、下游折边/展开、revision 与保存重载均未执行，见“未测项”。
 
 ## 输入与来源
 
@@ -105,3 +105,76 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；pydantic 
 - 接口变化（均为增量）：新增包内模块 `creo_mechdog.sheetmetal.first_wall_section_problem`；`sheetmetal_wall` 特征别名记录新增 `wall_contract` 对象（实测线长/实测体积/期望体积/驱动面 id/轴）；原生新增日志 `SHEETMETAL_WALL_LINE_LENGTH_MM`、`SHEETMETAL_WALL_DRIVING_FACE`、`SHEETMETAL_WALL_VOLUME`。
 - 行为变化：非“单条开放直线”的第一壁截面由“成功但几何被改写”改为**建模前失败**（同计划草图在 Python 拒绝，跨作业草图在原生拒绝）；其余合法输入不变。
 - 合并注意：若集成时保留旧的“最大 bbox 面”驱动面逻辑，`tools/test_sheetmetal_contract.py` 的 `native_source` 静态断言会失败（`largest_face_heuristic_removed=false`），可据此发现回退。
+
+## 2026-10-29 实机验收：五个矩阵全失败（原生准入把草图坐标系当成第二条曲线）
+
+环境与前置：用户手动打开的 Creo 12.4.0.0（`parametric`/`xtop` 已在运行），`config.json` 的 `auto_start_creo=false`；本机唯一 dev 服务 `MCP_CREO_MechDog_dev` 指向本仓库；服务版本 0.8.3；`creo_startup_status` 为 `state=ready`、`connected=true`，`session_health.status=no_failure_observed`。全程未启动/关闭/重启 Creo，未注入故障，未清 unknown 保护，未重提任何已受理 job。命令：
+
+```text
+.\.venv\Scripts\python.exe tools\test_sheetmetal_contract.py --live --confirm-session-usable
+```
+
+报告：`build/sheetmetal_contract/20261029T154955_51160071/report.json`（SHA256 `700c0cc4fd396a416adf0500df9bc35878eb06532d860c83c80493513bc58e7c`，另有 `report.sha256`）。驱动退出码 1，原因是矩阵未通过（不是驱动崩溃）；报告内 69 次 MCP 调用、`passed=false`。
+
+| # | depth,thickness | 期望体积 mm³ | job_id | model_id（名称） | 终态 | revision | 实测体积 | 原码 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 1, 232 | 42 920 | `3089d47e847846f1a38f967649105f49` | `169585f8e66544788e401c8e4a22beee`（t03_d1_t232_eb50b9） | failed | null | 未产生 | `toolkit_code=-1` |
+| 2 | 232, 1 | 42 920 | `933573c7da6b460d922ea7a9aac9d6f0` | `9f946eb246914854832567b35efdedf7`（t03_d232_t1_d9c88b） | failed | null | 未产生 | `toolkit_code=-1` |
+| 3 | 1, 1 | 185 | `bf1eec43adba4bfd8ac70f83b9701926` | `df4367cc16d745b08d0abc11cc56e527`（t03_d1_t1_fa75da） | failed | null | 未产生 | `toolkit_code=-1` |
+| 4 | 2, 1 | 370 | `dbb5875299a4438eb689755f4a44235c` | `7dd0b801740e4b0b84af9a7953bc222a`（t03_d2_t1_6fee0f） | failed | null | 未产生 | `toolkit_code=-1` |
+| 5 | 0.5, 1 | 92.5 | `c6d0469adbcb4b968348e50e7e521bfa` | `cc4c6088bc44476fb3cb5c88171809ac`（t03_d05_t1_d2c6af） | failed | null | 未产生 | `toolkit_code=-1` |
+
+五例的原始错误完全相同（取自 `creo_get_job` 的 `message`，未改写）：
+
+```text
+sheetmetal_wall creates the first wall from exactly one open straight line; the section has 2
+drawing entities (1 straight lines). Closed contours, arcs, splines and multi-entity chains are
+not supported for the first wall
+```
+
+`failed_stage=execute_sheetmetal_wall`、`toolkit_code=-1`、`rollback_succeeded=false`；op0（草图）`execution_status=succeeded`，op1（壁）`execution_status=failed`，两者 `effect_status=unknown`。因此五个矩阵的实机体积、误差、三轴尺寸、重心、`wall_contract`（`driving_face_id`/`driving_axis`/`measured_volume_mm3`）**全部没有产生**，旧的 185×232×232=9 957 440 既未被证实也未被证伪；本次只证明“合法单线截面在建壁前就被拒”。
+
+### 根因（实机日志证据，未改生产代码）
+
+同一 job 的 `jobs/3089d47e847846f1a38f967649105f49/native.log` 同时出现：
+
+```text
+ProSectionEntityAdd(section, (Pro2dEntdef *)&cs, &csid)=0
+ProSectionEntityAdd(section, (Pro2dEntdef *)&l, &id)=0
+SECTION_PROFILE phase=sketch entities=1 curves=1 standalone=0 contours=1 closed=0 open_ends=2
+  branched=0 construction=0 references=2 unsupported=0 tolerance_mm=1e-06
+BUILD_FAILED=... the section has 2 drawing entities (1 straight lines) ...
+```
+
+草图构建器对每个草图都先写入一个草图坐标系实体（`native/generic.cpp:1495-1498`：`Pro2dCoordSysdef cs; cs.type = PRO_2D_COORD_SYS; ProSectionEntityAdd(...)`），再写业务实体；`SECTION_PROFILE` 汇总按“曲线”统计得到 `entities=1 / curves=1`，而新准入 `first_wall_line_length`（`native/advanced.cpp:175-227`）只跳过 construction、projection 和 centerline，未跳过 `PRO_2D_COORD_SYS`（也未跳过点），于是把坐标系计成第二条“drawing entity”，`curves=2` ≠ 1 直接抛错。即：准入实现与其配套的截面汇总对“实体”的定义不一致，任何合法单线第一壁都会被拒。
+
+按本次任务边界，**未修改建模逻辑**：修复需改 `first_wall_line_length` 的实体过滤（跳过 `PRO_2D_COORD_SYS` 与点实体），并重新编译执行器后用同一驱动重跑。该改动不在本次范围内，未做。
+
+### 回滚与模型状态（实机核对）
+
+- 失败模型 `169585f8e66544788e401c8e4a22beee`：`revision=0`、`features=[]`、`aliases=[]`、`volume_mm3=null`、`status=failed` —— 失败作业退回作业前检查点，未留下半成品草图或壁（`effect_status=unknown` 是平台对“未提交成功”的记录口径，实际几何为空）。
+- 允许的对照模型 `4b372f61840142da94ff422919eac37c`（t03_reject_anchor_f9ea16，仅草图，job `c498837e7db54e21962f24781db779b2`）：`revision=1`，特征为 3 个基准面 + 坐标系 + 草图（`sketch_or_curve`），`aliases=[s1]` —— 说明钣金模型的草图可以正常创建，失败点确实在 `sheetmetal_wall` 的准入。
+
+### 非法组合（建模前拒绝）实机通过
+
+在对照模型上提交两次非法计划（同一 `expected_revision`），两次都在建特征前被拒，`job_id=null`，`revision` 1→1：
+
+| 截面 | 拒绝消息（原文） |
+| --- | --- |
+| 闭合矩形（185×232） | `operations[1]: sheetmetal_wall needs exactly one open straight line as the first wall section; got a 'rectangle' entity (closed contours, arcs, splines and multi-entity chains are not supported for the first wall)` |
+| 两段直线链 | `operations[1]: sheetmetal_wall needs exactly one open straight line as the first wall section; got 2 drawing entities (...)` |
+
+### 本次暴露的第二处不一致（记录，不修）
+
+同一条“单线”规则在 Python 侧（`src/creo_mechdog/sheetmetal.py`）按业务实体计数，在原生侧按 section 全实体计数，所以两段直线链在两处都拒绝（正确），而合法的单线在 Python 侧通过、在原生侧被拒。修复原生过滤后两者应一致；若只改 Python 侧的计数口径而不改原生，问题不会消失。
+
+### 未测项（仍未执行）
+
+- 五个矩阵的真实体积/误差/三轴 bbox/重心；`wall_contract` 的 `driving_face_id`/`driving_axis`/`measured_volume_mm3` 回显；旧 9 957 440 的证伪（因壁未建立，既非通过也非证伪）。
+- 下游折边、展开/折回、厚壁分支、尺寸编辑、`saved_file_reloaded_and_verified=true`（所有失败作业都没有保存重载环节）。
+- Creo 9/10；WorkBuddy 黑盒（本次禁用）。
+
+### 下一步
+
+1. 原生修复：`first_wall_line_length` 跳过 `PRO_2D_COORD_SYS`（及点实体），保留“恰好一条直线”语义；重新 `bridge.py build` 后用本驱动原样重跑，五个矩阵与拒绝用例都要重新取证。
+2. 修复前不要启动 T04 的 B/C 两路与 T11 四壁：它们都依赖第一壁成功（见对应卡）。

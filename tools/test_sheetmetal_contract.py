@@ -7,14 +7,19 @@ native source guard only proves that the committed fix is present in the
 working tree; it is not native verification.
 
 Default is strictly offline: no MCP client is instantiated and no Toolkit
-connection is made. --live requires --confirm-session-usable and is refused
-here: the live native acceptance of BUG-032 runs as a separate integration step
-on the shared dev service, never from this driver.
+connection is made. --live --confirm-session-usable runs the matrix against the
+manually opened Creo session: five fresh models, one sheetmetal wall each, the
+measured volume and the wall_contract record, then the closed-rectangle and
+two-line rejections on the last model to prove the model and revision stay
+untouched. It never launches, restarts or closes Creo, never injects a fault,
+never clears a protection and never resubmits a job; a busy channel, an unknown
+terminal state or a polling timeout stops the run and preserves the scene.
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import hashlib
 import json
 import os
@@ -33,6 +38,20 @@ if str(_SOURCE_ROOT) not in sys.path:
 from creo_mechdog.paths import SOURCE_PATHS  # noqa: E402
 
 ROOT = SOURCE_PATHS.resource_root
+
+from tools.sheetmetal_live import (  # noqa: E402
+    LiveRunner,
+    LiveStop,
+    failure_text,
+    require_manual_start,
+    unique_name,
+)
+from tools.sheetmetal_live import (
+    new_run_id as live_run_id,
+)
+from tools.sheetmetal_live import (
+    resolve_output as live_output,
+)
 
 LINE_LENGTH_MM = 185.0
 MATRIX = ((1.0, 232.0), (232.0, 1.0), (1.0, 1.0), (2.0, 1.0), (0.5, 1.0))
@@ -265,6 +284,233 @@ def check_native_source() -> dict:
     }
 
 
+# --- live acceptance ------------------------------------------------------
+
+LIVE_CASES = (
+    {"tag": "t03_d1_t232", "depth": 1.0, "thickness": 232.0},
+    {"tag": "t03_d232_t1", "depth": 232.0, "thickness": 1.0},
+    {"tag": "t03_d1_t1", "depth": 1.0, "thickness": 1.0},
+    {"tag": "t03_d2_t1", "depth": 2.0, "thickness": 1.0},
+    {"tag": "t03_d05_t1", "depth": 0.5, "thickness": 1.0},
+)
+
+REJECTION_SECTIONS = (
+    (
+        "closed_rectangle",
+        [{"type": "rectangle", "name": "plate", "min": [0.0, 0.0], "max": [185.0, 232.0]}],
+    ),
+    (
+        "two_line_chain",
+        [
+            {"type": "line", "name": "l1", "start": [0.0, 0.0], "end": [90.0, 0.0]},
+            {"type": "line", "name": "l2", "start": [90.0, 0.0], "end": [185.0, 0.0]},
+        ],
+    ),
+)
+
+
+def volume_verdict(depth: float, thickness: float, measured: float | None) -> dict:
+    expected = oracle_volume_mm3(depth, thickness)
+    tolerance = max(VOLUME_TOLERANCE_MM3, abs(expected) * 1e-3)
+    if measured is None:
+        return {
+            "expected_volume_mm3": expected,
+            "tolerance_mm3": tolerance,
+            "abs_error_mm3": None,
+            "passed": False,
+        }
+    error = abs(float(measured) - expected)
+    return {
+        "expected_volume_mm3": expected,
+        "tolerance_mm3": tolerance,
+        "abs_error_mm3": error,
+        "passed": error <= tolerance,
+    }
+
+
+async def run_matrix_case(runner: LiveRunner, case: dict) -> dict:
+    """One fresh model, one first wall, one measured volume."""
+    depth, thickness = case["depth"], case["thickness"]
+    name = unique_name(case["tag"])
+    created = await runner.submit(
+        f"{case['tag']}:new-wall",
+        "creo_execute_plan",
+        {
+            "model_name": name,
+            "model_type": "sheetmetal",
+            "operations": [wall_sketch(), wall_op(depth, thickness)],
+        },
+    )
+    job_id, model_id = created["job_id"], created["model_id"]
+    terminal = await runner.wait_job(job_id)
+    entry: dict = {
+        "case": case["tag"],
+        "depth_mm": depth,
+        "thickness_mm": thickness,
+        "line_length_mm": LINE_LENGTH_MM,
+        "model_name": name,
+        "model_id": model_id,
+        "job_id": job_id,
+        "status": terminal.get("status"),
+        "revision": terminal.get("revision"),
+        "saved_file_reloaded_and_verified": (terminal.get("result") or {}).get(
+            "saved_file_reloaded_and_verified"
+        ),
+    }
+    if terminal.get("status") != "succeeded":
+        verdict = volume_verdict(depth, thickness, None)
+        entry.update(
+            expected_volume_mm3=verdict["expected_volume_mm3"],
+            tolerance_mm3=verdict["tolerance_mm3"],
+            failure=failure_text(terminal),
+            passed=False,
+            note="the wall was not created; the raw failure is kept, expectations unchanged",
+        )
+        return runner.case(entry)
+
+    snapshot = await runner.snapshot(model_id)
+    measured = runner.volume(snapshot)
+    verdict = volume_verdict(depth, thickness, measured)
+    contract = (runner.record(snapshot, "wall1") or {}).get("wall_contract") or {}
+    entry.update(
+        measured_volume_mm3=measured,
+        expected_volume_mm3=verdict["expected_volume_mm3"],
+        tolerance_mm3=verdict["tolerance_mm3"],
+        abs_error_mm3=verdict["abs_error_mm3"],
+        wall_contract=contract,
+        feature_types=runner.feature_types(snapshot),
+        passed=bool(verdict["passed"] and entry["saved_file_reloaded_and_verified"] is True),
+    )
+    if (depth, thickness) == (1.0, 232.0):
+        reproduces = measured is not None and abs(float(measured) - REPORTED_VOLUME_MM3) <= 0.5
+        entry["reported_error_volume_mm3"] = REPORTED_VOLUME_MM3
+        entry["reproduces_reported_error_volume"] = reproduces
+    return runner.case(entry)
+
+
+async def open_rejection_anchor(runner: LiveRunner) -> dict:
+    """A sketch-only sheetmetal model, so the admission path is still observable.
+
+    The rejection contract is Python-side admission; it does not need a wall. This
+    anchor exists only when every matrix case failed, and it is recorded as such.
+    """
+    name = unique_name("t03_reject_anchor")
+    created = await runner.submit(
+        "rejection_anchor:new-sketch",
+        "creo_execute_plan",
+        {"model_name": name, "model_type": "sheetmetal", "operations": [wall_sketch()]},
+    )
+    terminal = await runner.wait_job(created["job_id"])
+    runner.report["rejection_anchor"] = {
+        "model_name": name,
+        "model_id": created["model_id"],
+        "job_id": created["job_id"],
+        "status": terminal.get("status"),
+        "reason": "no matrix case succeeded, so the rejection check uses a sketch-only model",
+    }
+    if terminal.get("status") != "succeeded":
+        raise LiveStop(f"rejection anchor sketch failed: {failure_text(terminal)}")
+    return {"model_id": created["model_id"]}
+
+
+async def run_rejection_case(runner: LiveRunner, anchor: dict) -> dict:
+    """Illegal first-wall sections must be refused before any feature exists."""
+    model_id = anchor["model_id"]
+    before = await runner.snapshot(model_id)
+    revision = before.get("revision")
+    volume = runner.volume(before)
+    sections = []
+    for name, entities in REJECTION_SECTIONS:
+        answer = await runner.probe(
+            "creo_execute_plan",
+            {
+                "model_id": model_id,
+                "expected_revision": revision,
+                "operations": [
+                    {"op": "sketch", "label": "s1", "plane": "XY", "entities": entities},
+                    wall_op(1.0, 1.0),
+                ],
+            },
+        )
+        body = answer["structured"] or {}
+        message = body.get("error") or body.get("message") or answer["text"]
+        sections.append(
+            {
+                "section": name,
+                "rejected": bool(answer["is_error"]),
+                "job_id": body.get("job_id"),
+                "message": str(message)[:600],
+            }
+        )
+    after = await runner.snapshot(model_id)
+    unchanged = (
+        after.get("revision") == revision
+        and runner.volume(after) == volume
+        and not any(section["job_id"] for section in sections)
+    )
+    return runner.case(
+        {
+            "case": "rejection_before_modelling",
+            "model_id": model_id,
+            "revision_before": revision,
+            "revision_after": after.get("revision"),
+            "volume_before_mm3": volume,
+            "volume_after_mm3": runner.volume(after),
+            "sections": sections,
+            "model_and_revision_unchanged": unchanged,
+            "passed": bool(unchanged and all(section["rejected"] for section in sections)),
+        }
+    )
+
+
+async def live(output: Path, run_id: str) -> int:
+    require_manual_start(ROOT / "config.json")
+    from mcp import Client
+    from mcp.client.stdio import StdioServerParameters
+
+    params = StdioServerParameters(command=sys.executable, args=[str(ROOT / "server.py")], cwd=ROOT)
+    async with Client(params, read_timeout_seconds=180) as client:
+        runner = LiveRunner(
+            client,
+            output,
+            "BUG-032 / DEV-051 T03",
+            "first-wall depth/thickness matrix: live volume, wall_contract, pre-modelling rejection",
+            run_id,
+        )
+        try:
+            await runner.start()
+            anchor = None
+            for case in LIVE_CASES:
+                entry = await run_matrix_case(runner, case)
+                if entry["passed"] and anchor is None:
+                    anchor = entry
+            if anchor is None:
+                anchor = await open_rejection_anchor(runner)
+            await run_rejection_case(runner, anchor)
+        except BaseException as error:
+            runner.report["stopped"] = f"{type(error).__name__}: {error}"
+            runner.finish()
+            raise
+    summary = runner.finish()
+    print(json.dumps(summary, ensure_ascii=False))
+    rows = [
+        {
+            key: case.get(key)
+            for key in (
+                "case",
+                "status",
+                "measured_volume_mm3",
+                "expected_volume_mm3",
+                "abs_error_mm3",
+                "passed",
+            )
+        }
+        for case in runner.report["cases"]
+    ]
+    print(json.dumps({"passed": runner.report["passed"], "cases": rows}, ensure_ascii=False))
+    return 0 if runner.report["passed"] else 1
+
+
 def run_unit_module() -> dict:
     from tests.unit import test_sheetmetal_contract
 
@@ -379,12 +625,8 @@ def main(argv: list[str] | None = None) -> int:
         print("live runs require --confirm-session-usable", file=sys.stderr)
         return 2
     if args.live:
-        print(
-            "BUG-032 live native acceptance is a separate integration step on the shared "
-            "dev service; this driver never instantiates an MCP client or connects to Creo.",
-            file=sys.stderr,
-        )
-        return 2
+        run_id = live_run_id()
+        return asyncio.run(live(live_output("sheetmetal_contract", run_id, args.output), run_id))
 
     run_id = new_run_id()
     output = resolve_output(args.output, run_id)
