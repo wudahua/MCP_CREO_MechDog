@@ -1,6 +1,6 @@
 # FEAT-014：钣金折弯释放与四壁能力
 
-日期：2026-10-28（Asia/Shanghai）补工作卡，沿用既有 ID。类型：功能。优先级：P2（既有台账）；状态：**待规划**（2026-10-28 T05 离线调查完成：未复现、根因未定；四壁能力未完成）。目标版本：未排期。
+日期：2026-10-28（Asia/Shanghai）补工作卡，沿用既有 ID。类型：功能。优先级：P2（既有台账）；状态：**离线实现完成、实机未通过**（2026-10-29 两轮底板已建成，第一道折边报 `ProFeatureWithoptionsCreate=-1`；四壁与释放能力未完成，根因未定）。目标版本：未排期。
 
 来源：[统一台账](../BACKLOG.md)既有 FEAT-014 行、[0.7.0 R1 S3](../validation/feedback-0.7.0-2026-10-28/2026-10-27_CREO_0.7.0_钣金增料与四壁折边仍未修复验收报告.md)、[逐章映射](../validation/feedback-0.7.0-2026-10-28/MAPPING.md)。关联 [BUG-047](BUG-047.md) 的折边方向/材料侧缺陷与 [BUG-032](BUG-032.md) 的有效薄底板契约。
 
@@ -42,3 +42,16 @@ T05 可交付可复现/未复现结论与根因证据，但只有四壁原生特
 - 因此四壁真实创建、每道体积增量、§relief§ 回显、第三道 §f_ny§ 是否再现 §-1§、失败回滚与 §revision§ 均未取证；也没有用四个普通拉伸块替代折边。报告 §build/sheetmetal_relief/20261029T155905_bb490653/report.json§。
 
 下一轮：先修第一壁准入并重编译执行器，再用同一驱动原样重跑；之后再补 §corner_run§（宽 1、深 77.46）与 §ends=side1/side2§ 对照。
+
+
+## 2026-10-29 第二轮实机：底板建成，第一道折边即 `-1`
+
+第一壁准入修复后重跑 T11 两轮（relief 省略 / rect 1×1 both 1×1）：两块 185×232×1 底板都建成（42 920 mm³、rev 1、bbox `[0,-116,0]`–`[185,116,1]`），但第一道折边 `f_px`（边 id 125，+X 上边，跨度 232 mm）在两轮都失败：
+
+- job `ef7341d546b34fa28a145771b543b1a4`（none）/ `4c172764b29f4a0d850cfd6a38b73125`（rect 1×1）；
+- `toolkit_code=-1`、`failed_stage=execute_sheetmetal_flange`、`failed_toolkit_call=ProFeatureWithoptionsCreate`，消息 “Toolkit call ProFeatureWithoptionsCreate failed with code -1 during execute_sheetmetal_flange”；
+- `rollback_succeeded=true`，两轮快照 rev 1→1、体积 42 920→42 920（`rolled_back=true`），无 `relief` 回显。
+
+与 0.7.0 R1 S3 原件的关键差异：原件前两道 ±X 成功、第三道 `f_ny` 才 -1；本轮**第一道**就 -1，此时还没有相邻壁、没有角部。因此 T05 的角部重叠假设不能解释本轮失败，四壁能力仍未完成，`relief` 两档也无法比较（失败早于释放生效）。报告 `build/sheetmetal_relief/20261029T161528_cc1fda94/report.json`。
+
+下一步：用 `PRO_FEAT_CR_INCOMPLETE_FEAT` + `ProFeatureElemtreeExtract` 取回 Creo 补齐的折边元素树，与写入的树比对（flange 类型与 2D 扫掠截面的配对、`PRO_E_SMT_WALL_HEIGHT=NONE`、TAN 曲线集合在转换型壁边上的合法性、SIDE1/SIDE2 TO_END 组合）。

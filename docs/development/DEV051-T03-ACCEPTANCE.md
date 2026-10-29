@@ -1,6 +1,6 @@
 # DEV-051 T03 验收卡：钣金壁参数（BUG-032，离线阶段）
 
-日期：2026-10-28 离线，2026-10-29 实机（Asia/Shanghai）。阶段：**实机验收失败（阻断）/ 需改原生准入后重跑**。分支：`codex/dev051-feedback070`；工作区：`E:\Projects\MCP_CREO_MechDog`。状态不是“已修复”：depth/thickness 矩阵的实机体积、三轴 bbox/重心、驱动面回显、下游折边/展开、revision 与保存重载均未执行，见“未测项”。
+日期：2026-10-28 离线，2026-10-29 两轮实机（Asia/Shanghai）。阶段：**第一壁准入修复已实机通过（五个矩阵全过）**；仍未完成三轴 bbox/重心、厚壁分支与下游折边/展开。分支：`codex/dev051-feedback070`；工作区：`E:\Projects\MCP_CREO_MechDog`。第一轮（2026-10-29 早）五个矩阵全部被准入拒绝，见下文“实机验收失败”节；第二轮修复 `first_wall_line_length` 的实体计数口径后原样重跑，五例全部建壁成功且体积与独立 oracle 完全一致，见“第二轮实机”节。
 
 ## 输入与来源
 
@@ -184,3 +184,62 @@ BUILD_FAILED=... the section has 2 drawing entities (1 straight lines) ...
 - `.venv\Scripts\python.exe -m ruff format tools/sheetmetal_live.py tools/test_sheetmetal_contract.py tools/test_sheetmetal_overlap.py tools/test_sheetmetal_relief.py` → `4 files already formatted`（无待改）。
 - `.venv\Scripts\python.exe -m ruff check`（同上四个文件） → `All checks passed!`。
 - `.venv\Scripts\python.exe tools\dev_check.py` → exit 0；`success=true`、`unit_tests=passed`（1343 tests、0 failure、0 error，261 s）；style `lint_findings=30`、`unformatted_files=16`（与 T03 前基线一致，本批无新增）；`source.commit=4598a1b`、`dirty=true`（本机会话数据未提交）；报告 `build/development_check.json`。
+
+## 2026-10-29 第二轮实机：准入修复后五个矩阵全部通过
+
+### 修正点（`native/advanced.cpp` 的 `first_wall_line_length`）
+
+- **实体计数改为只算真实几何**：跳过 `PRO_2D_COORD_SYS`（草图构建器对每个草图必写的放置实体，`native/generic.cpp:1495-1498`）与 `PRO_2D_POINT`；construction、projection、centerline 仍跳过。
+- **“恰好一条直线”语义不变**：`line/arc/circle/polyline/spline/composite` 等仍计入 `curves` 与 `lines`，所以闭合矩形（4 线）、弧（1 弧 0 线）、多段链（2 线）照旧被拒；没有放宽成“至少一条线”。
+- **截面构建未动**：壁不是把 section 直接交给壁特征，而是先做薄壁拉伸、再按厚度轴驱动面 `PRO_DTM_SRF_AS_WALL` 转换；实机五例都建壁成功，Creo 侧没有出现第二处“2 entities”拒绝，因此不需要在建壁前从 section 剔除坐标系实体（本项按“以实际通过为准”判定为不必要）。
+- **重编**：`.venv\Scripts\python.exe bridge.py build` → exit 0；`build/build.log` 仅 3 条存量 C4819（代码页 936 警告：`assembly_units.h`、`assembly_walk.h`、`generic.cpp`），无错误；`build/creo_worker.exe` 生成于 2026-10-29 16:10:23、12 890 624 字节，`build/source.sha256` = `ebe3b9cc3b720e8e83b1bad34e57c85e8d24ae583e2d4418e4a9c47671838802`。未重启 Creo。
+
+### 结果
+
+环境与前置：用户手动打开的 Creo 12.4.0.0（`config.json` 的 `auto_start_creo=false`），唯一 dev 服务指向本仓库，服务 0.8.3；`creo_startup_status` 为 `ready/connected=true`、`native.feature_creation_license=requires_actual_modeling_test`。未启动/关闭/重启 Creo，未注入故障，未清 unknown 保护，未重提任何已受理 job，每例新模型名。
+
+```text
+.\.venv\Scripts\python.exe tools\test_sheetmetal_contract.py --live --confirm-session-usable
+```
+
+报告：`build/sheetmetal_contract/20261029T161050_befb7d2d/report.json`（SHA256 `98c8ccffed112b47b9868d1e6528352deef6ae76ebaae49b924be294d6632dde`，另有 `report.sha256`）；驱动退出码 0、`passed=true`、`stopped=null`。
+
+| # | depth,thickness | 期望 mm³ | job_id | model_id（名称） | 终态 | revision | 实测 mm³ | 误差 mm³ | 判定 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 1, 232 | 42 920 | `ec84612d1ed540b08254dadde1dbc828` | `4be4afb33a6040abb5290452afeca611`（t03_d1_t232_c22166） | succeeded | 1 | 42 920.000 | 0 | 通过 |
+| 2 | 232, 1 | 42 920 | `0bc63eeac5b149f0836ac3db349d1c93` | `2b22e0c3a29f4e3ebdac756070bbb99e`（t03_d232_t1_9fc745） | succeeded | 1 | 42 920.000 | 0 | 通过 |
+| 3 | 1, 1 | 185 | `2120a84a3acb43749fd7c6497429cd36` | `ba20208082714f9b9d727619be7bea26`（t03_d1_t1_c996a1） | succeeded | 1 | 185.000 | 0 | 通过 |
+| 4 | 2, 1 | 370 | `1966cbfe8f9b4aeaa2605a0ff0c7c148` | `3c135aa36ee84ba38b823270a2779f98`（t03_d2_t1_6f488f） | succeeded | 1 | 370.000 | 0 | 通过 |
+| 5 | 0.5, 1 | 92.5 | `b0f0df8f9a6c4b0f8c33ed429789a972` | `c3359ec53f5646dba362a7298fc4a7eb`（t03_d05_t1_e1abba） | succeeded | 1 | 92.500 | 0 | 通过 |
+
+五例 `saved_file_reloaded_and_verified=true`，`wall_contract` 全部回显同形结构且实测=期望：
+
+```text
+{"driving_axis":1,"driving_face_id":60,"expected_volume_mm3":<同上>,"line_length_mm":185.0,"measured_volume_mm3":<同上>}
+```
+
+**旧 9 957 440 首次被实机证伪**：(depth=1, thickness=232) 实测 42 920 mm³ = 185×232×1，与 0.3.2 S5 报告的 185×232×232 不符；本轮驱动从未产生该数值（`reproduces_reported_error_volume` 在报告中为 false）。
+
+### 非法组合仍被建模前拒绝（模型与 revision 不变）
+
+在矩阵第 1 例模型（`4be4afb33a6040abb5290452afeca611`，rev 1、42 920 mm³）上提交两次非法计划，均 `job_id=null`、`is_error=true`，之后 `revision` 1→1、体积 42 920 mm³ 不变（`model_and_revision_unchanged=true`）：
+
+| 截面 | 拒绝原文（节选） |
+| --- | --- |
+| 闭合矩形 185×232 | `operations[1]: sheetmetal_wall needs exactly one open straight line as the first wall section; got a 'rectangle' entity (...)` |
+| 两段直线链 | `operations[1]: sheetmetal_wall needs exactly one open straight line as the first wall section; got 2 drawing entities (...)` |
+
+### 顺带取得的几何事实（来自 T11 同形底板）
+
+T11 两轮底板（同一 `sheetmetal_wall(depth=1, thickness=232)`）的 active body bbox 为 `[0, -116, 0] – [185, 116, 1]`：厚度沿 Y **对称分布**（±116，即 `PRO_SWEEP_MATERIAL_BOTH_SIDES`），depth 沿 +Z 从 0 到 1。该值来自 `creo_inspect_model`，可用于核对 T03 遗留的“材料侧/原点偏移”待核项；本轮驱动本身未记录 bbox/重心。
+
+### 仍未测
+
+- 三轴 bbox 与重心断言（驱动只断言体积与 `wall_contract` 线长/体积/驱动面）；`direction=negative`、厚壁（thickness > 面内尺寸）分支。
+- 下游 `sheetmetal_flange`（见 T11 卡：第一道折边在建壁成功后仍报 `-1`）、展开/折回、尺寸编辑。
+- Creo 9/10；WorkBuddy 黑盒（本次禁用）。
+
+### 下一步
+
+1. 补 bbox/重心与 `direction=negative` 断言（驱动已具备快照能力，只需新增断言，不改期望口径）。
+2. 把 T11 的折边 `-1` 作为独立条目跟进（本轮已确认不再是第一壁问题）。

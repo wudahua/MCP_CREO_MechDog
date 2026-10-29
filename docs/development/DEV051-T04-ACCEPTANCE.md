@@ -1,6 +1,6 @@
 # DEV-051 T04 验收卡：钣金重叠增料（BUG-046，离线阶段）
 
-日期：2026-10-28（Asia/Shanghai）。阶段：**离线阶段完成 / 实现待原生验收**。分支：`codex/dev051-feedback070`；工作区：`E:/Projects/MCP_CREO_MechDog`。状态不是“已修复”：三路对照的实机结果、-1 根因与钣金增料支持集合均未验证/未确定，见“未测项”。本次未连接 Creo、未实施任何 Toolkit 作业、未改版本/合 main/推标签/发布。
+日期：2026-10-28 离线，2026-10-29 两轮实机（Asia/Shanghai）。阶段：**三路对照已实机完成：A/C 通过，B（钣金 add）复现 `-1`，根因未定**。分支：`codex/dev051-feedback070`；工作区：`E:/Projects/MCP_CREO_MechDog`。状态不是“已修复”：钣金件上实体增料的支持集合同样未定，只是第一次在受控基体上把历史 `-1` 复现出来并排除“截面/几何”作为原因，见“2026-10-29 第二轮实机”节与“未测项”。
 
 ## 输入与来源
 
@@ -160,3 +160,50 @@ not supported for the first wall
 - `.venv\Scripts\python.exe -m ruff format tools/sheetmetal_live.py tools/test_sheetmetal_contract.py tools/test_sheetmetal_overlap.py tools/test_sheetmetal_relief.py` → `4 files already formatted`（无待改）。
 - `.venv\Scripts\python.exe -m ruff check`（同上四个文件） → `All checks passed!`。
 - `.venv\Scripts\python.exe tools\dev_check.py` → exit 0；`success=true`、`unit_tests=passed`（1343 tests、0 failure、0 error，261 s）；style `lint_findings=30`、`unformatted_files=16`（与 T03 前基线一致，本批无新增）；`source.commit=4598a1b`、`dirty=true`（本机会话数据未提交）；报告 `build/development_check.json`。
+
+## 2026-10-29 第二轮实机：A/C 通过，B 路复现 `-1`（不再是第一壁阻断）
+
+环境与前置同 [T03 卡](DEV051-T03-ACCEPTANCE.md)：手动打开的 Creo 12.4.0.0、`auto_start_creo=false`、唯一 dev 服务、服务 0.8.3、`ready/connected=true`；未启动/关闭/重启 Creo，未注入故障，未清 unknown 保护，未重提已受理 job。本轮先按 T03 修复重建执行器（`build/creo_worker.exe` 2026-10-29 16:10:23），三路驱动原样重跑，期望值未改。
+
+```text
+.\.venv\Scripts\python.exe tools\test_sheetmetal_overlap.py --live --confirm-session-usable
+```
+
+报告：`build/sheetmetal_overlap/20261029T161330_90741a2d/report.json`（SHA256 `c75f1176546981392484332764395c755765ac8892f2b4941bb64d1d4e2f3929`）；驱动退出码 1（B 路未通过），`stopped=null`。
+
+| 路 | 基体模型（model_id） | 基体 job / revision / 体积 | 棱柱 job / revision | 结果体积 | 体积变化 | 误差/容差 | 保存重载 | 判定 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| A `solid_add` | t04_solid_add_6adf8d（`69da50f0d9844060b8bc88c6610a0ca2`） | `8a9aa33060fc40acb7bd9346674fcd3c` / 1 / 42 920 | `f2ff5be18ddd47139185766d2bf8ff99` / 2 | 43 320 | +400 | 0 / 43.32 | true | **通过** |
+| B `sheetmetal_add` | t04_sm_add_96d15f（`5a54d361a85a4cc49c33b256a6cb3ee9`） | `12b778d75e804d7aa4542b51a2ce450b` / 1 / 42 920 | `9610319fb107456f80465e6065c9b231` / 建基体后 rev 1（加料失败回滚） | 未产生 | — | — | — | **失败（`-1`）** |
+| C `sheetmetal_cut` | t04_sm_cut_a83049（`5fec9a685a7345a1b613398aa76b5503`） | `638d7b00d5e44cdcb6a482480328c4ee` / 1 / 42 920 | `fe06fe89f43d4bf596a4613897278963` / 2 | 42 820.00000000001 | −100 | 7.28e-12 / 0.0428 | true | **通过** |
+
+第一壁不再阻断：B/C 两路的基体（185×232×1 = 42 920 mm³）本轮全部建成，C 路的钣金 cut 也首次拿到实测去料 100 mm³。
+
+### B 路原始失败（`creo_get_job` 原文，未改写）
+
+```text
+Extrude feature creation failed (ProFeatureWithoptionsCreate=-1). Toolkit rejected the referenced
+sketch section; the return code alone does not identify whether closure, a geometric condition or
+the feature tree caused it. Detected native section: 1 closed contour(s), 1 contour(s), 4 entity(ies),
+0 open end(s). These counts do not identify the cause; the cause is not determined.
+Sketch: 'overlap_sketch'.
+```
+
+`toolkit_code=-1`、`failed_stage=execute_extrude`、`failed_toolkit_call=ProFeatureWithoptionsCreate`、`rollback_succeeded=true`；操作记录为 `[{index:0,overlap_sketch,succeeded,rolled_back},{index:1,boss_add,failed,rolled_back}]`。即：加料操作这次**真的执行了**并返回 -1，而不是被前置拒绝。
+
+### 证据能确定什么、不能确定什么
+
+- **能确定**：同一台机器、同一 Creo 12.4、同一个 10×10 矩形截面、同一 depth 5 positive，在钣金基体上 `cut` 成功（去料 100 mm³）、`add` 失败 -1；同样的 `add` 在普通件上成功（+400 mm³）。因此历史 0.3.1/0.3.2 的“钣金件 add 报 -1、同件 cut 正常”在本机**被复现**，且失败与“重叠/截面闭合/几何位置”无关——截面相同、位置相同，只有 mode 不同。
+- **不能确定**：`PRO_E_BODY`（`PRO_BODY_USE_SELECTED` + 默认体引用）与 `PRO_FEAT_PROTRUSION` + `PRO_EXT_MATERIAL_ADD` 谁是触发点；也无法仅凭 -1 判断这是钣金材料模型限制还是元素树缺项。`native.log` 尾部只有检查阶段的 surface/edge 遍历日志，无元素级错误码，`failed_toolkit_call` 名称已是当前实现能给出的最细信息。
+- **未验证**：B 路失败后模型是否严格回滚（驱动在失败分支不再取快照，只有 `rollback_succeeded=true` 这一作业级标志；历史契约要求的“体积/别名/revision 与基线一致”本轮没有独立快照证据）；B2 非重叠 add 探针、H1/H2/H3 隔离均未执行。
+
+### 本轮其他结果
+
+- 负例仍通过：在 A 路模型（rev 2、43 320 mm³）上提交 `through_all`+add 与退化矩形，两次 `job_id=null`、建模前拒绝，`revision` 2→2、体积不变。
+- C 路原生特征：基体 `protrusion=1`，cut 后 `cut=1` 且钣金身份保留；`saved_file_reloaded_and_verified=true`（`unbend`/`bend_back` 仍未验证）。
+
+### 下一步
+
+1. 失败回滚取证：B 路失败后补一次 `creo_inspect_model`（体积/别名/revision）并把结果写回本卡；这属于驱动补强，不改期望值。
+2. 定因隔离（按顺序，仍只用同一驱动形态）：B2 非重叠钣金 add（排除“重叠”因素）→ H1 改为 `PRO_BODY_USE_NEW`/不写 BODY 元素 → H2 若两者仍 -1，则判定“钣金件上的实体 protrusion 增料不被支持”，转而给出明确边界与可行工具指引（`sheetmetal_wall`/`sheetmetal_flange`），并按 BUG-046 的“若不支持”条款补可识别错误码。
+3. 定因前不要写“钣金增料已修复”，也不要把 C 路 cut 通过当作 add 可用。

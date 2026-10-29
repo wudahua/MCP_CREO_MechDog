@@ -1,6 +1,6 @@
 # DEV-051 T11 验收卡：四壁释放完整能力（FEAT-014，离线实现阶段）
 
-日期：2026-10-29（Asia/Shanghai）。阶段：**离线实现完成 / 四壁与释放能力待原生验收**。分支：`codex/dev051-feedback070`；工作区：`E:\Projects\MCP_CREO_MechDog`。本次未连接 Creo、未启动 MCP/Creo、未提交任何 Toolkit 作业、未建模、未改版本、未合 main、未推标签、未 push、未发布，未实施 T12/T13。本卡不得读作“四壁能力已具备”或“折边缺陷已修复”。
+日期：2026-10-29 离线 + 两轮实机（Asia/Shanghai）。阶段：**两块底板已建成，第一道折边即报 `ProFeatureWithoptionsCreate=-1`；四壁与释放能力仍未验收通过**。分支：`codex/dev051-feedback070`；工作区：`E:\Projects\MCP_CREO_MechDog`。本次实机未启动/关闭/重启 Creo、未注入故障、未清 unknown 保护、未重提已受理 job；未改版本、未合 main、未推标签、未 push、未发布，未实施 T12/T13。本卡不得读作“四壁能力已具备”或“折边缺陷已修复”。
 
 ## 输入与来源
 
@@ -185,3 +185,47 @@ not supported for the first wall
 - `.venv\Scripts\python.exe -m ruff format tools/sheetmetal_live.py tools/test_sheetmetal_contract.py tools/test_sheetmetal_overlap.py tools/test_sheetmetal_relief.py` → `4 files already formatted`（无待改）。
 - `.venv\Scripts\python.exe -m ruff check`（同上四个文件） → `All checks passed!`。
 - `.venv\Scripts\python.exe tools\dev_check.py` → exit 0；`success=true`、`unit_tests=passed`（1343 tests、0 failure、0 error，261 s）；style `lint_findings=30`、`unformatted_files=16`（与 T03 前基线一致，本批无新增）；`source.commit=4598a1b`、`dirty=true`（本机会话数据未提交）；报告 `build/development_check.json`。
+
+## 2026-10-29 第二轮实机：两轮底板建成，第一道折边仍报 `-1`
+
+环境与前置同 [T03 卡](DEV051-T03-ACCEPTANCE.md)：手动打开的 Creo 12.4.0.0、`auto_start_creo=false`、唯一 dev 服务、服务 0.8.3、`ready/connected=true`；先按 T03 修复重建执行器（`build/creo_worker.exe` 2026-10-29 16:10:23），再用同一驱动原样重跑，期望值与两档 relief 均未改。
+
+```text
+.\.venv\Scripts\python.exe tools\test_sheetmetal_relief.py --live --confirm-session-usable
+```
+
+报告：`build/sheetmetal_relief/20261029T161528_cc1fda94/report.json`（SHA256 `4a3a30c9630fbc96f6c70520888269a7aca7a05aa54817f096e10891070d018b`）；驱动退出码 1，`stopped=null`。
+
+| 轮 | relief 请求 | 底板 job / model_id（名称） | 底板终态 / revision / 体积 | bbox | 折边进度 | 结果 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 省略（兼容默认 none） | `7f921a1f198c4ac79e99a8272c73707b` / `84a49cc6527b4f6f92f51322cf72647d`（t11_relief_none_74fcbf） | succeeded / 1 / 42 920 mm³ | `[0,-116,0]`–`[185,116,1]` | 1/4 道失败（第 1 道 `f_px`） | 未通过 |
+| 2 | `{type:rectangular, ends:both, width:1, depth:1}` | `a41050e44cf44cf2901b2d95d248b042` / `f14dff681cb04edca9e4a6d632477005`（t11_relief_rect_1x1_3ff0ef） | succeeded / 1 / 42 920 mm³ | 同上 | 1/4 道失败（第 1 道 `f_px`） | 未通过 |
+
+第一壁不再是阻断点：两块 185×232×1 底板都建成，`42 920 mm³` 与 T03 契约一致。
+
+### 第一道折边（`f_px`）原始结果
+
+| 项 | 第 1 轮（none） | 第 2 轮（rect 1×1） |
+| --- | --- | --- |
+| job_id | `ef7341d546b34fa28a145771b543b1a4` | `4c172764b29f4a0d850cfd6a38b73125` |
+| 边（`creo_inspect_model` 选边） | id 125，+X 侧，top 面，`[185,-116,1]`→`[185,116,1]`，跨度 232 mm | 同左 |
+| 期望增量 | 18 560 mm³（232×80×1） | 18 558 mm³（扣 2×1×1 缺口） |
+| 终态 | failed | failed |
+| 原码 | `toolkit_code=-1`、`failed_stage=execute_sheetmetal_flange`、`failed_toolkit_call=ProFeatureWithoptionsCreate` | 同左 |
+| 消息（原文） | `Toolkit call ProFeatureWithoptionsCreate failed with code -1 during execute_sheetmetal_flange` | 同左 |
+| 回滚 | `rollback_succeeded=true`；快照 rev 1→1、体积 42 920→42 920（`rolled_back=true`） | 同左 |
+| `relief` 回显 | 无（特征未创建） | 无 |
+
+因此本轮**没有创建任何折边**：四壁真实创建、每道体积增量、`relief` 回显（`sides[]`/`part_thickness_mm`/`corner_overlap_run_mm`）、`width×depth×t` 与缺口距离、第三道 `f_ny` 是否再现 `-1`、展开/折回、`height` 编辑、保存重载全部未取证。也没有用四个普通拉伸块替代折边。
+
+### 与 T05 原件的关键差异（记为需解释的事实，不当结论）
+
+- 0.7.0 R1 S3 原件（job `f45415a90a0544bfad24fe1225c18f50`）里**前两道 ±X 折边成功、第三道 `f_ny` 才 -1**；本轮同一几何（185×232×1 + h80/R2.54/Y0.5）**第一道 `f_px` 就 -1**。
+- 说明当前实现的折边元素树在这块底板上比原件更早被拒。T05 的“第三道角部重叠 ≥77.46 mm³”假设**不能**用来解释本轮的第一道失败（此时还没有任何相邻壁、无角部）；角部假设仍悬置，本轮不给结论。
+- 也说明 `relief` 两档（none / rect 1×1）当前无法比较——失败发生在创建期，早于任何释放几何生效。
+
+### 下一步
+
+1. 折边定因（建议按 sweep 已有的做法）：先用 `PRO_FEAT_CR_INCOMPLETE_FEAT` 建不完整壁特征，`ProFeatureElemtreeExtract` 取回 Creo 自己补齐的元素树，与本实现写入的树逐项比对（重点：`PRO_E_SMT_FLANGE_TYPE` 与 2D 扫掠截面是否必须成对、`PRO_E_SMT_WALL_HEIGHT` 取 NONE 时是否仍需要高度元素、`PRO_E_SMT_FLANGE_TRAJ_CRV_NORM`/曲线集合的 TAN 指令在“转换型壁”的边是否合法、`PRO_E_SMT_FLANGE_DEPTH=SIDE1/SIDE2 TO_END` 的组合）。
+2. 定因后再谈 relief 是否被接受；本轮不对 `PRO_E_BEND_RELIEF_LENGTH_TYPE/LENGTH/ANGLE` 的待验风险下结论。
+3. 底板几何已确认（bbox `[0,-116,0]`–`[185,116,1]`），后续 `corner_run`（宽 1、深 77.46）与 `ends=side1/side2` 对照可在此基体上直接跑，不必再等第一壁。
