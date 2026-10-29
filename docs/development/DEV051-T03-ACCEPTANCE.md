@@ -178,3 +178,9 @@ BUILD_FAILED=... the section has 2 drawing entities (1 straight lines) ...
 
 1. 原生修复：`first_wall_line_length` 跳过 `PRO_2D_COORD_SYS`（及点实体），保留“恰好一条直线”语义；重新 `bridge.py build` 后用本驱动原样重跑，五个矩阵与拒绝用例都要重新取证。
 2. 修复前不要启动 T04 的 B/C 两路与 T11 四壁：它们都依赖第一壁成功（见对应卡）。
+
+### 本批交付检查（2026-10-29，三份驱动共用一次门禁）
+
+- `.venv\Scripts\python.exe -m ruff format tools/sheetmetal_live.py tools/test_sheetmetal_contract.py tools/test_sheetmetal_overlap.py tools/test_sheetmetal_relief.py` → `4 files already formatted`（无待改）。
+- `.venv\Scripts\python.exe -m ruff check`（同上四个文件） → `All checks passed!`。
+- `.venv\Scripts\python.exe tools\dev_check.py` → exit 0；`success=true`、`unit_tests=passed`（1343 tests、0 failure、0 error，261 s）；style `lint_findings=30`、`unformatted_files=16`（与 T03 前基线一致，本批无新增）；`source.commit=4598a1b`、`dirty=true`（本机会话数据未提交）；报告 `build/development_check.json`。

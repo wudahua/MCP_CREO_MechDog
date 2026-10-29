@@ -154,3 +154,9 @@ not supported for the first wall
 
 1. 先修 T03 的第一壁准入（见 [T03 卡](DEV051-T03-ACCEPTANCE.md)），重编译执行器后原样重跑本驱动：B/C 两路会自动解除阻断。
 2. B 路失败时按本卡“负例实机契约”核对体积/别名/revision 不变与后续合法 cut 可用；确认不支持后再决定是否加可识别错误码（本阶段仍不预判）。
+
+### 本批交付检查（2026-10-29，三份驱动共用一次门禁）
+
+- `.venv\Scripts\python.exe -m ruff format tools/sheetmetal_live.py tools/test_sheetmetal_contract.py tools/test_sheetmetal_overlap.py tools/test_sheetmetal_relief.py` → `4 files already formatted`（无待改）。
+- `.venv\Scripts\python.exe -m ruff check`（同上四个文件） → `All checks passed!`。
+- `.venv\Scripts\python.exe tools\dev_check.py` → exit 0；`success=true`、`unit_tests=passed`（1343 tests、0 failure、0 error，261 s）；style `lint_findings=30`、`unformatted_files=16`（与 T03 前基线一致，本批无新增）；`source.commit=4598a1b`、`dirty=true`（本机会话数据未提交）；报告 `build/development_check.json`。

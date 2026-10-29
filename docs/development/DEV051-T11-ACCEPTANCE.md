@@ -179,3 +179,9 @@ not supported for the first wall
 
 1. 先修 T03 第一壁准入并重编译执行器，再原样重跑本驱动；届时自动覆盖两轮四壁。
 2. 第一壁通过后，按需补跑 §corner_run§（宽 1、深 77.46）与 §ends=side1/side2§ 的对照，再判断矩形释放能否消除角部干涉；本轮不对该问题给结论。
+
+### 本批交付检查（2026-10-29，三份驱动共用一次门禁）
+
+- `.venv\Scripts\python.exe -m ruff format tools/sheetmetal_live.py tools/test_sheetmetal_contract.py tools/test_sheetmetal_overlap.py tools/test_sheetmetal_relief.py` → `4 files already formatted`（无待改）。
+- `.venv\Scripts\python.exe -m ruff check`（同上四个文件） → `All checks passed!`。
+- `.venv\Scripts\python.exe tools\dev_check.py` → exit 0；`success=true`、`unit_tests=passed`（1343 tests、0 failure、0 error，261 s）；style `lint_findings=30`、`unformatted_files=16`（与 T03 前基线一致，本批无新增）；`source.commit=4598a1b`、`dirty=true`（本机会话数据未提交）；报告 `build/development_check.json`。
