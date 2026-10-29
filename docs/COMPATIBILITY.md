@@ -1,5 +1,11 @@
 # Creo 兼容与验收矩阵
 
+## 当前版本 0.8.5 的方向迁移与边界
+
+本机 Creo 12.4.0.0 实测：钣金折边由 `PRO_E_SMT_FLANGE_SEC_FLIP` 决定侧向；`flip=false`（默认）现在是从选中面向外，`flip=true` 反向。两例 1 mm 板折边各 +18 025.29 mm³、Z 增长 79 mm，保存重载通过。依赖旧方向假设的调用方须复核选面和 `flip`，本变更属于 MINOR 性质，按本次指定编号在 0.8.5 交付。公开工具仍 94 个。
+
+钣金体并入式实体 add 在重叠与非重叠位置均原生 `-1`、元素错误为空；0.8.5 建模前以 `SHEETMETAL_SOLID_ADD_UNSUPPORTED` 拒绝。`new_body=true` 可生成独立实体（+500 mm³），不等于并入钣金体。四壁仅 2/4；第三道 `f_ny` 回滚，`relief` 只回显、无可观测切料。T13 native_bundle 导出不完整且回导 `SESSION_NAME_CONFLICT`，未通过。详见 [0.8.5 版本说明](RELEASE_NOTES_0.8.5.md)与[发布记录](validation/RELEASE-0.8.5.md)。
+
 ## 当前验收规则（2026-10-15）
 
 按用户要求取消全项目 Creo 10 独立复测、双版本验收及正式基线门槛。当前开发、合入和发布按本机 Windows x64 / Creo 12.4.0.0 / 匹配 Toolkit SDK 的实际改动范围验收；朋友反馈具体问题后再登记或沿用 ID 跟进。历史测试环境和未测事实保留，旧复测安排不再作为当前任务的前置条件，也不表示 Creo 10 新增了通过证据。条目见 [DEV-018](work-items/DEV-018.md)。
