@@ -666,11 +666,11 @@ static void generic_sheetmetal_flange(const J &op) {
     // DEV-051 T05/T11 fourth round: build the section like the stock shapes in
     // <creo_root>/Common Files/text/smt/flange_shapes - every one of them holds a single
     // line, one coordinate system and one length dimension, and none holds a centerline.
-    // The leg is measured from the plane normal, not from the parent wall plane: the
-    // third-round build drew it along sketch +y (native.log LINE_wall 0,0 -> 0,80) and
-    // Creo swept a coplanar 80 mm extension in +x, so sketch +x is the direction normal
-    // to the parent wall and sketch +y lies inside the parent wall. Angle 90 therefore
-    // needs the leg on sketch +x, and angle 0 is a straight in-plane continuation.
+    // The leg is measured from the plane normal, not from the parent wall plane: Creo
+    // sweeps the section along the edge, sketch +x is the direction normal to the parent
+    // wall and sketch +y lies inside the parent wall. Angle 90 therefore needs the leg on
+    // sketch +x, and angle 0 is a straight in-plane continuation. The drawn sign does not
+    // pick the bend side (Creo normalises it); PRO_E_SMT_FLANGE_SEC_FLIP does, see below.
     double a = op["angle"].get<double>() * acos(-1.0) / 180, h = op["height"];
     double leg[2] = {h * sin(a), h * cos(a)};
     J profile = {{"profile", J::array({{{"type", "line"},
@@ -702,13 +702,24 @@ static void generic_sheetmetal_flange(const J &op) {
     CK(ProElementCollectionSet(node(root, PRO_E_STD_CURVE_COLLECTION_APPL), chain));
     ProCollectionFree(&chain);
     ProSelectionFree(&edge);
-    integer(root, PRO_E_SMT_FLANGE_TRAJ_CRV_NORM,
-            op.value("flip", false) ? PRO_FLANGE_TRAJ_NORM_FLIP : PRO_FLANGE_TRAJ_NORM_NO_FLIP);
+    // BUG-047 / DEV-051 A: the edge chain normal is not the direction switch. With
+    // flip=false (PRO_FLANGE_TRAJ_NORM_NO_FLIP = 1) and flip=true (-1) the 2026-10-29
+    // 22:06 run produced identical bbox, identical volume and the same side, and
+    // ProSmtFlangeWall.h lists only PRO_B_TRUE/PRO_B_FALSE for this element, so -1 is not
+    // a usable second value. It stays at the stock NO_FLIP like ptu_featcreat's
+    // UgSmtFlgWallCreate.c. PRO_E_SMT_FLANGE_SEC_FLIP is what moves the bend, measured on
+    // the same h80/R2.54/Y0.5 flange: top edge FALSE -> down, TRUE -> up; bottom edge
+    // FALSE -> up, TRUE -> down. The rule is relative to the attachment face, so TRUE is
+    // "out of the face you selected" and is the default; `flip` asks for the material side.
+    integer(root, PRO_E_SMT_FLANGE_TRAJ_CRV_NORM, PRO_FLANGE_TRAJ_NORM_NO_FLIP);
     ProElement sec = node(root, PRO_E_STD_SECTION);
     integer(sec, PRO_E_STD_SEC_METHOD, PRO_SEC_SKETCH);
     CK(ProElementSpecialvalueSet(node(sec, PRO_E_SKETCHER), (ProAppData)section));
     integer(root, PRO_E_SMT_WALL_SHARPS_TO_BENDS, PRO_B_TRUE);
-    integer(root, PRO_E_SMT_FLANGE_SEC_FLIP, PRO_B_FALSE);
+    int sec_flip = op.value("flip", false) ? PRO_B_FALSE : PRO_B_TRUE;
+    integer(root, PRO_E_SMT_FLANGE_SEC_FLIP, sec_flip);
+    log("FLANGE_SIDE sec_flip=%d bend_side=%s\n", sec_flip,
+        sec_flip == PRO_B_TRUE ? "outward" : "inward");
     ProElement depth = node(root, PRO_E_SMT_FLANGE_DEPTH);
     integer(node(depth, PRO_E_SMT_FLANGE_SIDE_1_DEPTH), PRO_E_SMT_FLANGE_DEPTH_TYPE,
             PRO_WALL_LEN_TYPE_TO_END);
@@ -742,6 +753,9 @@ static void generic_sheetmetal_flange(const J &op) {
     CK(ProSolidRegenerate((ProSolid)board, PRO_REGEN_NO_FLAGS));
     CK(ProElementFree(&root));
     extra["section_path"] = J::array({PRO_E_STD_SECTION, PRO_E_SKETCHER});
+    extra["bend_side"] = sec_flip == PRO_B_TRUE ? "outward" : "inward";
+    extra["sec_flip_element"] = sec_flip;
+    extra["flip_input"] = op.value("flip", false);
     if (op.contains("relief") && !op.at("relief").is_null())
         extra["relief"] = flange_relief_record(op, relief_request);
     remember(op, f, extra);

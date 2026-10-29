@@ -15,8 +15,8 @@ without a session:
    per-flange refresh procedure (re-inspect, validate, submit one flange per
    job), and records the expectation and judgement fields for every flange;
 3. audits the flange element tree statically: what the public parameters reach
-   (trajectory normal flip, radius, Y factor), what is fixed (thickness flip,
-   section flip, sharp-to-bend, relief none) and what is implicit (parent body).
+   (section side = bend direction, radius, Y factor), what is fixed (trajectory
+   normal, thickness flip, relief none) and what is implicit (parent body).
 
 It does not decide the root cause. The hypotheses are falsifiable, each one maps
 to a judgement field, and the decision table states which observation would
@@ -221,12 +221,14 @@ def check_native_source() -> dict:
         "feature_type_wall": "PRO_E_FEATURE_TYPE, PRO_FEAT_WALL" in body,
         "wall_type_flange": "PRO_E_SMT_WALL_TYPE, PRO_SMT_WALL_TYPE_FLANGE" in body,
         "flange_type_2d_swept": "PRO_FLANGE_WALL_TYPE_2D_SWEPT" in body,
-        "trajectory_normal_flip_exposed": "PRO_E_SMT_FLANGE_TRAJ_CRV_NORM" in body
-        and "PRO_FLANGE_TRAJ_NORM_FLIP" in body
-        and "PRO_FLANGE_TRAJ_NORM_NO_FLIP" in body
-        and 'op.value("flip", false)' in body,
+        # 2026-10-29 DEV-051 A / BUG-047: `flip` used to write the trajectory normal, which
+        # produced identical geometry for both values. The measured direction switch is the
+        # section side element; the trajectory normal now stays at the stock NO_FLIP.
+        "section_side_flip_exposed": "PRO_E_SMT_FLANGE_SEC_FLIP, sec_flip" in body
+        and 'op.value("flip", false) ? PRO_B_FALSE : PRO_B_TRUE' in body,
+        "trajectory_normal_fixed_no_flip": "PRO_E_SMT_FLANGE_TRAJ_CRV_NORM, PRO_FLANGE_TRAJ_NORM_NO_FLIP"
+        in body,
         "wall_thickness_flip_fixed_false": "PRO_E_SMT_WALL_THICKNESS_FLIP, PRO_B_FALSE" in body,
-        "section_flip_fixed_false": "PRO_E_SMT_FLANGE_SEC_FLIP, PRO_B_FALSE" in body,
         "bend_relief_compound_both_ends": "PRO_E_SMT_BEND_RELIEF" in body
         and "PRO_E_SMT_BEND_RELIEF_SIDE1" in body
         and "PRO_E_SMT_BEND_RELIEF_SIDE2" in body,
@@ -272,10 +274,12 @@ def check_native_source() -> dict:
         "element_tree": {
             "feature": "PRO_FEAT_WALL / PRO_SMT_WALL_TYPE_FLANGE / PRO_FLANGE_WALL_TYPE_2D_SWEPT",
             "trajectory": "PRO_E_STD_CURVE_COLLECTION_APPL with one edge reference",
-            "material_side": "PRO_E_SMT_FLANGE_TRAJ_CRV_NORM = flip ? FLIP : NO_FLIP",
+            "material_side": (
+                "PRO_E_SMT_FLANGE_SEC_FLIP = flip ? FALSE : TRUE (default out of the "
+                "attachment face); PRO_E_SMT_FLANGE_TRAJ_CRV_NORM stays NO_FLIP"
+            ),
             "fixed_not_exposed": [
                 "PRO_E_SMT_WALL_THICKNESS_FLIP = FALSE",
-                "PRO_E_SMT_FLANGE_SEC_FLIP = FALSE",
                 "PRO_E_SMT_CORNER_RELIEF, PRO_E_SMT_MTR_CUTS, PRO_E_SMT_EDGE_RIP",
             ],
             "bend_relief": (
@@ -289,14 +293,20 @@ def check_native_source() -> dict:
             "body": "no PRO_E_BODY element: the wall attaches to the model's active body",
         },
         "conclusion": (
-            "one public control (flip) reaches the trajectory normal; thickness side and section "
-            "side are fixed, relief is none by default and rectangular only when requested, and "
-            "the target body plus every corner rule stay implicit. A live third-flange failure "
-            "therefore cannot be attributed to a public parameter from the source alone, and "
-            "T11 relief is not proof that the corner itself is resolved."
+            "one public control (flip) reaches the bend side through the section side element; "
+            "the trajectory normal, thickness side, relief (none by default, rectangular only "
+            "when requested) and the target body plus every corner rule stay fixed. A live "
+            "third-flange failure therefore cannot be attributed to a public parameter from "
+            "the source alone, and T11 relief is not proof that the corner itself is resolved."
         ),
-        "production_change_this_stage": "none",
-        "production_change_since": "DEV-051 T11 added the opt-in rectangular relief",
+        "production_change_this_stage": (
+            "generic_sheetmetal_flange: the direction switch moved from "
+            "PRO_E_SMT_FLANGE_TRAJ_CRV_NORM to PRO_E_SMT_FLANGE_SEC_FLIP"
+        ),
+        "production_change_since": (
+            "DEV-051 T11 added the opt-in rectangular relief; DEV-051 A made the section side "
+            "the direction switch after the 2026-10-29 live matrix"
+        ),
     }
 
 
@@ -402,7 +412,8 @@ def live_checklist() -> list[str]:
         "then rebuild from the plate; never resume at the next flange",
         "probe the trimmed edge (20 mm short of both corners) to separate corner overlap from "
         "reference drift",
-        "toggle flip on one edge only to separate material side from trajectory orientation",
+        "toggle flip on one edge only: the section side must move the bend, so the two bbox "
+        "sides differ by the flange height",
         "run the thick-base first flange only after the T03 live contract fixes the bbox",
     ]
 

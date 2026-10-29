@@ -1540,6 +1540,10 @@ async def creo_sheetmetal_flange(
 ) -> dict[str, Any]:
     """Attach a native bent flange to a sheetmetal edge. The section exposes named height for dimension edits.
 
+    flip=false (the default) bends out of the face the edge belongs to; flip=true bends to
+    the opposite, material side. The side is relative to the attachment face, not to a
+    global axis.
+
     Optional relief adds a single rectangular notch to the selected bend end(s); without it
     both ends keep PRO_BEND_RLF_NONE exactly as before. Relief geometry is not verified
     against the corner overlap and the flange keeps no in-place relief edit.

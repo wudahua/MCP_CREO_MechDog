@@ -646,18 +646,22 @@ HYPOTHESES = (
     {
         "id": "H3_trajectory_normal_flip",
         "statement": (
-            "flip only switches PRO_E_SMT_FLANGE_TRAJ_CRV_NORM; edge tangent orientation "
-            "depends on the face loop, so one flip value need not mean one material side "
-            "across +X, -X and the perpendicular edge"
+            "RESOLVED 2026-10-29: `flip` used to write PRO_E_SMT_FLANGE_TRAJ_CRV_NORM and the "
+            "one-variable live pair (flip=false -> 1, flip=true -> -1) produced identical "
+            "bbox, identical volume and the same side, so that element is not the switch. "
+            "PRO_E_SMT_FLANGE_SEC_FLIP is: top edge FALSE -> down / TRUE -> up, bottom edge "
+            "FALSE -> up / TRUE -> down, i.e. the side is relative to the attachment face"
         ),
-        "probe": "same edge, same h/R/Y, only flip toggled; measure bbox side and wall face",
+        "probe": "same edge, same h/R/Y, only flip toggled; measure bbox side and direction",
         "expected_if_true": (
-            "the two runs sit on opposite sides of the plate (about one thickness apart) and "
-            "the +X/-X pair with one flip does not agree"
+            "the two runs sit on opposite sides of the plate, one flange height apart"
         ),
-        "refutation": "flip=true and flip=false give the same bbox side on the same edge",
+        "refutation": (
+            "flip=true and flip=false give the same bbox side on the same edge - observed "
+            "before the fix, which is why the switch moved to the section side element"
+        ),
         "judgement_fields": ("flip_input", "material_side", "body_bbox_after", "direction"),
-        "status": "unresolved_offline",
+        "status": "resolved_by_live_matrix_2026-10-29",
     },
     {
         "id": "H4_parent_body_implicit",

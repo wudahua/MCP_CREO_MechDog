@@ -1,15 +1,19 @@
-"""DEV-051 T05/T11: does a flange become a 90 degree bend?
+"""DEV-051 T05/T11 A: is the flange bend direction really switchable?
 
-The 2026-10-29 third round created two flanges that were accepted by Creo but came
-out as coplanar 80 mm extensions: the plate bbox only grew in X, Z stayed at 0..1 and
-the volume (232 x 80 x 1 = 18 560 mm3) was identical to a real bend, so volume could
-never tell the two apart. This driver answers that one question with the bbox only, one
-variable per model, and it does not accept a flat result as a pass.
+The 2026-10-29 22:06 run settled the geometry question and exposed the direction one:
+both flanges were real 90 degree bends (bbox Z grew 79 mm) but both went down, and
+`flip=true` was identical to `flip=false`, so `flip` reached no working element. The
+follow-up probe measured the only element that moves the bend,
+PRO_E_SMT_FLANGE_SEC_FLIP - top edge FALSE -> down, TRUE -> up; bottom edge FALSE -> up,
+TRUE -> down - so the side is relative to the attachment face, and TRUE ("out of the
+selected face") is now the default with `flip` asking for the material side.
 
-Verdict rule (docs/development/DEV051-T11-ACCEPTANCE.md): the base plate is Z 0..1, so
-a 90 degree flange with height 80 must grow bbox Z by 80 mm (or the equivalent bent
-envelope). Z growth below 90 percent of the height is a failure even when the volume
-delta matches exactly.
+Verdict rule (docs/development/DEV051-T05-ACCEPTANCE.md): the base plate is 185 x 232 x 1,
+so a 90 degree flange with height 80 grows the bbox by at least 0.9 x 80 = 72 mm in Z,
+either up or down. |Z growth| below 72 mm is a failure even when the volume delta matches.
+Direction is read from the bbox and compared with the case's explicit expectation: the
+default case must go up (out of the top face) and `flip=true` must go down, so a switch
+that does nothing fails instead of passing.
 
 Offline mode checks the native section structure against the stock Creo shapes in
 <creo_root>/Common Files/text/smt/flange_shapes: every stock shape holds one line, one
@@ -51,8 +55,8 @@ ROOT = SOURCE_PATHS.resource_root
 HANG_BUDGET_SECONDS = 180.0
 Z_GROWTH_RATIO = 0.9
 CASES = (
-    ("angle90", "section leg on sketch +x, trajectory normal not flipped", False),
-    ("angle90_flip", "same section with PRO_E_SMT_FLANGE_TRAJ_CRV_NORM flipped", True),
+    ("angle90_outward", "default side: out of the selected top face", False, "up"),
+    ("angle90_inward", "flip=true: the opposite, material side", True, "down"),
 )
 
 
@@ -71,28 +75,39 @@ def native_section() -> dict:
         "centerline_removed": '"centerline"' not in body,
         "profile_entity_count": body.count('{"type", "line"}'),
         "height_type_none": "PRO_SMT_WALL_HEIGHT_NONE" in body,
-        "section_flip_false": "PRO_E_SMT_FLANGE_SEC_FLIP, PRO_B_FALSE" in body,
+        "section_side_flip_is_the_switch": (
+            'op.value("flip", false) ? PRO_B_FALSE : PRO_B_TRUE' in body
+            and "integer(root, PRO_E_SMT_FLANGE_SEC_FLIP, sec_flip)" in body
+        ),
+        "traj_normal_not_the_switch": (
+            "PRO_FLANGE_TRAJ_NORM_FLIP" not in body
+            and "PRO_E_SMT_FLANGE_TRAJ_CRV_NORM, PRO_FLANGE_TRAJ_NORM_NO_FLIP" in body
+        ),
         "statement": (
             "stock flange_shapes hold one line, one coordinate system and one length "
-            "dimension and no centerline; sketch +x is normal to the parent wall"
+            "dimension and no centerline; sketch +x is normal to the parent wall; the bend "
+            "side comes from PRO_E_SMT_FLANGE_SEC_FLIP, not from the trajectory normal"
         ),
     }
 
 
-def verdict(before: tuple, after: tuple, height: float) -> dict:
+def verdict(before: tuple, after: tuple, height: float, expected: str) -> dict:
     """Bbox-only judgement: Z growth is the bend, in-plane growth is not.
 
-    The envelope counts in both directions so a downward flange is still reported as a
-    bend; only an up flange passes the case, because a downward wall is the material-side
-    defect (BUG-047), not the requested 90 degree flange.
+    The envelope counts in both directions, so a downward flange is still a bend. The
+    direction is then compared with the case's explicit expectation, so a `flip` that
+    changes nothing fails on the case that asks for the other side.
     """
     growth_z = max(after[1][2] - before[1][2], before[0][2] - after[0][2])
+    direction = fx.classify_direction(after)
     return {
         "bbox_before_mm": [list(before[0]), list(before[1])],
         "bbox_after_mm": [list(after[0]), list(after[1])],
         "z_growth_mm": growth_z,
         "required_z_growth_mm": height * Z_GROWTH_RATIO,
-        "direction": fx.classify_direction(after),
+        "direction": direction,
+        "expected_direction": expected,
+        "direction_matches": direction == expected,
         "bent": growth_z >= height * Z_GROWTH_RATIO,
     }
 
@@ -103,12 +118,13 @@ def plan() -> list[dict]:
             "case": name,
             "change": description,
             "flip": flip,
+            "expected_direction": expected,
             "model": "fresh per case",
             "height_mm": fx.FLANGE_HEIGHT_MM,
             "angle_deg": fx.FLANGE_ANGLE_DEG,
             "radius_mm": fx.FLANGE_RADIUS_MM,
         }
-        for name, description, flip in CASES
+        for name, description, flip, expected in CASES
     ]
 
 
@@ -129,7 +145,7 @@ def offline_report(output: Path | None) -> dict:
     return report
 
 
-async def run_case(runner: LiveRunner, name: str, flip: bool) -> dict:
+async def run_case(runner: LiveRunner, name: str, flip: bool, expected: str) -> dict:
     model_name = unique_name(f"f4_{name}")
     created = await runner.submit(
         f"{name}:base",
@@ -145,6 +161,7 @@ async def run_case(runner: LiveRunner, name: str, flip: bool) -> dict:
     entry: dict = {
         "case": name,
         "flip": flip,
+        "expected_direction": expected,
         "model_name": model_name,
         "model_id": model_id,
         "base_job_id": created["job_id"],
@@ -191,17 +208,20 @@ async def run_case(runner: LiveRunner, name: str, flip: bool) -> dict:
     added = None
     if runner.volume(after) is not None and entry["base_volume_mm3"] is not None:
         added = runner.volume(after) - entry["base_volume_mm3"]
-    judged = verdict(bounds, after_bounds, fx.FLANGE_HEIGHT_MM)
+    judged = verdict(bounds, after_bounds, fx.FLANGE_HEIGHT_MM, expected)
     saved = (terminal.get("result") or {}).get("saved_file_reloaded_and_verified")
+    side = runner.record(after, "f_px")
     entry.update(
         edge=reference["geometry"],
         revision_after=after.get("revision"),
         volume_after_mm3=runner.volume(after),
         added_mm3=added,
         saved_file_reloaded_and_verified=saved,
+        bend_side_echo=side.get("bend_side"),
+        sec_flip_echo=side.get("sec_flip_element"),
         **judged,
     )
-    entry["passed"] = bool(judged["bent"] and judged["direction"] == "up" and saved is True)
+    entry["passed"] = bool(judged["bent"] and judged["direction_matches"] and saved is True)
     return runner.case(entry)
 
 
@@ -216,25 +236,27 @@ async def live(output: Path, run_id: str) -> int:
             client,
             output,
             "FEAT-014 / DEV-051 T05/T11",
-            "one flange per fresh model; bbox Z growth decides the 90 degree bend",
+            "one flange per fresh model; |bbox Z growth| decides a 90 degree bend and the "
+            "explicit direction expectation decides the side",
             run_id,
         )
         runner.report["hang_budget_seconds"] = HANG_BUDGET_SECONDS
         blocked = None
         try:
             await runner.start()
-            for name, description, flip in CASES:
+            for name, description, flip, expected in CASES:
                 if blocked:
                     runner.case(
                         {
                             "case": name,
                             "change": description,
+                            "expected_direction": expected,
                             "passed": False,
                             "not_executed": blocked,
                         }
                     )
                     continue
-                entry = await run_case(runner, name, flip)
+                entry = await run_case(runner, name, flip, expected)
                 if entry.get("base_status") != "succeeded":
                     blocked = "the base first wall did not succeed, so no flange was submitted"
                 elif entry.get("bent") is False:
