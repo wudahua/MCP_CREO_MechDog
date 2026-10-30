@@ -380,9 +380,30 @@ static void generic_sheetmetal_wall(const J &op) {
         thickness);
     bool synced = false;
     if (fabs(part_before - thickness) > 1e-6) {
-        ProDimension dimension;
-        CK(ProSmtPartThicknessGet(part, &dimension));
-        CK(ProDimensionValueSet(&dimension, thickness));
+        // BUG-032/T03 live (2026-10-30): setting the dimension returned by
+        // ProSmtPartThicknessGet reports PRO_TK_NO_ERROR but has no effect - the
+        // regeneration that follows recomputes the sheetmetal relations and puts the
+        // template default back (3.71 mm stayed on every case). The part thickness is
+        // driven by the SMT_THICKNESS parameter, so set that and keep the dimension
+        // write only as a fallback for a part that does not expose the parameter.
+        ProModelitem owner;
+        CK(ProMdlToModelitem(board, &owner));
+        ProName param_name;
+        wcscpy_s(param_name, L"SMT_THICKNESS");
+        ProParameter param;
+        if (ProParameterInit(&owner, param_name, &param) == PRO_TK_NO_ERROR) {
+            ProParamvalue value = {};
+            value.type = PRO_PARAM_DOUBLE;
+            value.value.d_val = thickness;
+            CK(ProParameterValueWithUnitsSet(&param, &value, nullptr));
+            log("SHEETMETAL_WALL_PART_THICKNESS driver=SMT_THICKNESS set_mm=%.9f\n", thickness);
+        } else {
+            ProDimension dimension;
+            CK(ProSmtPartThicknessGet(part, &dimension));
+            CK(ProDimensionValueSet(&dimension, thickness));
+            log("SHEETMETAL_WALL_PART_THICKNESS driver=dimension_fallback set_mm=%.9f\n",
+                thickness);
+        }
         CK(ProSolidRegenerate((ProSolid)board, PRO_REGEN_NO_FLAGS));
         double regenerated = volume();
         log("SHEETMETAL_WALL_PART_THICKNESS synced_mm=%.9f regenerated_mm3=%.9f\n", thickness,
