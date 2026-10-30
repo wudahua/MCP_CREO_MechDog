@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "work_item": "DEV-052",
+  "task": "N00 (0.8.x feedback archival, registration and current-state correction; no implementation, no live session, no release)",
+  "archived_at": "2026-10-30",
+  "timezone": "Asia/Shanghai",
+  "mapping": "MAPPING.md",
+  "archive_policy": "Seven Markdown originals copied byte for byte; no decoding, re-encoding or formatting.",
+  "comparison_baseline": {
+    "version": "0.9.0",
+    "local_version_source": "version.py",
+    "head_commit": "d287499e141ad82913086d93d5b7bf8bc50d659e",
+    "branch": "codex/dev051-feedback070",
+    "dirty": true,
+    "dirty_note": "Pre-existing uncommitted changes from other windows were preserved unchanged: docs/validation/RELEASE-0.8.5.md, session_activity.json, session_erase/, .zcode/, .codebuddy/, .workbuddy/, examples/wb_unsaved_03.prt.1.",
+    "released_tag": "v0.9.0",
+    "released_tag_target": "7280982dbe2b1b2ef6cad8b2d9e1abd77d62d20c",
+    "release_record": "docs/validation/RELEASE-0.9.0.md",
+    "remote_revalidated": false,
+    "runtime_service_identity_queried": false
+  },
+  "reports": [
+    {
+      "id": "R80x-1",
+      "filename": "2026-10-29_CREO_0.8.2_sheetmetal_wall首个壁被新校验误拒导致钣金链路全断.md",
+      "bytes": 6412,
+      "sha256": "a2439e4a25df754b30171c41f63d96a709b6413079534dad4c45bad528d022c1",
+      "source": "C:\\Users\\Administrator\\Downloads\\0.8.x\\2026-10-29_CREO_0.8.2_sheetmetal_wall首个壁被新校验误拒导致钣金链路全断.md",
+      "reported_version": "0.8.2",
+      "report_date": "2026-10-29",
+      "reported_environment": "Report does not independently identify the Creo version; release 0.8.2 with 0.8.3 published but not installed.",
+      "evidence_method": "external_live_report_with_static_or_historical_claims_separately_labeled",
+      "key_topics": "R1 first-wall admission regression; S1/S3/S5 untestable; N1 body_counts; S10 per-operation results; execute_plan no longer auto-creates sheetmetal; new model revision starts at 1",
+      "attached_assets_delivered": false
+    },
+    {
+      "id": "R80x-2",
+      "filename": "2026-10-29CREO10.0.0.0-0.8.2-0.8.x在Creo10SDK无法编译ProSmtPartThicknessValueGet缺失.md",
+      "bytes": 7048,
+      "sha256": "b262c4394df1a65339b2ac9cbd6a1a0855b36b6010d51ee81976744ccc2293b7",
+      "source": "C:\\Users\\Administrator\\Downloads\\0.8.x\\2026-10-29CREO10.0.0.0-0.8.2-0.8.x在Creo10SDK无法编译ProSmtPartThicknessValueGet缺失.md",
+      "reported_version": "0.8.2",
+      "report_date": "2026-10-29",
+      "reported_environment": "Reported Windows x64 / Creo Parametric 10.0.0.0 with matching Toolkit SDK / VS2022 BuildTools 14.44.35207 / Python 3.13; install, compile and static verification only, no Toolkit connection by design.",
+      "evidence_method": "external_install_and_static_report_no_creo_connection",
+      "key_topics": "C3861 ProSmtPartThicknessValueGet not declared on Creo 10 SDK; proposed MECHDOG_HAS_ function probe; local 7-line patch applied on the reporter machine only",
+      "attached_assets_delivered": false
+    },
+    {
+      "id": "R80x-3",
+      "filename": "2026-10-30_CREO_0.8.5_首壁与depth已修复_S1改为明确封堵_S3待复测.md",
+      "bytes": 6730,
+      "sha256": "1287411a0bf49d129330c5f7977d951def9c4ae2cd82fe3255d39c9fbf1e14ff",
+      "source": "C:\\Users\\Administrator\\Downloads\\0.8.x\\2026-10-30_CREO_0.8.5_首壁与depth已修复_S1改为明确封堵_S3待复测.md",
+      "reported_version": "0.8.5",
+      "report_date": "2026-10-30",
+      "reported_environment": "Report does not independently identify the Creo version; release 0.8.5 reported as current and latest.",
+      "evidence_method": "external_live_report_with_static_or_historical_claims_separately_labeled",
+      "key_topics": "R1 fixed; S5 depth semantics fixed; S1 explicitly blocked with SHEETMETAL_SOLID_ADD_UNSUPPORTED; S3 inconclusive because the reporter guessed edge IDs; N3 preview output_file -4 with new file_check",
+      "attached_assets_delivered": false
+    },
+    {
+      "id": "R80x-4",
+      "filename": "2026-10-30CREO10.0.0.0-0.8.5-Creo10编译阻断跨三版未修与会话卡死第三次复现无开放条目.md",
+      "bytes": 10123,
+      "sha256": "f8705db7956a7d2bc9a94bfe049858a2398d9ef34b4c0f2788d652abc0e3f70c",
+      "source": "C:\\Users\\Administrator\\Downloads\\0.8.x\\2026-10-30CREO10.0.0.0-0.8.5-Creo10编译阻断跨三版未修与会话卡死第三次复现无开放条目.md",
+      "reported_version": "0.8.5",
+      "report_date": "2026-10-30",
+      "reported_environment": "Reported Windows x64 / Creo Parametric 10.0.0.0 with matching Toolkit SDK / VS2022 BuildTools 14.44.35207 / Python 3.13; install, compile and static verification only, no Toolkit connection by design.",
+      "evidence_method": "external_install_and_static_report_no_creo_connection",
+      "key_topics": "Creo 10 compile block still unfixed across 0.8.3/0.8.4/0.8.5; the 0.8.2 report was never archived; session hang third recurrence with no open work item; proposed BUG-090 for the session incident",
+      "attached_assets_delivered": false
+    },
+    {
+      "id": "R80x-5",
+      "filename": "20261029_CREO_v0.8.2_多轮廓仍限2个_装配已换用完整Part1.md",
+      "bytes": 10518,
+      "sha256": "3f0e52a6c604cba428c546dba2b70837991cedb6c6e492b3127bf8c352732d19",
+      "source": "C:\\Users\\Administrator\\Downloads\\0.8.x\\20261029_CREO_v0.8.2_多轮廓仍限2个_装配已换用完整Part1.md",
+      "reported_version": "0.8.2",
+      "report_date": "2026-10-29",
+      "reported_environment": "Reported Creo Parametric 10.0.0.0, release_numeric 42.",
+      "evidence_method": "external_live_report_with_static_or_historical_claims_separately_labeled",
+      "key_topics": "Multi-contour section still limited to 2 for a third round; assembly rebuilt with the complete Part1; preview view_matrix_matches false; no delete tool; no batch API; label rule not documented",
+      "attached_assets_delivered": false
+    },
+    {
+      "id": "R80x-6",
+      "filename": "20261030_CREO_v0.8.5_多轮廓已打通_仅残留近容差端点焊接失败.md",
+      "bytes": 13239,
+      "sha256": "f21a0aa434d1bcda660aa76bf7f473411ade235c48873bc51f85821c08cbea23",
+      "source": "C:\\Users\\Administrator\\Downloads\\0.8.x\\20261030_CREO_v0.8.5_多轮廓已打通_仅残留近容差端点焊接失败.md",
+      "reported_version": "0.8.5",
+      "report_date": "2026-10-30",
+      "reported_environment": "Reported Creo Parametric 10.0.0.0, release_numeric 42, mm, session ready, session fingerprint 5858965741204561244.",
+      "evidence_method": "external_live_report_with_static_or_historical_claims_separately_labeled",
+      "key_topics": "Multi-contour limit resolved (10 contours, three shapes); decisive A/B shows near-tolerance endpoints of 7.72e-7 mm are not welded by the native section; profile vs native_section mismatch; view_matrix_matches always false; plan-channel-only claim corrected",
+      "attached_assets_delivered": false
+    },
+    {
+      "id": "R80x-7",
+      "filename": "20261030_CREO_v0.8.5_细节特征无体积回报_拔模方向只能靠体积反查.md",
+      "bytes": 4816,
+      "sha256": "154a704c6920353a96e5d25658ed322e3012d23edf60c91e7e4d37d02aa2b993",
+      "source": "C:\\Users\\Administrator\\Downloads\\0.8.x\\20261030_CREO_v0.8.5_细节特征无体积回报_拔模方向只能靠体积反查.md",
+      "reported_version": "0.8.5",
+      "report_date": "2026-10-30",
+      "reported_environment": "Reported Creo Parametric 10.0.0.0, release_numeric 42, mmns template.",
+      "evidence_method": "external_live_report_with_static_or_historical_claims_separately_labeled",
+      "key_topics": "round/chamfer/draft report no volume delta; draft flip reversal silently adds material while returning succeeded; correction that creo_round and creo_chamfer are standalone tools; feature_state delete targets are strings or integers",
+      "attached_assets_delivered": false
+    }
+  ],
+  "attachments_present": [],
+  "archive_notes": {
+    "original_relative_links": "Three relative links inside the preserved original R80x-4 (../work-items/BUG-032.md, ../work-items/BUG-001.md, ../work-items/BUG-085.md) were written by the reporter against a different directory depth and do not resolve from docs/validation/feedback-0.8.x-2026-10-30/. They are left untouched on purpose: the originals are archived byte for byte and docs/validation/ historical originals must not be edited. The corresponding project cards are docs/work-items/BUG-032.md, BUG-001.md and BUG-085.md.",
+    "no_reencoding": "File names, bytes and encoding are unchanged; the Chinese file names were copied verbatim and were not normalised."
+  },
+  "missing_report_attachments": [
+    {
+      "name": "scripts/gear10.json",
+      "purpose": "Original 10-slot 40-arc gear section used as the multi-contour regression material in R80x-5 and the near-tolerance endpoint judgment in R80x-6.",
+      "source": "Referenced by R80x-5 section 9 and R80x-6 section 5.4; reporter-side scripts/ folder.",
+      "search_scope": "Tracked repository files (git ls-files), docs/validation/ archives, and C:\\Users\\Administrator\\Downloads\\0.8.x (only the 7 Markdown files were delivered). No match."
+    },
+    {
+      "name": "scripts/gear10_snapped.json",
+      "purpose": "Endpoint-snapped variant of gear10.json (gap 7.83e-13 mm) that the reporter used as the passing control in R80x-6.",
+      "source": "Referenced by R80x-6 section 5.4; reporter-side scripts/ folder.",
+      "search_scope": "Same as above. No match."
+    },
+    {
+      "name": "mc_rings10.json",
+      "purpose": "10 exactly closed arc rings (gap 9.19e-13 mm) used as control case C in R80x-6.",
+      "source": "Referenced by R80x-6 section 5.4; reporter-side scripts/ folder.",
+      "search_scope": "Same as above. No match."
+    },
+    {
+      "name": "scripts/mc_prep.py and scripts/mc_rings.py",
+      "purpose": "Chain-order solver, area parser and endpoint-snap generator used to build the R80x-6 fixtures.",
+      "source": "Referenced by R80x-6 section 5.4; reporter-side scripts/ folder.",
+      "search_scope": "Same as above. No match."
+    },
+    {
+      "name": "scripts/sketchgen.py and scripts/sketch_entities.json",
+      "purpose": "All section parameters (shared vertices as midpoints, chain_gap = 0, arc_residual <= 1e-15) behind the reporter's Part1/Part2/Part4 geometry.",
+      "source": "Referenced by R80x-5 section 9; reporter-side scripts/ folder.",
+      "search_scope": "Same as above. No match. Related names are also absent from the 0.7.x archives, so this is a long-standing gap rather than a new one."
+    },
+    {
+      "name": "probe_gear5_sk, part1_star_v2, assem1_iris_v2, probe_mc_v085, probe_mc_v085b, acc82_sm, acc85_sm",
+      "purpose": "Reporter-side probe models and sketches named as regression material and as the models the multi-contour and detail-feature results were measured on.",
+      "source": "Named by model_id in R80x-5 section 6, R80x-6 section 5.3 and R80x-1/R80x-3 section 6; they live in the reporter's Creo session, not in this repository.",
+      "search_scope": "Tracked repository files and docs/validation/ archives; no match."
+    }
+  ],
+  "scope": "Local read-only comparison, document planning and byte-preserving archive only; no unit tests, no native build, no Toolkit connection, no MCP client, no source implementation, no version change, no main merge, no release.",
+  "planning_checks": {
+    "reports_verified": 7,
+    "reports_byte_identical_to_source": 7,
+    "historical_validation_files_unchanged": true,
+    "new_fixed_ids_registered": ["DEV-052", "BUG-090", "BUG-091", "FEAT-051"],
+    "implementation_tests_run_by_this_planning_session": false
+  }
+}
