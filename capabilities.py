@@ -466,7 +466,7 @@ def families() -> dict:
             "enabled": True,
             "scope": "first flat wall, attached flange, unbend, bend-back and flat pattern",
             "native_test": "40 x 30 x 1 wall, 90 degree flange with R2/R3 bend, followed by unfolding and refolding",
-            "limits": "first wall uses thin extrusion then native conversion; bend relief, forms, hems and jogs are not high-level tools",
+            "limits": "first wall uses thin extrusion then native conversion; bend relief is a parameter on creo_sheetmetal_flange with native echo verification (offline verified, live unverified, default none); corner rules, forms, hems and jogs are not high-level tools",
         },
         "assembly": {
             "enabled": True,
