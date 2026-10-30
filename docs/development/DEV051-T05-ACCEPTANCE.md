@@ -336,3 +336,9 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；pydantic 
 - 离线设计中的 trimmed_20 / order 组仍冻结，等 trim 语义实测；corner relief / miter 未实现（N06 范围）。
 - 本机产物（`build/post090_n05_20261030T231033/`）不入库；Creo 9/10、WorkBuddy 黑盒均未验。
 
+## 2026-10-30：DEV-052 N05 实机预检中止（追加，不覆盖离线结论）
+
+基线 `d2a6888`，分支 `codex/dev051-feedback070`，`build/source.sha256=47a6591d17b8ef6b81530963ea2096e2b424892be3e4b1dba378c64cd93a1d8b`；执行前工作区已有他人未提交内容。`config.json` 的 `auto_start_creo` 前后均为 `false`，dev 客户端指向 E 盘。执行前无 Creo 进程，使用 `creo_startup.py` 的受限 Explorer/PSF 启动函数仅请求一次；`parametric`、`xtop`、`nmsd`、`pro_comm_msg` 随后出现，`xtop` 有可见且未被 Windows 标为挂起的窗口。
+
+GUI 控制接口不可用，无法确认菜单、视图和对话框可操作；另有两个既存 `unknown_outcome` 模型未处置。按 BUG-001 / BUG-091 停止，保留会话与保护，未做 Toolkit 连接、会话状态探测或 N05 live 提交。判定为**实机未验—会话不可用性未排除**，不把进程存在判为就绪。trim 四候选语义、三组折边、触发复现、原生失败字段、保存重载及 N06 内部机理均无本次实测结论；四壁能力仍未完成。完整原始错误、PID、未测字段与报告 SHA256 见 [本次预检记录](DEV052-N05-LIVE-PREFLIGHT-2026-10-30.md)。
+
