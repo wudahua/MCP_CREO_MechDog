@@ -1302,6 +1302,49 @@ static J section_profile_summary(ProSection section, const char *phase) {
     }
     contours += standalone;
     closed += standalone;
+    // BUG-049/N03: bounded endpoint-gap diagnostics for the two-stage
+    // comparison (input analysis vs solved section). The clustering tolerance
+    // above is this diagnostic's own sampling value; it is never claimed to be
+    // a kernel welding tolerance. Every open end keeps its total in
+    // open_ends; the samples below are capped and flagged when truncated.
+    double max_cluster_spread = 0.0;
+    for (size_t cluster = 0; cluster < members.size(); cluster++) {
+        const std::vector<int> &list = members[cluster];
+        for (size_t a = 0; a < list.size(); a++)
+            for (size_t b = a + 1; b < list.size(); b++)
+                max_cluster_spread =
+                    std::max(max_cluster_spread, hypot(points[list[a]][0] - points[list[b]][0],
+                                                       points[list[a]][1] - points[list[b]][1]));
+    }
+    double max_endpoint_gap = 0.0;
+    J open_samples = J::array();
+    bool open_samples_truncated = false;
+    const size_t max_open_samples = 20;
+    for (size_t current = 0; current < representatives.size(); current++) {
+        if (degrees[current] != 1)
+            continue;
+        int nearest = -1;
+        double nearest_gap = 0.0;
+        for (size_t other = 0; other < representatives.size(); other++) {
+            if (other == current)
+                continue;
+            double distance = hypot(representatives[current][0] - representatives[other][0],
+                                    representatives[current][1] - representatives[other][1]);
+            if (nearest < 0 || distance < nearest_gap) {
+                nearest = (int)other;
+                nearest_gap = distance;
+            }
+        }
+        max_endpoint_gap = std::max(max_endpoint_gap, nearest_gap);
+        if (open_samples.size() < max_open_samples)
+            open_samples.push_back(
+                {{"entity", node_entity[current]},
+                 {"point", {representatives[current][0], representatives[current][1]}},
+                 {"nearest_entity", nearest < 0 ? J(nullptr) : J(node_entity[nearest])},
+                 {"nearest_gap_mm", nearest_gap}});
+        else
+            open_samples_truncated = true;
+    }
     summary = {{"available", true},
                {"entities", curves + standalone},
                {"curves", curves},
@@ -1313,11 +1356,17 @@ static J section_profile_summary(ProSection section, const char *phase) {
                {"construction_entities", construction},
                {"reference_entities", references},
                {"unsupported_entities", unsupported},
-               {"tolerance_mm", tolerance}};
+               {"tolerance_mm", tolerance},
+               {"tolerance_scope", "diagnostic_endpoint_clustering"},
+               {"max_cluster_spread_mm", max_cluster_spread},
+               {"max_endpoint_gap_mm", max_endpoint_gap},
+               {"open_end_samples", open_samples},
+               {"open_end_samples_truncated", open_samples_truncated}};
     log("SECTION_PROFILE phase=%s entities=%d curves=%d standalone=%d contours=%d closed=%d "
-        "open_ends=%d branched=%d construction=%d references=%d unsupported=%d tolerance_mm=%.9g\n",
+        "open_ends=%d branched=%d construction=%d references=%d unsupported=%d tolerance_mm=%.9g "
+        "cluster_spread_mm=%.9g endpoint_gap_mm=%.9g\n",
         phase, curves + standalone, curves, standalone, contours, closed, open_ends, branched,
-        construction, references, unsupported, tolerance);
+        construction, references, unsupported, tolerance, max_cluster_spread, max_endpoint_gap);
     if (!open_log.empty())
         log("%s", open_log.c_str());
     if (ids)
@@ -1349,6 +1398,8 @@ static J arc_geometry_report(ProSection section, ProError unavailable_code, cons
                    {"frame", nullptr},
                    {"start_uv", nullptr},
                    {"end_uv", nullptr},
+                   {"center_uv", nullptr},
+                   {"radius_mm", nullptr},
                    {"start_tangent_uv", nullptr},
                    {"end_tangent_uv", nullptr},
                    {"dir", nullptr},
@@ -1386,6 +1437,10 @@ static J arc_geometry_report(ProSection section, ProError unavailable_code, cons
             entry["frame"] = "sketch_local";
             entry["start_uv"] = start_uv;
             entry["end_uv"] = end_uv;
+            // BUG-049/N03: measured center and radius for the two-stage
+            // comparison against the input echo; null when not queryable.
+            entry["center_uv"] = center;
+            entry["radius_mm"] = arc->radius;
             entry["start_tangent_uv"] = tangent(a0);
             entry["end_tangent_uv"] = tangent(a1);
             entry["dir"] = dir;
@@ -1751,9 +1806,16 @@ static std::string section_create_failure(const J &op, bool revolve, ProError er
              " closed contour(s), " + std::to_string(section["contours"].get<int>()) +
              " contour(s), " + std::to_string(section["entities"].get<int>()) + " entity(ies), " +
              std::to_string(section["open_ends"].get<int>()) + " open end(s).";
-        if (section["open_ends"].get<int>() > 0)
+        if (section["open_ends"].get<int>() > 0) {
             m += " The section carries open ends, so it is not a closed profile.";
-        else
+            if (section.contains("max_endpoint_gap_mm")) {
+                char gap_text[64];
+                snprintf(gap_text, sizeof(gap_text), "%.9g",
+                         section["max_endpoint_gap_mm"].get<double>());
+                m += " Max open endpoint gap " + std::string(gap_text) +
+                     " mm (diagnostic sampling, not a kernel welding tolerance).";
+            }
+        } else
             m += " These counts do not identify the cause; the cause is not determined.";
     } else
         m += " Native section counts are unavailable (code " +

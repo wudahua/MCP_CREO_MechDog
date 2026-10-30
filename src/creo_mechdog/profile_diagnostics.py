@@ -453,6 +453,10 @@ def _arc_echo(curve: Curve) -> dict:
         "frame": "sketch_local",
         "start_uv": [curve.start[0], curve.start[1]],
         "end_uv": [curve.end[0], curve.end[1]],
+        # BUG-049/N03: center and radius enable the two-stage comparison
+        # against the measured arc report; both describe the input only.
+        "center_uv": [curve.center[0], curve.center[1]],
+        "radius_mm": curve.radius,
         "start_tangent_uv": tangent(curve.start_angle),
         "end_tangent_uv": tangent(curve.start_angle + curve.sweep),
         "dir": direction,

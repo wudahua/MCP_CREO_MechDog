@@ -138,6 +138,11 @@ def _profile_summary(entities: list[dict[str, Any]]) -> dict[str, Any]:
     from creo_mechdog.profile_diagnostics import analyze_profile
 
     report = analyze_profile(entities)
+    near = report["categories"]["near_tolerance"]
+    # BUG-049/N03: keep bounded endpoint-gap observability in the public
+    # projection. The items list is already capped and truncated by the
+    # analyzer; the total count and the truncation flag survive the projection
+    # so a bounded sample never hides the population size.
     return {
         "source": "input",
         "analysis": report["analysis"],
@@ -148,6 +153,17 @@ def _profile_summary(entities: list[dict[str, Any]]) -> dict[str, Any]:
         "open_contour_count": report["open_contour_count"],
         "material_area_mm2": report["material_area_mm2"],
         "categories": {name: entry["count"] for name, entry in report["categories"].items()},
+        "closure_tolerance_mm": report["closure_tolerance_mm"],
+        "max_endpoint_gap_mm": max(
+            (contour["max_join_gap_mm"] for contour in report["contours"]), default=0.0
+        ),
+        "near_tolerance_pairs": {
+            "total": near["count"],
+            "truncated": near["truncated"],
+            "sample": [
+                {"entities": item["entities"], "gap_mm": item["gap_mm"]} for item in near["items"]
+            ],
+        },
     }
 
 
@@ -204,6 +220,8 @@ _ARC_ACTUAL_FIELDS = (
     "frame",
     "start_uv",
     "end_uv",
+    "center_uv",
+    "radius_mm",
     "start_tangent_uv",
     "end_tangent_uv",
     "dir",
