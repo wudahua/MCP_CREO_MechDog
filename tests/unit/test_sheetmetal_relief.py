@@ -564,7 +564,7 @@ class NativeTreeTest(unittest.TestCase):
 
     def test_record_reports_measured_thickness_and_request_arithmetic(self):
         for token in (
-            "ProSmtPartThicknessValueGet",
+            "part_thickness_read(&thickness)",
             '"part_thickness_mm"',
             '"corner_overlap_run_mm"',
             '"width_at_least_thickness"',

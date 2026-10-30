@@ -236,6 +236,42 @@ static double first_wall_line_length(ProFeature sketch) {
     log("SHEETMETAL_WALL_LINE_LENGTH_MM=%.12f\n", length);
     return length;
 }
+// BUG-090: ProSmtPartThicknessValueGet is not declared in every SDK generation
+// (Creo 10 lacks it, 2026-10-29/30 external build reports). The generated
+// MECHDOG_HAS_ capability macros keep missing APIs out of the compile unit, and
+// every caller here reads the part-level thickness through this one helper.
+// Without the value getter the fallbacks read the same model state through the
+// thickness dimension or the SMT_THICKNESS parameter that drives it
+// (BUG-032/T03), so the value still comes from the model and never from the
+// request. When no path can read a value the caller must treat the thickness as
+// unknown: the first wall then fails explicitly and only informational fields
+// may degrade to null.
+static bool part_thickness_read(double *mm) {
+#ifdef MECHDOG_HAS_ProSmtPartThicknessValueGet
+    return ProSmtPartThicknessValueGet(ProMdlToPart(board), mm) == PRO_TK_NO_ERROR;
+#else
+#ifdef MECHDOG_HAS_ProSmtPartThicknessGet
+    ProDimension dimension;
+    if (ProSmtPartThicknessGet(ProMdlToPart(board), &dimension) == PRO_TK_NO_ERROR &&
+        ProDimensionValueGet(&dimension, mm) == PRO_TK_NO_ERROR)
+        return true;
+#endif
+    ProModelitem owner;
+    if (ProMdlToModelitem(board, &owner) != PRO_TK_NO_ERROR)
+        return false;
+    ProName param_name;
+    wcscpy_s(param_name, L"SMT_THICKNESS");
+    ProParameter param;
+    if (ProParameterInit(&owner, param_name, &param) != PRO_TK_NO_ERROR)
+        return false;
+    ProParamvalue value = {};
+    if (ProParameterValueWithUnitsGet(&param, &value, nullptr) != PRO_TK_NO_ERROR ||
+        value.type != PRO_PARAM_DOUBLE)
+        return false;
+    *mm = value.value.d_val;
+    return true;
+#endif
+}
 static void generic_sheetmetal_wall(const J &op) {
     // Preserve the editable driving sketch, then convert its thin native extrusion.
     J state = inspection();
@@ -370,9 +406,8 @@ static void generic_sheetmetal_wall(const J &op) {
     // wrong value. Sync that dimension to the requested thickness, re-prove the
     // geometry, and fail when either side disagrees; wall_contract records what
     // the part actually reports, never a request echo.
-    ProPart part = ProMdlToPart(board);
     double part_before = 0;
-    if (ProSmtPartThicknessValueGet(part, &part_before) != PRO_TK_NO_ERROR)
+    if (!part_thickness_read(&part_before))
         throw std::runtime_error(
             "sheetmetal_wall could not read the part-level sheetmetal thickness after the "
             "conversion, so the requested thickness cannot be proven to be in effect");
@@ -398,11 +433,18 @@ static void generic_sheetmetal_wall(const J &op) {
             CK(ProParameterValueWithUnitsSet(&param, &value, nullptr));
             log("SHEETMETAL_WALL_PART_THICKNESS driver=SMT_THICKNESS set_mm=%.9f\n", thickness);
         } else {
+#ifdef MECHDOG_HAS_ProSmtPartThicknessGet
             ProDimension dimension;
-            CK(ProSmtPartThicknessGet(part, &dimension));
+            CK(ProSmtPartThicknessGet(ProMdlToPart(board), &dimension));
             CK(ProDimensionValueSet(&dimension, thickness));
             log("SHEETMETAL_WALL_PART_THICKNESS driver=dimension_fallback set_mm=%.9f\n",
                 thickness);
+#else
+            throw std::runtime_error(
+                "sheetmetal_wall cannot sync the part thickness: the model exposes no "
+                "SMT_THICKNESS parameter and this SDK build has no "
+                "ProSmtPartThicknessGet dimension fallback");
+#endif
         }
         CK(ProSolidRegenerate((ProSolid)board, PRO_REGEN_NO_FLAGS));
         double regenerated = volume();
@@ -418,7 +460,7 @@ static void generic_sheetmetal_wall(const J &op) {
         synced = true;
     }
     double part_after = 0;
-    if (ProSmtPartThicknessValueGet(part, &part_after) != PRO_TK_NO_ERROR)
+    if (!part_thickness_read(&part_after))
         throw std::runtime_error("sheetmetal_wall could not re-read the part-level sheetmetal "
                                  "thickness after the sync");
     if (fabs(part_after - thickness) > 1e-6)
@@ -608,8 +650,7 @@ static J flange_relief_record(const J &op, const FlangeReliefRequest &request) {
         sides.push_back(row);
     }
     double thickness = 0;
-    bool thickness_known =
-        ProSmtPartThicknessValueGet(ProMdlToPart(board), &thickness) == PRO_TK_NO_ERROR;
+    bool thickness_known = part_thickness_read(&thickness);
     bool enabled = request.side1 || request.side2;
     double corner_run = std::max(0.0, op["height"].get<double>() - op["radius"].get<double>());
     return {{"type", request.type},

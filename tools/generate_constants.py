@@ -1,4 +1,4 @@
-"""Emit public SDK enum names; values are resolved by the C++ compiler."""
+"""Emit public SDK enum names and function capability macros from the local SDK."""
 
 import json
 import re
@@ -36,6 +36,13 @@ HEADERS = [
 
 PROBES = ("PRO_E_HLE_ADD_PARAMETERS", "PRO_HOLE_NO_PARAMETERS_FLAG")
 
+# BUG-090: some SDK generations (Creo 10) do not declare every function this
+# build calls. A callable declaration (the name followed by "(" once C comments
+# are removed) emits a MECHDOG_HAS_<name> capability macro so native code can
+# keep missing APIs out of the compile unit; comments and same-name text without
+# a call parenthesis do not declare a function.
+FUNCTION_PROBES = ("ProSmtPartThicknessGet", "ProSmtPartThicknessValueGet")
+
 
 def generate(root: Path, *, inc_dir: Path | None = None) -> int:
     if inc_dir is None:
@@ -52,10 +59,18 @@ def generate(root: Path, *, inc_dir: Path | None = None) -> int:
         )
         for block in re.findall(r"\benum\s*\w*\s*\{([^}]+)\}", source, re.S):
             names.update(re.findall(r"(?:^|,)\s*(PRO_[A-Z0-9_]+)\s*(?:=|,|$)", block, re.M))
+    functions = set()
+    for path in sorted(inc_dir.glob("*.h")):
+        source = path.read_text(encoding="utf-8", errors="replace")
+        source = re.sub(r"/\*.*?\*/|//[^\n]*", "", source, flags=re.S)
+        for name in FUNCTION_PROBES:
+            if re.search(r"\b" + re.escape(name) + r"\s*\(", source):
+                functions.add(name)
+    probes = sorted(names.intersection(PROBES) | functions)
     lines = [
         "// Enum names generated from the locally installed Creo Toolkit SDK.",
         *["#include <" + h + ">" for h in HEADERS],
-        *["#define MECHDOG_HAS_" + n + " 1" for n in sorted(names.intersection(PROBES))],
+        *["#define MECHDOG_HAS_" + n + " 1" for n in probes],
         "static const std::map<std::string,int> tk_constants = {",
     ]
     lines += ['{"' + n + '",static_cast<int>(' + n + ")}," for n in sorted(names)]

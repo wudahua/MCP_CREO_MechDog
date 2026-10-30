@@ -305,7 +305,7 @@ def native_source() -> dict:
         "unknown_type_throws": "Unsupported sheetmetal flange relief type" in request,
         "record_only_when_requested": 'extra["relief"] = flange_relief_record' in flange
         and 'op.contains("relief")' in flange,
-        "measured_thickness": "ProSmtPartThicknessValueGet" in record,
+        "measured_thickness": "part_thickness_read(&thickness)" in record,
         "height_dimension_kept": '{"name", "height"}' in flange,
         "section_path_kept": 'extra["section_path"]' in flange,
     }

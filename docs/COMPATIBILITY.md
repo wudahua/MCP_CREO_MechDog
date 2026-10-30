@@ -153,3 +153,18 @@ FEAT-042无盘prepare/apply、FEAT-043会话枚举及BUG-071预检收尾已实�
 - **准入拒绝**：钣金模型上的实体增料在建模前以 `SHEETMETAL_SOLID_ADD_UNSUPPORTED` 拒绝，消息给出 `sheetmetal_wall` / `sheetmetal_flange` / `new_body=true` 指引；不再以裸 `-1` 暗示该组合可用。`revolve` 增料未纳入本规则（同路径但未实测）。
 
 该结论只覆盖本机 Creo 12.4 与上述输入形态，不外推为其他 Creo 版本或其他钣金增料形式。
+
+## 2026-10-30：Creo 10 SDK 编译兼容与 SDK 门控 API 清单（BUG-090 N01）
+
+**外部失败原件（保留原日期与环境，不改写为当前实测）**：Windows x64 / Creo Parametric 10.0.0.0 / 同版本 Toolkit SDK / VS2022 BuildTools 14.44.35207 在 **2026-10-29（0.8.2）** 与 **2026-10-30（0.8.5）** 两次报告 `bridge.py build` 必然失败：`native/advanced.cpp(...): error C3861: "ProSmtPartThicknessValueGet": 找不到标识符`（级联 C2677）。报告方全目录检索 Creo 10 SDK 头文件无该声明、无 `ProSmtPart.h`、无版本条件宏，并对 0.8.2 相对 0.7.2 的五个原生改动文件系统比对，缺失的只有这一个 API。原件见 [0.8.2 报告](validation/feedback-0.8.x-2026-10-30/2026-10-29CREO10.0.0.0-0.8.2-0.8.x在Creo10SDK无法编译ProSmtPartThicknessValueGet缺失.md) 与 [0.8.5 报告](validation/feedback-0.8.x-2026-10-30/2026-10-30CREO10.0.0.0-0.8.5-Creo10编译阻断跨三版未修与会话卡死第三次复现无开放条目.md)。报告方在自己机器上的 +7 行本地补丁及带补丁 worker 指纹（`c703dee5…`/`8a44444f…`）不是上游状态，不得当作本仓库证据。
+
+**SDK 门控 API 清单（0.9.0 之后，N01 离线实现）**：`tools/generate_constants.py` 现按 SDK 头文件的可调用声明生成函数能力宏，`native/advanced.cpp` 的板厚读取全部经统一助手 `part_thickness_read`：
+
+| 门控宏 | 探测的 SDK 函数 | 缺失时行为 |
+| --- | --- | --- |
+| `MECHDOG_HAS_ProSmtPartThicknessValueGet` | `ProSmtPartThicknessValueGet` | 编译单元不引用；改读厚度维度或 `SMT_THICKNESS` 参数（模型实读，不用请求值补结果） |
+| `MECHDOG_HAS_ProSmtPartThicknessGet` | `ProSmtPartThicknessGet` | 编译单元不引用；读值回退到 `SMT_THICKNESS` 参数，板厚同步的维度写回退分支改为明确失败 |
+
+无任何可靠读数时：首壁（`sheetmetal_wall`）**明确失败**并保留原始错误语义，未校验板厚不得静默通过；仅 `flange_relief_record` 的信息性字段（`part_thickness_mm`/`width_at_least_thickness`）可降级为 `null`。0.9.0 的首壁板厚硬校验（SMT_THICKNESS 驱动 + 同步后回读比对）不退化；本机 Creo 12.4（两宏均命中）走原 `ProSmtPartThicknessValueGet` 读值路径，行为与 0.9.0 一致。
+
+**Creo 10 编译状态**：0.8.x 在 Creo 10 SDK 上**无法编译**（缺 `ProSmtPartThicknessValueGet` 声明，见上）；N01 离线兼容实现已入开发分支，但**本机无 Creo 10 SDK，Creo 10 定向编译与实机建模均未验收**（见 [BUG-090](work-items/BUG-090.md) 的外部复验输入与实机命令）。本机 Windows x64 / Creo 12.4.0.0 / 匹配 SDK 下 `bridge.py build` 通过（2026-10-30，1505 项单元、dev_check 通过），不外推为 Creo 10 已通过。Creo 9 状态不变：编译探测已支持，本机无 SDK，实机编译与运行时未验收。

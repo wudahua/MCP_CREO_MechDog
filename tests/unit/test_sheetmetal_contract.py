@@ -339,5 +339,59 @@ class PartThicknessSyncTest(unittest.TestCase):
             self.assertTrue(checks[name], name)
 
 
+class SdkApiCompileGuardTest(unittest.TestCase):
+    """BUG-090: SDK-missing thickness APIs must stay out of the compile unit.
+
+    Creo 10 SDK reports (2026-10-29 / 2026-10-30) show ProSmtPartThicknessValueGet
+    is not declared there, so every call has to sit inside its generated
+    MECHDOG_HAS_ capability guard. The three thickness reads share one model-read
+    helper: an unreadable part thickness fails the first wall explicitly instead
+    of echoing the request, and only the informational flange fields degrade to
+    null.
+    """
+
+    def test_scanner_flags_unguarded_calls_and_ignores_comments(self) -> None:
+        guarded = (
+            "#ifdef MECHDOG_HAS_ProSmtPartThicknessValueGet\n"
+            "    return ProSmtPartThicknessValueGet(ProMdlToPart(board), mm) == PRO_TK_NO_ERROR;\n"
+            "#else\n"
+            "#ifdef MECHDOG_HAS_ProSmtPartThicknessGet\n"
+            "    ProDimension dimension;\n"
+            "    if (ProSmtPartThicknessGet(ProMdlToPart(board), &dimension) == PRO_TK_NO_ERROR)\n"
+            "        return true;\n"
+            "#endif\n"
+            "    return false;\n"
+            "#endif\n"
+        )
+        self.assertEqual(contract_driver.unguarded_sdk_calls(guarded), [])
+        self.assertEqual(
+            contract_driver.unguarded_sdk_calls("    ProSmtPartThicknessValueGet(part, &value);\n"),
+            ["ProSmtPartThicknessValueGet(part, &value);"],
+        )
+        self.assertEqual(
+            contract_driver.unguarded_sdk_calls("/* ProSmtPartThicknessValueGet(part, &v); */\n"),
+            [],
+        )
+
+    def test_compile_unit_keeps_gated_sdk_calls_behind_capability_macros(self) -> None:
+        source = (contract_driver.ROOT / "native" / "advanced.cpp").read_text(
+            encoding="utf-8", errors="replace"
+        )
+        self.assertEqual(contract_driver.unguarded_sdk_calls(source), [])
+
+    def test_three_reads_share_one_reader_with_explicit_unknown_failure(self) -> None:
+        report = contract_driver.check_native_source()
+        checks = report["static_source_assertions"]
+        for name in (
+            "part_thickness_api_gated",
+            "part_thickness_unified_read",
+            "part_thickness_parameter_fallback",
+            "part_thickness_unknown_fails_wall",
+            "part_thickness_informational_null",
+        ):
+            self.assertTrue(checks[name], name)
+        self.assertEqual(report["unguarded_sdk_calls"], [])
+
+
 if __name__ == "__main__":
     unittest.main()
