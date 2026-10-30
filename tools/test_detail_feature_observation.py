@@ -493,6 +493,30 @@ def judge_measurement(record: Any, expected_deltas: list[float], tolerance: floa
     }
 
 
+def terminal_model_revision(terminal: Any, context: str) -> int:
+    """Read the model revision a terminal job reports from its top-level manifest.
+
+    Job manifests carry the model revision as a top-level ``revision`` key
+    (generic_bridge.run_generic_job records it on success); it is NOT inside
+    ``result``. The 2026-10-30 N04 live run died on ``result.revision`` with a
+    bare KeyError before the matrix started. A terminal without a usable
+    revision fails with a clear message naming the context instead.
+    """
+    if isinstance(terminal, dict):
+        revision = terminal.get("revision")
+        if isinstance(revision, int) and not isinstance(revision, bool):
+            return revision
+        raise RuntimeError(
+            f"{context}: job terminal carries no top-level int revision "
+            f"(revision={revision!r}, keys={sorted(terminal)}); the model revision "
+            "lives on the job manifest top level, not in result"
+        )
+    raise RuntimeError(
+        f"{context}: job terminal is not a dict ({type(terminal).__name__}); "
+        "cannot read the top-level revision"
+    )
+
+
 def judge_pull_readback(geometry: Any, expected_reference: dict) -> str:
     """The draft readback must name the reference the plan actually used.
 
@@ -992,11 +1016,14 @@ class DetailFeatureAcceptance:
             "datum_axes": before["inspection"].get("datum_axes", []),
         }
         operations = resolve_case_operations(case, model_state)
+        created_revision = terminal_model_revision(
+            created_terminal, f"{case['case']}:base creation"
+        )
         submitted = await self.submit_once(
             case["case"],
             {
                 "model_id": model_id,
-                "expected_revision": created_terminal["result"]["revision"],
+                "expected_revision": created_revision,
                 "operations": operations,
             },
         )

@@ -195,3 +195,37 @@ flip→方向映射只离线定义判定规则，未观测。实机命令（本�
 ## 2026-10-30～31 N04 实机复测追加
 
 分支 codex/dev051-feedback070，基线 7288f2f，runid 20261030T234952。首例创建后驱动读取 result.revision 抛 KeyError；材料变化、draft_geometry、应用集数、回滚与重载矩阵均未验。 完整 job_id/model_id/revision、原始错误、命令、报告路径与 SHA256 见 [七段实机总报告](../development/POST090-LIVE-SEVEN-SEGMENTS-2026-10-31.md)；原始 JSON 留在 build/post090_live_20261030T234952/，未入库。未重放已受理作业，会话保持运行。
+
+## 2026-10-31 N04 live runner 缺陷修复（离线，未实机）
+
+分支 `codex/dev051-feedback070`，基线 a94139e（5018f02 七段记录之上）。本轮只修
+live runner 的终态读取缺陷并补单元锁定，**矩阵九夹具与判定口径不变**、未连接
+Creo、未构建、未实机。
+
+- **根因（核对真实 plan 结果结构后定）**：`run_case` 在首个 `creo_execute_plan`
+  后读 `created_terminal["result"]["revision"]`。实际结构里模型 revision 是
+  **job manifest 顶层字段**，不在 `result` 内——`generic_bridge.run_generic_job`
+  成功收尾时 `manifest.update(..., revision=model["revision"])`（原 :610），
+  `bridge.compact_job` 顶层键白名单亦列 `"revision"`；`tools/test_sheetmetal_contract.py:453`
+  的正确读法即 `terminal.get("revision")`。N01 contract 同会话 5/5 通过、其
+  revision 逐例记录在案，反证结构本身正常；N04 只是读错了层，于是
+  `KeyError: 'revision'`。
+- **修复**：新增纯函数 `terminal_model_revision(terminal, context)`（缺顶层 int
+  revision 时抛带上下文的 `RuntimeError`，消息指明 revision 在 manifest 顶层，
+  绝不 KeyError；bool/float/str 型 revision 一律拒绝），`run_case` 改经它取
+  `expected_revision`。
+- **单元锁定**：`tests/unit/test_detail_feature_observation.py` 新增
+  `DriverTerminalRevisionTests` 6 例（顶层 int 读取；result 内嵌 revision 不作
+  来源；缺失时清晰报错而非 KeyError；非整型拒绝；非 dict 终态带上下文拒绝；
+  源码守卫断言驱动不再出现 `["result"]["revision"]`）。
+- **命令与退出码（2026-10-31，Windows x64 / Python 3.12 venv；dirty=是，同分支
+  另一窗口 N05 提交后的工作区）**：
+  `.\.venv\Scripts\python.exe -m unittest tests.unit.test_detail_feature_observation tests.unit.test_sheetmetal_relief tests.unit.test_sheetmetal_contract -v` → exit 0，142/142 通过；
+  `.\.venv\Scripts\python.exe tools\test_detail_feature_observation.py --output build\post090_n04_f1a_offline\report.json` → exit 0，离线 9 夹具 + 4 单位行 + 数值复核通过，LIVE NOT RUN；
+  `.\.venv\Scripts\python.exe tools\dev_check.py --work-item FEAT-051` → exit 0（style 无回归，单元全量通过）。
+- **未测范围（实机）**：全部 live 矩阵仍待重跑——凸/凹圆角、三组倒角、draft
+  flip 双向、缺省/显式 pull、批回滚、保存重载与应用集数均无本机实测结论。实机
+  命令（本任务未执行）：
+  `.\.venv\Scripts\python.exe tools\test_detail_feature_observation.py --live --confirm-session-usable --output build\post090_n04_<新runid>\report.json`；
+  预期：九夹具逐例有判定行，不再出现 KeyError；结果缺顶层 revision 时报告为
+  清晰驱动错误而不是崩溃。

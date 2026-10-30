@@ -575,6 +575,58 @@ class DriverJudgementTests(unittest.TestCase):
         )
 
 
+class DriverTerminalRevisionTests(unittest.TestCase):
+    """The live runner reads the top-level manifest revision, never result.revision.
+
+    The 2026-10-30 N04 live run crashed on ``result.revision`` with a bare
+    KeyError right after the first base creation: job manifests carry the model
+    revision as a top-level key. A terminal without it must fail with a clear
+    RuntimeError, never a KeyError.
+    """
+
+    def setUp(self):
+        from tools import test_detail_feature_observation as driver
+
+        self.driver = driver
+
+    def test_top_level_int_revision_is_read(self):
+        terminal = {"status": "succeeded", "revision": 1, "result": {"success": True}}
+        self.assertEqual(self.driver.terminal_model_revision(terminal, "base"), 1)
+
+    def test_result_nested_revision_is_not_the_source(self):
+        terminal = {"status": "succeeded", "result": {"revision": 2, "success": True}}
+        with self.assertRaises(RuntimeError) as caught:
+            self.driver.terminal_model_revision(terminal, "base creation")
+        self.assertNotIsInstance(caught.exception, KeyError)
+        self.assertIn("revision", str(caught.exception))
+        self.assertIn("base creation", str(caught.exception))
+
+    def test_missing_revision_reports_a_clear_error(self):
+        with self.assertRaises(RuntimeError) as caught:
+            self.driver.terminal_model_revision({"result": {"success": True}}, "base")
+        self.assertNotIsInstance(caught.exception, KeyError)
+        self.assertIn("revision", str(caught.exception))
+        self.assertIn("top level", str(caught.exception))
+
+    def test_non_integer_revision_is_rejected(self):
+        for value in (None, True, 1.0, "1"):
+            with self.subTest(revision=value):
+                with self.assertRaises(RuntimeError):
+                    self.driver.terminal_model_revision({"revision": value}, "base")
+
+    def test_non_dict_terminal_is_rejected_with_context(self):
+        with self.assertRaises(RuntimeError) as caught:
+            self.driver.terminal_model_revision(None, "base")
+        self.assertIn("base", str(caught.exception))
+
+    def test_driver_source_no_longer_reads_result_revision(self):
+        source = (
+            Path(__file__).resolve().parents[2] / "tools" / "test_detail_feature_observation.py"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn('["result"]["revision"]', source)
+        self.assertIn("terminal_model_revision(", source)
+
+
 class DriverOfflineShellTests(unittest.TestCase):
     """Output routing and provenance stay refuse-overwrite and unique."""
 
