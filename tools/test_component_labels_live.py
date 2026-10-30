@@ -5,16 +5,22 @@ component copy keeps its ``c_<job>_<n>`` name. This driver checks the four
 things FEAT-023/T09A promised on a live session:
 
 1. ``two_components``    - both labels resolve to one identity each (single)
-2. ``cross_job``         - a later job (datum plane, revision +1) keeps the labels
-3. ``rename_reinsert``   - remove + re-assemble under a new label; the old binding
-                           must not follow the new feature id
+2. ``cross_job``         - a later job (save with in-job erase + reload from
+                           disk) keeps the labels; the reload evidence
+                           ``saved_file_reloaded_and_verified`` must be true
+                           and every identity/source mirror must survive it
+3. ``rename_reinsert``   - remove + re-assemble; the old binding must not
+                           follow the new feature id, and the driver records
+                           where the old label became observable (absent vs
+                           deleted_identities)
 4. ``unknown_label``     - a placement on the removed label is refused with the
                            raw message recorded
 
-Default is strictly offline (projection contract only, no MCP client).
-``--live --confirm-session-usable`` runs the four cases serially, one fresh
-assembly, never resubmitting a job; a job that is not terminal within
-HANG_BUDGET_SECONDS stops the run with the job id kept.
+Default is strictly offline (projection contract only, no MCP client); the
+offline mode additionally exercises the save/reload guard scenarios of
+``check_reload_guard_contract``. ``--live --confirm-session-usable`` runs the
+four cases serially, one fresh assembly, never resubmitting a job; a job that
+is not terminal within HANG_BUDGET_SECONDS stops the run with the job id kept.
 """
 
 from __future__ import annotations
@@ -111,6 +117,80 @@ def check_projection_contract() -> dict:
         "single_label_mirrors_source": True,
         "deleted_identity_kept_separately": True,
         "identity_key": projection["identity_key"],
+    }
+
+
+def check_reload_guard_contract() -> dict:
+    """Save/reload and remove/reinsert guards, stated on the projection only.
+
+    The native save path already refuses component feature_id/model_name
+    drift across the in-job erase + reload (verify_saved); these checks lock
+    what the registry-side projection must do under each outcome.
+    """
+    aliases = {
+        "part_alpha": {
+            "op": "assemble_component",
+            "feature_id": 40,
+            "source_model_id": "m" * 32,
+            "source_revision": 1,
+        },
+        "part_beta": {
+            "op": "assemble_component",
+            "feature_id": 43,
+            "source_model_id": "n" * 32,
+            "source_revision": 2,
+        },
+    }
+    saved_records = [
+        {"feature_id": 40, "name": "c_job1_0"},
+        {"feature_id": 43, "name": "c_job1_1"},
+    ]
+    before = project_component_identities({"model_id": "a" * 32}, saved_records, aliases)
+    # Reload with unchanged ids (the verify_saved-guaranteed outcome): the
+    # projection is identical and nothing becomes a deleted identity.
+    after = project_component_identities({"model_id": "a" * 32}, saved_records, aliases)
+    reload_stable = (
+        before["components"] == after["components"] and after["deleted_identities"] == []
+    )
+    # Reload with renumbered ids (verify_saved would reject the save; the
+    # projection must still never hand an old label to a new record).
+    renumbered = project_component_identities(
+        {"model_id": "a" * 32},
+        [{"feature_id": 61, "name": "c_job1_0"}, {"feature_id": 62, "name": "c_job1_1"}],
+        aliases,
+    )
+    renumber_guard = all(
+        record["label_state"] == "unlabeled" for record in renumbered["components"]
+    ) and sorted(item["identity"]["feature_id"] for item in renumbered["deleted_identities"]) == [
+        40,
+        43,
+    ]
+    # Remove + same-label reinsert: the removed binding is erased natively, so
+    # the reused label binds only the new feature_id and the old id appears
+    # nowhere (the old label's observable outcome is "not found").
+    reinserted = project_component_identities(
+        {"model_id": "a" * 32},
+        [{"feature_id": 50, "name": "c_job2_0"}],
+        {
+            "part_beta": {
+                "op": "assemble_component",
+                "feature_id": 50,
+                "source_model_id": "n" * 32,
+                "source_revision": 2,
+            }
+        },
+    )
+    (record,) = reinserted["components"]
+    reinsert_guard = (
+        record["identity"]["feature_id"] == 50
+        and record["labels"] == ["part_beta"]
+        and reinserted["deleted_identities"] == []
+        and all(item["identity"]["feature_id"] != 43 for item in reinserted["components"])
+    )
+    return {
+        "reload_with_unchanged_ids_keeps_labels": reload_stable,
+        "reload_id_renumbering_never_rebinds": renumber_guard,
+        "same_label_reinsert_binds_only_new_identity": reinsert_guard,
     }
 
 
@@ -237,22 +317,39 @@ async def live(output: Path, run_id: str) -> int:
             second = await runner.call("creo_list_components", {"model_id": model_id})
             rows2 = component_rows(second)
             same = label_map(rows2) == label_map(rows)
+            # The save job erases the model and reloads it from disk natively;
+            # the label association is only "survived a save/reload" when the
+            # native reload verification is true AND every identity/source
+            # mirror (not just the label map) is unchanged.
+            reloaded = (second_job["terminal"].get("result") or {}).get(
+                "saved_file_reloaded_and_verified"
+            )
+            identity_of = lambda row: (
+                row.get("identity"),
+                row.get("source_model_id"),
+                row.get("source_revision"),
+            )
+            identities_same = sorted(map(identity_of, rows)) == sorted(map(identity_of, rows2))
             runner.case(
                 {
                     "case": "cross_job",
                     "second_job_id": second_job["created"]["job_id"],
                     "second_job_kind": "save",
                     "second_job_status": second_job["terminal"].get("status"),
+                    "saved_file_reloaded_and_verified": reloaded,
                     "revision_after": second.get("revision"),
                     "labels_after": sorted(label_map(rows2)),
                     "identities_unchanged": same,
+                    "identity_mirrors_unchanged": identities_same,
                     "failed_stage": (second_job["terminal"].get("result") or {}).get(
                         "failed_stage"
                     ),
                     "message": str(second_job["terminal"].get("message"))[:400],
                     "passed": bool(
                         second_job["terminal"].get("status") == "succeeded"
+                        and reloaded is True
                         and same
+                        and identities_same
                         and set(label_map(rows2)) == {"part_alpha", "part_beta"}
                     ),
                 }
@@ -292,6 +389,16 @@ async def live(output: Path, run_id: str) -> int:
                 and (item.get("identity") or {}).get("feature_id") == gamma_id
                 for item in deleted
             )
+            # Where the old label became observable after the removal: the
+            # native remove_component erases its binding, so the expected
+            # outcome is "absent" (not found anywhere); "deleted_identities"
+            # would be the fallback for a stale surviving binding. Both are
+            # non-mispointing; the value is recorded for client semantics.
+            old_label_in_deleted = any(
+                isinstance(item, dict) and "part_beta" in (item.get("labels") or [])
+                for item in deleted
+            )
+            old_label_observable = "deleted_identities" if old_label_in_deleted else "absent"
             runner.case(
                 {
                     "case": "rename_reinsert",
@@ -303,6 +410,7 @@ async def live(output: Path, run_id: str) -> int:
                     "revision_after": fourth.get("revision"),
                     "components": rows4,
                     "deleted_identities": deleted,
+                    "old_label_observable": old_label_observable,
                     "gamma_feature_id": gamma_id,
                     "old_label_on_new_component": bool(beta_still),
                     "stale_binding_on_new_id": stale_binding_on_new_id,
@@ -415,6 +523,7 @@ def main(argv: list[str] | None = None) -> int:
         "mode": "offline",
         "native_acceptance": "not_run",
         "projection": check_projection_contract(),
+        "reload_guard": check_reload_guard_contract(),
         "provenance": provenance(),
     }
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -422,7 +531,14 @@ def main(argv: list[str] | None = None) -> int:
     digest = hashlib.sha256(output.read_bytes()).hexdigest()
     output.with_name("report.sha256").write_text(f"{digest}  {output.name}\n", encoding="utf-8")
     print(
-        json.dumps({"report": str(output), "projection": report["projection"]}, ensure_ascii=False)
+        json.dumps(
+            {
+                "report": str(output),
+                "projection": report["projection"],
+                "reload_guard": report["reload_guard"],
+            },
+            ensure_ascii=False,
+        )
     )
     return 0
 

@@ -98,3 +98,66 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；ruff 0.17
 
 - 拒绝是**作业级**而非入口级：标签解析发生在原生执行时，客户端先拿到 `job_id`，必须轮询 `creo_get_job` 才能得到失败与回滚，不能把"已受理"当"已接受"。本轮按此记录，未重提。
 - 未测：多标签挂同一 feature_id 的实机（离线 16 项覆盖）、被篡改的 `aliases_ref`、40 组件大清单与 32 KiB 分页的实机、compact/full 一致性、保存重载后重新打开的标签解析、Creo 9/10。
+
+## 2026-10-30 离线阶段：保存重载关联与删除重插不误指（DEV-051 沿用卡，未实机）
+
+阶段：**离线验证与回归完成；生产代码零改动；实机重载/删除重插复验仍未执行**。工作区 `E:\Projects\MCP_CREO_MechDog`，分支 `codex/dev051-feedback070`，基线 HEAD `7c650cf`，本阶段改动**未提交**（提交由派发方统一做），`dirty=true`。未连接 MCP/Toolkit、未启动 Creo、未改 git index、未改 `version.py`、`native/generic.cpp`、`native/advanced.cpp`、`schema.py`、`assembly_bundle.py`、`docs/BACKLOG.md`、`docs/validation/`，未覆盖工作区他人未提交文件。受测源码指纹（`git ls-files` 全部 `*.py` 与 `native/*.h|hpp|cpp`，共 292 个文件的 CRLF 归一化 SHA256 清单哈希）：`b4b2e77528ee36019874ebb02599111fc6a602ef0ccb40ec3dd522bf57dae118`。
+
+### 一、现有标签绑定机制（带行号）
+
+- **存储**：绑定是登记侧 registry 记录（`models/<id>/model.json`）的 `aliases` 映射（或 BUG-077 受控 sidecar `aliases_ref`），键为业务 label，值为 `{op, feature_id, source_model_id, source_revision, ...}`；关联键固定 **model_identity + feature_id**（`src/creo_mechdog/component_identity.py:49-50`）。label 永远不是身份。
+- **写入**：原生 `remember`（`native/generic.cpp:841-846`）把每次操作的 label 与 feature_id/op 记入结果 `aliases`；`assemble_component` 的 remember 在 `native/advanced.cpp:1136`。作业成功收尾时 Python 把结果 aliases 提交进模型记录（`generic_bridge.py:593-601`，split 形态走 `aliases_ref`）；失败作业不改写（`generic_bridge.py:612-625`），回滚时原生从请求模型恢复原 aliases（`native/generic.cpp:5314-5316`）。
+- **跨作业持久**：新作业原生从请求模型加载 `aliases_ref`/inline aliases（`native/generic.cpp:5017-5018`），结束后随结果返回并重新持久化——重载不触碰登记侧绑定。
+- **查询投影**：`project_component_identities`（`component_identity.py:85-152`）只在查询面把绑定投影到组件记录；绑定 feature_id 不在当前记录时落 `deleted_identities`，绝不并入当前记录（`component_identity.py:135-147`）。
+
+### 二、断链/误指场景核对与证据
+
+| 场景 | 现有保护（证据） | 结论 |
+| --- | --- | --- |
+| 保存重载后标签是否还指回同一组件 | 保存作业原生执行 `ProMdlnameBackup` → `ProMdlErase` → 从磁盘重载 → `verify_saved`（`native/generic.cpp:5193-5221`）；其中**逐组件比较前后 `feature_id` 与 `model_name`**（`native/generic.cpp:3073-3086`），重载后 id/名漂移直接作业失败，不会提交错位绑定。绑定存登记侧，重载不重写 | 关联键（feature_id）的重载稳定性已由原生校验强制；投影层只需锁定"重载后同 id 记录解析原绑定、id 变化时绝不改绑" |
+| 删除重插后旧标签误指新组件 | `remove_component` 原生即删除该 feature_id 的**全部**别名条目（`native/advanced.cpp:1292-1297`）；同 label 重插是显式 remember 新 id。投影层把残留 stale 绑定判为 `deleted_identities`，不并入新记录 | 删除后旧标签的落点是"查无"（绑定已删）或 `deleted_identities`（残留），两者都不误指；2026-10-29 实机 `rename_reinsert` 已证 `old_label_on_new_component=false` |
+| 会话丢失后从 checkpoint 重载 | 原生 `ProMdlInit` 找不到会话模型时从 `part_file` 重载并用 `verify_saved` 对照登记 inspection（`native/generic.cpp:5121-5147`），aliases 从请求模型照常加载 | 绑定继续按 feature_id 求交，不因会话路径改变 |
+| `feature_state` 删除与组件 | `feature_state` 只支持 part/sheetmetal，装配组件只能走 `remove_component`（`src/creo_mechdog/feature_state.py:366-373`） | 不存在经 tombstone 路径的组件绑定残留 |
+
+**未定因（离线不可证）**：Creo 在极端场景（如外部编辑后的重载）是否可能产出 verify_saved 之外的 id 漂移——该情形会先被作业失败拦截，标签最多落入 `deleted_identities`/查无，不误指；真实行为待实机。
+
+### 三、最小修复结论：生产零改动
+
+按上述证据，重载稳定性由原生 `verify_saved` 组件比较强制，删除重插不误指由原生别名删除 + 投影 `deleted_identities` 共同保证。本轮未发现需要改动的生产缺陷，故生产代码零改动；交付为回归锁定与实机验证强化。未重命名任何源文件，未改 `c_<token>_<n>` 物理副本命名。
+
+### 四、新增回归与测试/构建结果
+
+新增离线回归（`tests/unit/test_component_identity.py`，16→19 例）：
+
+| 用例 | 覆盖 |
+| --- | --- |
+| `test_save_reload_with_unchanged_ids_keeps_labels` | 保存重载后同 id 记录：标签、source 镜像与 `deleted_identities=[]` 完全不变 |
+| `test_reload_id_renumbering_never_rebinds_onto_new_records` | 重载后 id 重排（verify_saved 会先拒绝保存）：当前记录全部 unlabeled，旧 id 落 `deleted_identities`，绝不改绑新记录 |
+| `test_same_label_reuse_after_remove_binds_only_new_identity` | remove 后同 label 重插：只绑新 id，旧 id 不出现在任何当前记录或 `deleted_identities`（落点"查无"的契约化） |
+
+驱动扩展（`tools/test_component_labels_live.py`）：离线模式新增 `reload_guard` 契约检查（上述三场景，投影层逐项断言）；live `cross_job` 用例把 `saved_file_reloaded_and_verified=true` 与**全量身份/镜像对照**（identity+source_model_id+source_revision）纳入 passed 判定；live `rename_reinsert` 用例新增 `old_label_observable` 记录旧标签可观测落点（`absent`/`deleted_identities`）。
+
+命令与结果（Windows 11 x64 / PowerShell / `.venv` Python 3.12.14 / ruff 0.17.0；仅离线，不连 Creo）：
+
+```text
+.\.venv\Scripts\python.exe -m unittest tests.unit.test_component_identity -v
+    Ran 19 tests in 0.112s   OK
+.\.venv\Scripts\python.exe -m unittest tests.unit.test_component_identity tests.unit.test_model_queries tests.unit.test_component_changes tests.unit.test_driver_inspect_contract
+    Ran 77 tests in 1.045s   OK
+.\.venv\Scripts\python.exe tools\test_component_labels_live.py
+    离线报告 build/component_labels/20261030T100437_7052fa7b/report.json
+    projection 4 项 true；reload_guard 3 项 true
+.\.venv\Scripts\python.exe -m ruff format / ruff check（两份改动文件）
+    通过（All checks passed）
+.\.venv\Scripts\python.exe bridge.py build
+    exit 0 -> build\creo_worker.exe（本轮未改 native；构建未被并发 generic.cpp 改动阻塞）
+```
+
+### 五、实机待验步骤（本轮未执行，需另派实机阶段）
+
+前提：唯一 dev 服务 `MCP_CREO_MechDog_dev` 指向 E 盘项目，满足 BUG-001 本次会话可操作条件；不擅自启动/结束 Creo、不擦用户模型。
+
+1. **保存重载关联**：复跑 `tools\test_component_labels_live.py --live --confirm-session-usable`。强化后的 `cross_job` 会要求 save 作业 `saved_file_reloaded_and_verified=true` 且两组件的 identity/source 镜像逐项不变；该作业原生即做擦除+磁盘重载，因此通过即为"保存重载后标签仍指回同一组件"的直接证据。
+2. **删除重插不误指**：`rename_reinsert` 用例复跑，记录 `old_label_observable`（预期 `absent`），确认旧标签既不挂新组件也不出现在 `deleted_identities` 指向新 id；`unknown_label` 复跑确认已移除标签的 placement 仍作业级拒绝。
+3. **会话丢失重载（可选，仅自然发生时）**：若会话中该装配自然不在（如 Creo 重启后），对同一 `model_id` 提交一次编辑作业——原生将从 checkpoint 重载并 verify_saved；随后 `creo_list_components` 断言标签与 feature_id 不变。**不做故障注入、不为造场景擦受管模型**（`creo_erase_session_models` 不接受受管模型）。
+4. 未测范围（如实记录）：以上实机全部未跑；多标签挂同一 feature_id 实机、被篡改 `aliases_ref` 实机、40 组件大清单分页实机、compact/full 一致性实机、Creo 9/10 均未测。离线阶段不等于整项验收通过。

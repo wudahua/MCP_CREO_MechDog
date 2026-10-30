@@ -179,6 +179,89 @@ class ProjectionContract(unittest.TestCase):
         self.assertEqual(deleted["labels"], ["legacy_ref"])
         self.assertEqual(deleted["reason"], "feature_id_not_in_verified_components")
 
+    def test_save_reload_with_unchanged_ids_keeps_labels(self):
+        # The native save path erases and reloads the model from disk, and
+        # verify_saved refuses any component feature_id/model_name drift
+        # (generic.cpp component compare). The projection contract on the
+        # reloaded inspection is therefore: identical records resolve the same
+        # bindings and source mirrors, with no deleted identities appearing.
+        saved = model(
+            components=[component(40, "c_job1_0"), component(43, "c_job1_1")],
+            aliases={
+                "part_alpha": alias("m" * 32, 1, 40),
+                "part_beta": alias("n" * 32, 2, 43),
+            },
+        )
+        before = component_identity.project_component_identities(
+            saved, saved["inspection"]["components"]
+        )
+        reloaded = model(
+            components=[component(40, "c_job1_0"), component(43, "c_job1_1")],
+            aliases={
+                "part_alpha": alias("m" * 32, 1, 40),
+                "part_beta": alias("n" * 32, 2, 43),
+            },
+        )
+        after = component_identity.project_component_identities(
+            reloaded, reloaded["inspection"]["components"]
+        )
+        self.assertEqual(before["components"], after["components"])
+        self.assertEqual(after["deleted_identities"], [])
+        self.assertEqual(
+            [record["label_state"] for record in after["components"]],
+            ["single", "single"],
+        )
+
+    def test_reload_id_renumbering_never_rebinds_onto_new_records(self):
+        # A binding names one feature_id forever. If a reloaded inspection ever
+        # listed different ids (verify_saved rejects such saves natively), the
+        # stale binding must fall to deleted_identities and the new records
+        # must stay unlabeled: an id change can never adopt an old label.
+        source = model(
+            components=[component(61, "c_reloaded_0"), component(62, "c_reloaded_1")],
+            aliases={
+                "part_alpha": alias("m" * 32, 1, 40),
+                "part_beta": alias("n" * 32, 2, 43),
+            },
+        )
+        projection = component_identity.project_component_identities(
+            source, source["inspection"]["components"]
+        )
+        self.assertEqual(
+            [record["label_state"] for record in projection["components"]],
+            ["unlabeled", "unlabeled"],
+        )
+        self.assertEqual(
+            [record["labels"] for record in projection["components"]],
+            [[], []],
+        )
+        self.assertEqual(
+            sorted(item["identity"]["feature_id"] for item in projection["deleted_identities"]),
+            [40, 43],
+        )
+
+    def test_same_label_reuse_after_remove_binds_only_new_identity(self):
+        # remove_component erases every alias bound to the removed feature_id
+        # natively; re-inserting under the SAME label is an explicit remember
+        # of the new feature_id. The old id therefore appears nowhere: not on
+        # any current record and not in deleted_identities (its binding was
+        # deleted, so the observable outcome for the old label is "not
+        # found" — recorded here so clients can rely on it).
+        source = model(
+            components=[component(50, "c_job2_0")],
+            aliases={"part_beta": alias("m" * 32, 3, 50)},
+        )
+        projection = component_identity.project_component_identities(
+            source, source["inspection"]["components"]
+        )
+        (record,) = projection["components"]
+        self.assertEqual(record["identity"]["feature_id"], 50)
+        self.assertEqual(record["labels"], ["part_beta"])
+        self.assertEqual(record["source_revision"], 3)
+        self.assertEqual(projection["deleted_identities"], [])
+        for item in projection["components"] + projection["deleted_identities"]:
+            self.assertNotEqual(item["identity"]["feature_id"], 43)
+
     def test_generic_feature_aliases_are_never_components(self):
         source = model(
             components=[component(40, "c_job_0")],
