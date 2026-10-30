@@ -1780,10 +1780,17 @@ static J sketch(const J &op) {
          {"section_normal_sign", dot(V{loc[2][0], loc[2][1], loc[2][2]}, frame.n) > 0 ? 1 : -1}});
     if (op.contains("profile"))
         aliases[op["label"].get<std::string>()]["airfoil"] = op["profile"];
-    return {{"surface_id", frame.surface}, {"origin", frame.origin},
-            {"normal", frame.n},           {"u_axis", frame.u},
-            {"v_axis", frame.v},           {"native_section", native_section},
-            {"arc_geometry", arc_geometry}};
+    // FEAT-008/T09B: publish the section entity ids on the operation record so
+    // the reported revolve_axis.id for an internal centerline is verifiable
+    // from the client-visible result (same id space, no guessing).
+    return {{"surface_id", frame.surface},
+            {"origin", frame.origin},
+            {"normal", frame.n},
+            {"u_axis", frame.u},
+            {"v_axis", frame.v},
+            {"native_section", native_section},
+            {"arc_geometry", arc_geometry},
+            {"entity_ids", ids}};
 }
 // ProFeatureWithoptionsCreate reports an invalid section only as a bare code;
 // Toolkit validation stays authoritative. Report the native section counts
@@ -1953,6 +1960,28 @@ static J revolve_axis_report(const J &op, ProFeature &created, ProFeature &sketc
     if (copy_code) {
         report["resolution"]["section_query_code"] = copy_code;
     } else {
+        // FEAT-008/T09B (10-31 live run): on the section copied from the
+        // created sketch feature the system reference projections no longer
+        // report themselves as projections (native log SECTION_CENTERLINE_PROBE
+        // entity=3/4/9 is_projection=0 for a sketch with one drawn centerline),
+        // so the probe below alone still counted 3. The sketch's own record is
+        // authoritative for what the user drew: the ids it registered for
+        // entities whose declared type is "centerline". When the record has no
+        // centerline entry the projection probe stays the only classifier and
+        // a failed probe keeps the entity counted (never silently dropped).
+        std::set<int> user_centerlines;
+        const J *sketch_meta =
+            op.at("sketch").is_string() ? alias_entry(op.at("sketch").get<std::string>()) : nullptr;
+        if (sketch_meta && sketch_meta->contains("entity_ids") &&
+            sketch_meta->contains("geometry")) {
+            const J &record_ids = sketch_meta->at("entity_ids");
+            for (const J &e : sketch_meta->at("geometry"))
+                if (e.is_object() && e.value("type", "") == "centerline" && e.contains("name") &&
+                    record_ids.contains(e.at("name").get<std::string>()))
+                    user_centerlines.insert(
+                        record_ids.at(e.at("name").get<std::string>()).get<int>());
+            log("SECTION_CENTERLINE_META drawn_user_lines=%zu\n", user_centerlines.size());
+        }
         ProIntlist ids = nullptr;
         int count = 0;
         ProError ids_code = ProSectionEntityIdsGet(saved, &ids, &count);
@@ -1981,7 +2010,12 @@ static J revolve_axis_report(const J &op, ProFeature &created, ProFeature &sketc
                     ProSectionEntityIsProjection(saved, ids[index], &is_projection);
                 log("SECTION_CENTERLINE_PROBE entity=%d code=%d is_projection=%d\n", ids[index],
                     (int)projection_code, is_projection == PRO_B_TRUE ? 1 : 0);
-                if (!projection_code && is_projection == PRO_B_TRUE)
+                if (!user_centerlines.empty()) {
+                    // The sketch record knows the drawn centerlines; every
+                    // other section centerline is a system reference.
+                    if (user_centerlines.find(ids[index]) == user_centerlines.end())
+                        continue;
+                } else if (!projection_code && is_projection == PRO_B_TRUE)
                     continue;
                 if (centerlines.empty()) {
                     auto line = (Pro2dLinedef *)def;

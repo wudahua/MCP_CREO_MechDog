@@ -223,3 +223,40 @@ SDK 语义（本机 Creo 12.4.0.0 匹配 SDK `ProSection.h`）：`ProSectionEnti
 ## 2026-10-30～31 N08 实机复测追加
 
 分支 codex/dev051-feedback070，基线 7288f2f，runid 20261030T234952。内部单中心线计数 3（预期 1）且 spin_centerline ID 来源缺失；显式轴与无中心线负例通过；外部真多线未验。 完整 job_id/model_id/revision、原始错误、命令、报告路径与 SHA256 见 [七段实机总报告](../development/POST090-LIVE-SEVEN-SEGMENTS-2026-10-31.md)；原始 JSON 留在 build/post090_live_20261030T234952/，未入库。未重放已受理作业，会话保持运行。
+
+## 2026-10-31 N08 中心线计数与 ID 来源：根因定性与原生修复（离线）
+
+基线提交 `a94139e`。两个问题均定性为**原生生产侧**，驱动判定与字段读取均正确（按本卡契约执行）。
+
+### 问题一：`section_centerline_count=3`（预期 1）——FEAT-008 剔除逻辑在该查询点失效
+
+- 计数口径核对：驱动读取 `revolve_axis.resolution.section_centerline_count`，这正是本卡 2026-10-30 修复交付的"仅用户中心线"口径的产出字段（`native/generic.cpp` `revolve_axis_report` 内部回退分支），不是另一处原始计数；驱动判定（count==1）与本卡契约一致，无需改驱动。
+- 实测证据（`jobs/1c1370927c384cd28d3bbb3534149b34/native.log`）：`SECTION_CENTERLINE_PROBE entity=3/4/9 code=0 is_projection=0`——三条中心线实体（2 系统参考 + 1 用户线）在探测下**都不报告为投影**，10-30 修复的剔除条件全部落空。同一草图创建时的 `SECTION_PROFILE … references=2` 说明 `ProSectionEntityIsProjection` 在创建前的**活动 section** 上能正确分类，但在 `ProFeatureSectionCopy` 复制出的**特征创建后 section** 上投影标记丢失——该返回值在卡中早已登记为未实测项，本次证实失效。
+- 修复（最小，`native/generic.cpp` `revolve_axis_report`）：以**草图自身记录为权威**识别用户线——`alias_entry(op["sketch"])` 的 `entity_ids` 中、其 `geometry` 声明类型为 `centerline` 的实体 id 集合；集合非空时按归属过滤（系统参考必不在记录内），集合为空时退回原投影探测（探测失败仍保留计数，不静默丢弃），探测日志保留并新增 `SECTION_CENTERLINE_META drawn_user_lines=N`。计数语义不变：仅用户中心线，≥2 条真实用户线仍 `id=null` 不猜。
+- 身份核对（非猜测）：作业 `aliases.ring_sketch.entity_ids` 为 `{ring_0..3:5-8, spin_centerline:9}`，探测命中的三条为 3/4/9——id 9 即用户线 `spin_centerline`，特征创建后 section 复制件中实体 id 与草图记录一致。
+
+### 问题二：`entity_ids` 无 `spin_centerline`——ID 来源字段从未发布
+
+- 驱动的文档化 ID 来源是"sketch 结果 `entity_ids['spin_centerline']`"（本卡结果契约与 10-30 节均已登记），但 `native/generic.cpp` `sketch()` 的操作结果一直**没有发布 `entity_ids`**（只有 surface_id/origin/normal/u_axis/v_axis/native_section/arc_geometry），驱动的 `sketch_entity_ids()` 永远取空——是生产缺口，不是驱动读错。
+- "真实 ID 来源"的可证实口径（明确，不猜第一条）：`revolve_axis.id` 必须等于**同一作业结果中 `op=="sketch"` 操作记录的 `entity_ids[<用户中心线名>]`**——即服务在创建该草图时登记的该实体 section id（用户所画的权威记录，系统参考不在其中）。修复：`sketch()` 操作结果新增 `entity_ids`（只增字段）。
+
+### 回归单元
+
+`tests/unit/test_revolve_axis_report.py` 新增 `SketchEntityIdSourcePublication` 2 项：sketch 操作记录的 `entity_ids` 经 `annotate_native_result` 原样透传（ID 来源客户端可见）；修复后形态（count=1、`id=9`、frame=sketch_local）逐字透传不重推。真多线歧义与 10-29 缺陷形态透传的既有回归不变。
+
+### 命令与真实结果
+
+| # | 命令 | 真实结果 |
+| --- | --- | --- |
+| 1 | `.\.venv\Scripts\python.exe -m unittest tests.unit.test_arc_direction tests.unit.test_arc_direction_live tests.unit.test_revolve_axis tests.unit.test_revolve_axis_report` | exit 0，Ran 97，OK（含新增 2 项） |
+| 2 | `ruff check` + `ruff format --check`（`tests/unit/test_revolve_axis_report.py` 等） | 全部通过 |
+| 3 | `clang-format --dry-run -Werror native\generic.cpp native\sketch_edit.cpp`（23.1.3） | 通过 |
+| 4 | `.\.venv\Scripts\python.exe bridge.py build` | exit 0（24 s），产出 `build\creo_worker.exe`；构建由 `toolkit.lock` 的 `build_native` 互斥保护（F1 窗口提交未落地、工作区无其未提交文件、无并行构建迹象）；`build\build.log` 无本节新增错误 |
+
+### 实机重跑命令与预期（待指派；须先满足会话可操作条件）
+
+```powershell
+.\.venv\Scripts\python.exe tools\test_revolve_axis_live.py --live --confirm-session-usable --output build\post090_live_<runid>\n08_revolve_axis\report.json
+```
+
+预期：`internal_centerline` 例 `section_centerline_count=1`、`revolve_axis.id == sketch 操作记录 entity_ids['spin_centerline']`（原生日志应出现 `SECTION_CENTERLINE_META drawn_user_lines=1`，三条探测行中 2 条系统参考被剔除）、origin 落在 x=0 线、direction ∥Y、体积对上 9424.777961 mm³ oracle、保存重载 true；`explicit_datum_axis` 与 `no_centerline` 负例按既有预期不变。若计数仍 ≠1 或 id 不匹配，以原生日志新证据定性，不得放宽判定。真多线外部夹具仍未提供，继续记未测。

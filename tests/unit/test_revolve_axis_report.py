@@ -316,6 +316,66 @@ class CenterlineAccountingContract(unittest.TestCase):
         self.assertFalse(entry["geometry_known"])
 
 
+class SketchEntityIdSourcePublication(unittest.TestCase):
+    """The sketch operation record carries ``entity_ids`` (10-31 live gap).
+
+    The T09B id-source contract compares ``revolve_axis.id`` with the sketch
+    section entity id of the drawn centerline; the 10-31 live run could not
+    verify that source because the sketch operation record published no
+    ``entity_ids`` at all. The native executor now records them on the result,
+    and normalization must carry the mapping through untouched so the driver's
+    documented source stays client-visible.
+    """
+
+    def test_sketch_entity_ids_survive_result_annotation(self):
+        result = {
+            "operations": [
+                {
+                    "op": "sketch",
+                    "index": 0,
+                    "label": "ring_sketch",
+                    "entity_ids": {"ring_0": 5, "ring_1": 6, "spin_centerline": 9},
+                }
+            ]
+        }
+        annotate_native_result(result, readonly=False)
+        record = result["operations"][0]
+        self.assertEqual(record["entity_ids"], {"ring_0": 5, "ring_1": 6, "spin_centerline": 9})
+
+    def test_fixed_centerline_accounting_shape_passes_through(self):
+        # The fixed native accounting (one drawn line -> count 1 and its sketch
+        # section entity id) must reach the client verbatim; the projection
+        # never re-derives or re-guesses the id.
+        result = {
+            "operations": [
+                revolve_record(
+                    model_frame_block(
+                        source="internal_centerline",
+                        kind="section_centerline",
+                        id=9,
+                        frame="sketch_local",
+                        origin=[0.0, -10.0],
+                        direction=[0.0, 1.0],
+                        geometry_known=True,
+                        query_code=0,
+                        resolution={
+                            "feature_axis_query_code": 0,
+                            "axis_item_query_code": None,
+                            "axis_surface_query_code": None,
+                            "section_centerline_count": 1,
+                            "section_query_code": 0,
+                        },
+                    )
+                )
+            ]
+        }
+        annotate_native_result(result, readonly=False)
+        entry = result["operations"][0]["revolve_axis"]
+        self.assertEqual(entry["id"], 9)
+        self.assertEqual(entry["resolution"]["section_centerline_count"], 1)
+        self.assertEqual(entry["frame"], "sketch_local")
+
+
 class NoRequestEcho(unittest.TestCase):
     def test_missing_block_stays_missing_and_is_not_fabricated(self):
         request_axis = {"kind": "datum_axis_feature", "label": "axis_label"}
