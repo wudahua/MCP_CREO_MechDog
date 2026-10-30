@@ -278,3 +278,22 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；pydantic 
 - 接口变化：`creo_sheetmetal_flange` 新增可选 `end_trim_mm`（>0，缺省行为不变）；`SheetmetalFlangeOp` 同名字段。无破坏性变化，旧计划不受影响（静态守卫 `default_to_end_both_sides` 断言缺省树不变）。
 - 本批触碰：`native/advanced.cpp`、`server.py`、`tests/unit/test_sheetmetal_box_live.py`、`tools/test_sheetmetal_box_live.py`（新）、上述三份文档。`src/creo_mechdog/schema.py` 的 `end_trim_mm` 字段为继承的前序改动，本窗口未改。
 - 共享冲突面：`native/advanced.cpp`（T03/T11/T05/T13/T12 共用）——本批仅 `generic_sheetmetal_flange` 内新增 trim 分支，与 T02/T09B 正在编辑的 `native/generic.cpp`、`tools/test_arc_direction_live.py` 无交集。`bridge.py build` 时未遇到这两文件的语法错误。
+
+## 2026-10-30 实机对照（第三壁定因）
+
+驱动的 `--live` 按设计拒绝执行（只做离线检查），因此本轮用一次性探针（`build/t05_probe.py`，不进仓库）在实机会话上做三组对照，每组新建模型：
+
+| 对照 | 结果 |
+| --- | --- |
+| 只建 −y 折边（整条 185 mm 自由边，无相邻折弯） | **succeeded**，边 span 185.0 |
+| 先建 +x 折边，再建 −y（−y 边被吃掉一端，span 181.46 = 185 − 3.54） | +x succeeded；−y **failed** |
+| 先建 +x、−x，再建 −y（两端各被吃 3.54，span 177.92） | +x、−x succeeded；−y **failed** |
+
+结论（有对照支撑，不再是 candidate）：**第三壁失败的触发条件是“目标边的端部已与既有折弯/折弯圆角相邻”，与边是否全长无关**；整条自由边可建，被吃掉一端就已经失败。先前“角部干涉”的猜测只对了一半——不是两个角同时干涉才失败，单端相邻就足以失败。
+
+尚未定因的部分：失败发生在 `execute_sheetmetal_flange` 的特征再生（`Regeneration produced a failed, suppressed or incomplete feature`），但**具体是截面落在弯曲面外、还是相邻壁料重叠**，离线与日志都不足以下结论；需要在原生侧加几何诊断（截面边是否共面、与相邻 bend 面的最小距离）才能区分。
+
+因此：
+- 四壁 4/4 未达成（3/4 是上限，且第 3 壁已证明会失败）。
+- 角部处理（corner relief / miter）**未实现**，不加限定地说“支持四壁”是错的。
+- 本项保持开放，下一步是原生诊断而不是直接写规则：先证明失败机理，再决定是实现角部释放还是明确拒绝“端部相邻折弯”的组合。

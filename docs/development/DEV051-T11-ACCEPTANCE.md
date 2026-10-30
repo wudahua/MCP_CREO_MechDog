@@ -545,3 +545,25 @@ SHA256 `d2de17487469f10fba9859a0459cfeb64e593537105c8d5a6df5be9bf829d58f`，驱�
 2. 若确认角部干涉，评估 `PRO_E_SMT_CORNER_RELIEF`/斜接（当前明确未支持）或 `depth ≥ h−R = 77.46` 的释放档，仍按"一次一个变量、失败即停"执行。
 3. 释放是否真的不生效：在一个"弯端靠材料"的合法场景（第 2 道垂直于第 1 道的壁端）复测 4×4 与 1×1；并在修正零件级板厚参数后复测 `width_at_least_thickness` 口径。
 4. 修正 BUG-032 的板厚参数同步后，重跑本卡两档，确认 `part_thickness_mm` 变为 1.0。
+
+## 2026-10-30 实机阶段（Creo 12.4.0.0，唯一 dev 服务）
+
+命令：`tools\test_sheetmetal_relief.py --live --confirm-session-usable` → 报告 `build/sheetmetal_relief/20261030T122856_2b3de3e1/report.json`（SHA256 `04f01b360740c996c1ec3a048dd6459dae50dcc09311d93870692ac9fbc08402`），整体 `passed=false`。
+
+### 已经拿到的实机事实
+
+1 mm 底板（185×232，零件厚度实机读数 1.0）：
+
+| 折边 | 边 span | 状态 | 增量实测 / oracle (mm³) | 重载 |
+| --- | --- | --- | --- | --- |
+| f_px（+x 自由端） | 232.0 | succeeded | 18025.291234 / 18025.291233（误差 6.9e-7） | true |
+| f_nx（−x 自由端） | 232.0 | succeeded | 18025.291234 / 18025.291233（误差 6.9e-7） | true |
+| f_ny（−y，两端被前两道折边吃掉 7.08 mm） | 177.92 | **failed** | — | 回滚成功、模型与 revision 不变 |
+
+即：**折边几何本身是对的**（两道自由端折边的增量与独立 oracle 差 7e-7，且保存重载通过）；失败的是**接在已被折弯吃掉端部的边上**再建折边。
+
+### 材料场景为什么没能成立
+
+材料场景需要一个“弯边靠材料”的第三道折边；第三道折边在本轮实机上 `Regeneration produced a failed, suppressed or incomplete feature`（`failed_stage=execute_sheetmetal_flange`，`rollback_succeeded=true`）。因此 none / 1×1 / 4×4 的释放对比**没有跑起来**，`material_scenario_passed=false`，不能据此判断释放是否生效。
+
+根因已由 T05 的对照探针定位到“边端相邻折弯”这一类，见 `DEV051-T05-ACCEPTANCE.md` 同日节。T11 与 T05 须一起解，不能只改释放参数。

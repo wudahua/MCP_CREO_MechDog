@@ -115,3 +115,22 @@ live 运行写入唯一时间戳目录 `build/t09d_performance/<run_id>/report.j
 - single/batch 的 save/reload 次数差异使两条路径的差值天然包含 (N−1) 次保存重载成本；解读差值时必须对照 `save_reload_events`，不能直接归因为"批量更快"。
 - 驱动轮询间隔 1 s，`client_total_s` 含最多 1 s 轮询粒度误差；服务端 `server_accept_to_terminal_s` 不受影响，两者都记录以便对照。
 - 驱动本身的 Python 开销（JSON、记录）计入 `submit_round_trip_s` 与查询往返，量级估计远小于被测对象，但未经实测证明。
+
+## 2026-10-30 实机基准（Creo 12.4.0.0，唯一 dev 服务）
+
+命令：`tools\test_plan_performance.py --live --confirm-session-usable`（`--reps 1` 补跑一次）。
+
+| 类别 | 交付方式 | 作业数 | 客户端总耗时 (s) | 等价校验 | 保存重载 |
+| --- | --- | --- | --- | --- | --- |
+| small（60×60×5 板 + 2 槽，36 边） | 2 个单操作作业 | 2 | 19.5 | 体积、边数、cut 增量一致 | 全部 true |
+| small | 1 个批量计划作业 | 1 | 11.3 | 同上 | true |
+| large（240×240×8 板 + 96 槽） | 8 个单操作作业 | 8 | 261.0 | 同上 | 全部 true |
+| large | 1 个批量计划作业 | 1 | 138.7 | 同上 | true |
+
+报告 `build/t09d_performance/20261030T124911_c006b1dc/report.json`。
+
+要点：
+- 两种交付方式在同一夹具上都能通过等价校验，因此计时可比；batch 比 single 少一次保存/重载事件（`save_reload_events` 已逐例记录）。
+- large 批量 138.7 s / 8 个切槽 ≈ 17 s/切槽，其中提交往返 0.1 s 量级，**时间几乎全在接受作业到终态之间**；该段在 MCP 层不可分段（`queue_wait`、`native_solve`、`native_checks`、`save_reload` 一律 `null`/`unobservable`）。
+- 另一次 `--reps 3` 运行在 10 分钟工具上限处被截断，留下了 small 三联（3 次单操作、3 次批量）与 large 单操作 1 次的数据；**large 类未达到 3 次独立重复**，本卡不把它写成满足协议最小样本量。
+- 本轮没有优化任何生产逻辑，也没有承诺提速比例；`1408 边≈50–60 s` 的外部观测未被本夹具复现或否定。

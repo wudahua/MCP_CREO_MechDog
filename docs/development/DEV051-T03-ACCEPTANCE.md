@@ -303,3 +303,51 @@ T11 两轮底板（同一 `sheetmetal_wall(depth=1, thickness=232)`）的 active
 - 依赖提交：本批实现提交（见 git log，`BUG-032`主题）+ 基线 `4ffdd5d`；受测执行器 `build/source.sha256 = 2d7cd1d3…`（2026-10-30 07:20:54 构建）。
 - 复验入口：`.venv\Scripts\python.exe tools\test_sheetmetal_contract.py --live --confirm-session-usable`（唯一 dev 服务 `MCP_CREO_MechDog_dev`，先满足 BUG-001 会话条件）；每例报告新增 `thickness_source` 字段，`passed` 已含厚度一致性。
 - 若实机显示 `ProSmtPartThicknessGet` 返回错误或再生改写几何，失败消息会明确区分三种形态（读不到 / 同步改几何 / 回读不符），不要用"改回显"绕过；先记录原始码再定位。
+
+## 2026-10-30 实机阶段（Creo 12.4.0.0，唯一 dev 服务，手工打开的会话）
+
+环境：Windows 11 x64 / Creo 12.4.0.0（`release_numeric=44`）/ 本机匹配 SDK / `auto_start_creo=false`，会话由用户手工启动（12:21），连接前只读核对进程与事件日志，未启动或重启 Creo。
+
+### 第一轮：失败，暴露原修复未生效
+
+`tools\test_sheetmetal_contract.py --live --confirm-session-usable` → 5 例全失败，拒绝例通过。
+
+原生日志（`jobs\e5bbac69...\native*.log`）：
+
+```text
+SHEETMETAL_WALL_PART_THICKNESS before_mm=3.710000000 requested_mm=232.000000000
+SHEETMETAL_WALL_PART_THICKNESS synced_mm=232.000000000 regenerated_mm3=42920.000000000
+BUILD_FAILED=sheetmetal_wall left the part-level sheetmetal thickness at 3.710000 mm ...
+```
+
+结论：`ProDimensionValueSet` 对 `ProSmtPartThicknessGet` 返回的维度返回 `PRO_TK_NO_ERROR`，但随后的再生按钣金关系重算，又把零件级厚度写回模板默认（3.71）。也就是说，离线阶段认为已完成的“真实同步”在实机上是一次空写——旧验收卡把它当成已实现是错的。
+
+### 修复（`native/advanced.cpp`）
+
+零件厚度由 `SMT_THICKNESS` 参数驱动，因此改为：取模型 `ProModelitem` → `ProParameterInit("SMT_THICKNESS")` → `ProParameterValueWithUnitsSet` → `ProSolidRegenerate` → 复验体积 → 复读零件厚度。参数不存在时才回退到原来的维度写入。两条路径都写日志（`driver=SMT_THICKNESS` / `driver=dimension_fallback`），失败仍按“回读不符”拒绝，未放宽任何断言。
+
+### 第二轮：通过
+
+```text
+.venv\Scripts\python.exe bridge.py build                     # exit 0
+.venv\Scripts\python.exe tools\test_sheetmetal_contract.py --live --confirm-session-usable   # exit 0
+```
+
+报告 `build/sheetmetal_contract/20261030T122730_333c555f/report.json`，SHA256 `255409ecd878b73dc13fbcc8ad0c616ab289a23242ef84a746c78f6ed21559d9`。
+
+| 用例 | 体积实测 / 期望 (mm³) | 误差 | `part_thickness_before` → `part_thickness_mm` | 重载 |
+| --- | --- | --- | --- | --- |
+| t03_d1_t232 | 42920.0 / 42920.0 | 0.0 | 3.71 → 232.0 | true |
+| t03_d232_t1 | 42920.0 / 42920.0 | 0.0 | 3.71 → 1.0 | true |
+| t03_d1_t1 | 185.0 / 185.0 | 0.0 | 2.31 → 1.0 | true |
+| t03_d2_t1 | 370.0 / 370.0 | 0.0 | 2.31 → 1.0 | true |
+| t03_d05_t1 | 92.5 / 92.5 | 0.0 | 2.31 → 1.0 | true |
+| rejection_before_modelling | 闭合矩形与两线链被拒，模型与 revision 未变 | — | — | — |
+
+即：**原生零件级板厚、几何体积、保存重载三者一致**，1 mm 壁的零件厚度读数为 1.0（修复前为 3.71）。`saved_file_reloaded_and_verified` 在全部建模例为 true。
+
+### 仍开放
+
+- green/white 面距 = 1.0 这一项仍未单独量测（本轮用体积恒等式 + 零件厚度读数，未做 `ProSmtSurfaceTypeGet` 2/3 面距探针）。
+- 下游联动（relief 回显 `part_thickness_mm=1.0`、`width_at_least_thickness`）随 T11 一起验；T11 本轮受阻于第三道折边（见该卡）。
+- 圆角/大厚度组合（232 mm 厚）在本轮通过，属既有矩阵范围，未扩展。
