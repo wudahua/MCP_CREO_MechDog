@@ -1,4 +1,15 @@
-"""FEAT-035 T12 offline contract report; live Toolkit execution is refused."""
+"""FEAT-035 T12 drivers: offline contract report; live remainder via --live.
+
+The three cases already accepted on 2026-10-29 (counterbore flat seat, 90
+degree countersink, 180 degree contract refusal) run only with
+``--include-passed-cases`` and are never redone by default. The default live
+run covers the remaining contract scope: blind depth, direction (hole axis
+along the placement normal), supported dimension edits, failure rollback and
+save/reload consistency. Every case carries an independent geometry oracle
+(removed volume against the flat-bottom analytical formula, face-count delta,
+dimension readback and cylinder face axis/bbox); a tool "success" alone never
+passes a case.
+"""
 
 from __future__ import annotations
 
@@ -59,7 +70,7 @@ def plane_record(record: dict) -> dict:
 
 
 def pick_geometry(snapshot: dict) -> dict:
-    """Top face (+Z at z=10) and the X/Y datum planes of the plate."""
+    """Top face (+Z at z=10), side face (x=0) and the datum planes of the plate."""
     inspection = snapshot.get("inspection") if isinstance(snapshot.get("inspection"), dict) else {}
     surfaces = [
         plane_record(item)
@@ -89,33 +100,97 @@ def pick_geometry(snapshot: dict) -> dict:
         and item["origin"]
         and abs(item["origin"][2] - 10.0) < 1e-6
     ]
+    side_x0 = [
+        item
+        for item in surfaces
+        if unit_axis(item["normal"]) == "x" and item["origin"] and abs(item["origin"][0]) < 1e-6
+    ]
     datum_x = [item for item in datum_planes if unit_axis(item["normal"]) == "x"]
     datum_y = [item for item in datum_planes if unit_axis(item["normal"]) == "y"]
+    datum_z = [item for item in datum_planes if unit_axis(item["normal"]) == "z"]
     return {
         "surfaces": surfaces,
         "datum_planes": datum_planes,
         "top_face_id": top[0]["id"] if top else None,
+        "side_x0_face_id": side_x0[0]["id"] if side_x0 else None,
         "datum_x_id": datum_x[0]["id"] if datum_x else None,
         "datum_y_id": datum_y[0]["id"] if datum_y else None,
+        "datum_z_id": datum_z[0]["id"] if datum_z else None,
     }
 
 
-def hole_op(geometry: dict, label: str, **option) -> dict:
+def hole_op(
+    geometry: dict,
+    label: str,
+    *,
+    face_key: str = "top_face_id",
+    ref1_key: str = "datum_x_id",
+    ref2_key: str = "datum_y_id",
+    offset1: float = 25.0,
+    offset2: float = 25.0,
+    **option,
+) -> dict:
     operation = fixture.BASE | {
         "label": label,
-        "placement": {"kind": "surface", "id": geometry["top_face_id"]},
-        "reference1": {"kind": "datum_plane", "id": geometry["datum_x_id"]},
-        "reference2": {"kind": "datum_plane", "id": geometry["datum_y_id"]},
-        "offset1": 25.0,
-        "offset2": 25.0,
+        "placement": {"kind": "surface", "id": geometry[face_key]},
+        "reference1": {"kind": "datum_plane", "id": geometry[ref1_key]},
+        "reference2": {"kind": "datum_plane", "id": geometry[ref2_key]},
+        "offset1": offset1,
+        "offset2": offset2,
     }
     operation.update(option)
     return operation
 
 
+# Accepted on 2026-10-29; run only with --include-passed-cases.
 CASES = {
     "cbore_flat_seat": {"counterbore": {"diameter": 10, "depth": 2}},
     "csink_90": {"countersink": {"diameter": 10, "angle": 90}},
+}
+
+# Remaining contract scope: blind depth on the plate top face.
+BLIND_CASES = {
+    "blind_straight": {"depth": 7.0},
+    "blind_counterbore": {"depth": 8.0, "counterbore": {"diameter": 10, "depth": 2}},
+    "blind_countersink": {"depth": 8.0, "countersink": {"diameter": 10, "angle": 90}},
+}
+
+# Independent cylinder-face expectations (radius, axis, trimmed bbox).
+BLIND_CYLINDERS = {
+    "blind_straight": [
+        {
+            "radius": 3.0,
+            "axis_normal": [0, 0, 1],
+            "bbox_axis": 2,
+            "bbox_range": (3.0, 10.0),
+            "bbox_center": {0: 25.0, 1: 25.0},
+        },
+    ],
+    "blind_counterbore": [
+        {
+            "radius": 3.0,
+            "axis_normal": [0, 0, 1],
+            "bbox_axis": 2,
+            "bbox_range": (2.0, 8.0),
+            "bbox_center": {0: 25.0, 1: 25.0},
+        },
+        {
+            "radius": 5.0,
+            "axis_normal": [0, 0, 1],
+            "bbox_axis": 2,
+            "bbox_range": (8.0, 10.0),
+            "bbox_center": {0: 25.0, 1: 25.0},
+        },
+    ],
+    "blind_countersink": [
+        {
+            "radius": 3.0,
+            "axis_normal": [0, 0, 1],
+            "bbox_axis": 2,
+            "bbox_range": (2.0, 8.0),
+            "bbox_center": {0: 25.0, 1: 25.0},
+        },
+    ],
 }
 
 
@@ -129,7 +204,570 @@ def feature_counts(snapshot: dict) -> dict:
     return counts
 
 
-async def run_live(output: Path | None) -> int:
+def reload_flag(terminal: dict | None) -> bool | None:
+    """Reload evidence from the job result block, never from the terminal top."""
+    result = (terminal or {}).get("result")
+    block = result if isinstance(result, dict) else {}
+    return block.get("saved_file_reloaded_and_verified")
+
+
+def judge_geometry(
+    entry: dict,
+    terminal: dict,
+    after: dict,
+    *,
+    label: str,
+    expected_removed: float,
+    expected_face_delta: int,
+    expected_dims: dict,
+    variants: dict,
+    cylinder_expectations: list | None = None,
+) -> tuple[dict, list]:
+    """Independent checks: volume, face delta, dimension readback, cylinder face."""
+    after_volume = LiveRunner.volume(after)
+    base = entry.get("base_volume_mm3")
+    removed = None if after_volume is None or base is None else base - after_volume
+    counts = feature_counts(after)
+    faces = fixture.face_count(after)
+    dims = fixture.hole_dimensions(after, label)
+    matched = None if removed is None else fixture.closest_variant(removed, variants, tol=1.0)
+    result = terminal.get("result") if isinstance(terminal.get("result"), dict) else {}
+    operations = result.get("operations") or []
+    problems: list[str] = []
+    fields = {
+        "revision": after.get("revision"),
+        "volume_mm3": after_volume,
+        "removed_mm3": removed,
+        "expected_removed_mm3": expected_removed,
+        "abs_error_mm3": None if removed is None else abs(removed - expected_removed),
+        "variant_values_mm3": variants,
+        "matched_variant": matched,
+        "feature_types": counts,
+        "feature_delta": {
+            key: counts.get(key, 0) - entry.get("base_features", {}).get(key, 0)
+            for key in set(counts) | set(entry.get("base_features", {}))
+        },
+        "face_count": faces,
+        "base_faces": entry.get("base_faces"),
+        "expected_face_delta": expected_face_delta,
+        "dimension_values": [dim.get("value") for dim in dims],
+        "missing_dimensions": fixture.missing_dimension_values(dims, expected_dims),
+        "operation_result": operations[0] if operations else None,
+        "saved_file_reloaded_and_verified": reload_flag(terminal),
+    }
+    if fields["abs_error_mm3"] is None or fields["abs_error_mm3"] > 1.0:
+        problems.append(
+            f"removed {removed!r} outside 1 mm3 of the contract oracle {expected_removed!r}"
+        )
+    if matched != "contract_flat_overall":
+        problems.append(f"removal matches {matched!r}, not the contract flat-bottom oracle")
+    if fields["feature_delta"].get("hole", 0) != 1:
+        problems.append(f"hole feature delta={fields['feature_delta'].get('hole')!r}")
+    if fields["base_faces"] is not None and faces is not None:
+        if faces - fields["base_faces"] != expected_face_delta:
+            problems.append(f"face delta={faces - fields['base_faces']} != {expected_face_delta}")
+    if fields["missing_dimensions"]:
+        problems.append(f"dimension readback missing {fields['missing_dimensions']}")
+    if fields["saved_file_reloaded_and_verified"] is not True:
+        problems.append("saved_file_reloaded_and_verified is not true")
+    for expectation in cylinder_expectations or []:
+        radius = expectation["radius"]
+        candidates = fixture.cylinder_surfaces(after, radius)
+        if not candidates:
+            problems.append(f"no cylinder face of radius {radius}")
+            continue
+        for cylinder in candidates:
+            normal = expectation.get("axis_normal")
+            if normal is not None and not fixture.axis_is_parallel(cylinder.get("axis"), normal):
+                problems.append(
+                    f"radius {radius} cylinder axis {cylinder.get('axis')} not parallel to {normal}"
+                )
+            bbox = cylinder.get("bbox")
+            if not (isinstance(bbox, list) and len(bbox) == 2):
+                problems.append(f"radius {radius} cylinder has no bbox")
+                continue
+            axis_index = expectation.get("bbox_axis")
+            bbox_range = expectation.get("bbox_range")
+            if axis_index is not None and bbox_range is not None:
+                lo = bbox[0][axis_index] if isinstance(bbox[0], list) else None
+                hi = bbox[1][axis_index] if isinstance(bbox[1], list) else None
+                if (
+                    lo is None
+                    or hi is None
+                    or abs(lo - bbox_range[0]) > 0.5
+                    or abs(hi - bbox_range[1]) > 0.5
+                ):
+                    problems.append(
+                        f"radius {radius} cylinder bbox axis{axis_index} "
+                        f"[{lo},{hi}] != {tuple(bbox_range)}"
+                    )
+            for index, value in (expectation.get("bbox_center") or {}).items():
+                if not (isinstance(bbox[0], list) and isinstance(bbox[1], list)):
+                    continue
+                mid = (bbox[0][index] + bbox[1][index]) / 2
+                if abs(mid - value) > 0.5:
+                    problems.append(f"radius {radius} cylinder center axis{index} {mid} != {value}")
+    return fields, problems
+
+
+async def make_plate(runner: LiveRunner, case_key: str) -> tuple | None:
+    """Create the 50x50x10 plate; record a failed case and return None on failure."""
+    name = unique_name(f"t12_{case_key}")
+    made = await runner.submit(
+        f"{case_key}:create",
+        "creo_execute_plan",
+        {"model_name": name, "model_type": "part", "operations": PLATE_PLAN},
+    )
+    base = await runner.wait_job(made["job_id"], budget=HANG_BUDGET_SECONDS)
+    entry = {
+        "case": case_key,
+        "model_name": name,
+        "model_id": made["model_id"],
+        "base_job_id": made["job_id"],
+        "base_status": base.get("status"),
+    }
+    if base.get("status") != "succeeded":
+        entry.update(failure=failure_text(base), passed=False)
+        runner.case(entry)
+        return None
+    snapshot = await runner.snapshot(made["model_id"])
+    geometry = pick_geometry(snapshot)
+    entry["geometry"] = {
+        key: geometry[key]
+        for key in ("top_face_id", "side_x0_face_id", "datum_x_id", "datum_y_id", "datum_z_id")
+    }
+    entry["base_volume_mm3"] = LiveRunner.volume(snapshot)
+    entry["base_features"] = feature_counts(snapshot)
+    entry["base_faces"] = fixture.face_count(snapshot)
+    if entry["base_volume_mm3"] is None or abs(entry["base_volume_mm3"] - PLATE_VOLUME_MM3) > 0.5:
+        entry["problems"] = [f"plate volume {entry['base_volume_mm3']!r} != {PLATE_VOLUME_MM3}"]
+        entry["passed"] = False
+        runner.case(entry)
+        return None
+    return entry, geometry, snapshot
+
+
+async def case_blind(runner: LiveRunner, case_key: str, option: dict) -> None:
+    plate = await make_plate(runner, case_key)
+    if plate is None:
+        return
+    entry, geometry, snapshot = plate
+    entry["option"] = option
+    hole = await runner.submit(
+        f"{case_key}:hole",
+        "creo_execute_plan",
+        {
+            "model_id": entry["model_id"],
+            "expected_revision": snapshot.get("revision"),
+            "operations": [hole_op(geometry, "blind_hole", **option)],
+        },
+    )
+    terminal = await runner.wait_job(hole["job_id"], budget=HANG_BUDGET_SECONDS)
+    entry.update(hole_job_id=hole["job_id"], hole_status=terminal.get("status"))
+    if terminal.get("status") != "succeeded":
+        entry.update(failure=failure_text(terminal), passed=False)
+        runner.case(entry)
+        return
+    after = await runner.snapshot(entry["model_id"])
+    expected_dims = {"diameter": 6.0, "depth": option["depth"]}
+    if "counterbore" in option:
+        expected_dims["counterbore_diameter"] = float(option["counterbore"]["diameter"])
+        expected_dims["counterbore_depth"] = float(option["counterbore"]["depth"])
+    if "countersink" in option:
+        expected_dims["countersink_diameter"] = float(option["countersink"]["diameter"])
+        expected_dims["countersink_angle"] = float(option["countersink"]["angle"])
+    fields, problems = judge_geometry(
+        entry,
+        terminal,
+        after,
+        label="blind_hole",
+        expected_removed=fixture.oracle_removed(6.0, option["depth"], option),
+        expected_face_delta=fixture.oracle_faces(option, blind=True),
+        expected_dims=expected_dims,
+        variants=fixture.oracle_variants(6.0, option["depth"], option),
+        cylinder_expectations=BLIND_CYLINDERS[case_key],
+    )
+    entry.update(fields)
+    entry["problems"] = problems
+    entry["passed"] = not problems
+    runner.case(entry)
+
+
+async def case_direction_side(runner: LiveRunner) -> None:
+    """Hole on the x=0 face: the axis must follow the face normal, not -Z."""
+    case_key = "direction_side_normal"
+    plate = await make_plate(runner, case_key)
+    if plate is None:
+        return
+    entry, geometry, snapshot = plate
+    entry["option"] = {"depth": 7.0}
+    required = ("side_x0_face_id", "datum_y_id", "datum_z_id")
+    if not all(geometry.get(key) for key in required):
+        entry["problems"] = [f"plate side geometry unresolved: {required}"]
+        entry["passed"] = False
+        runner.case(entry)
+        return
+    hole = await runner.submit(
+        f"{case_key}:hole",
+        "creo_execute_plan",
+        {
+            "model_id": entry["model_id"],
+            "expected_revision": snapshot.get("revision"),
+            "operations": [
+                hole_op(
+                    geometry,
+                    "side_hole",
+                    face_key="side_x0_face_id",
+                    ref1_key="datum_y_id",
+                    ref2_key="datum_z_id",
+                    offset1=25.0,
+                    offset2=5.0,
+                    depth=7.0,
+                )
+            ],
+        },
+    )
+    terminal = await runner.wait_job(hole["job_id"], budget=HANG_BUDGET_SECONDS)
+    entry.update(hole_job_id=hole["job_id"], hole_status=terminal.get("status"))
+    if terminal.get("status") != "succeeded":
+        entry.update(failure=failure_text(terminal), passed=False)
+        runner.case(entry)
+        return
+    after = await runner.snapshot(entry["model_id"])
+    fields, problems = judge_geometry(
+        entry,
+        terminal,
+        after,
+        label="side_hole",
+        expected_removed=fixture.oracle_removed(6.0, 7.0, {}),
+        expected_face_delta=fixture.oracle_faces({}, blind=True),
+        expected_dims={"diameter": 6.0, "depth": 7.0},
+        variants=fixture.oracle_variants(6.0, 7.0, {}),
+        cylinder_expectations=[
+            {
+                "radius": 3.0,
+                "axis_normal": [1, 0, 0],
+                "bbox_axis": 0,
+                "bbox_range": (0.0, 7.0),
+                "bbox_center": {1: 25.0, 2: 5.0},
+            },
+        ],
+    )
+    entry.update(fields)
+    entry["problems"] = problems
+    entry["passed"] = not problems
+    runner.case(entry)
+
+
+async def case_flip_guard(runner: LiveRunner) -> None:
+    """flip=true drills out of the material: readable refusal, rollback, recovery."""
+    case_key = "direction_flip_guard"
+    plate = await make_plate(runner, case_key)
+    if plate is None:
+        return
+    entry, geometry, snapshot = plate
+    entry["option"] = {"depth": 7.0, "flip": True}
+    problems: list[str] = []
+    hole = await runner.submit(
+        f"{case_key}:hole",
+        "creo_execute_plan",
+        {
+            "model_id": entry["model_id"],
+            "expected_revision": snapshot.get("revision"),
+            "operations": [hole_op(geometry, "flipped_hole", depth=7.0, flip=True)],
+        },
+    )
+    terminal = await runner.wait_job(hole["job_id"], budget=HANG_BUDGET_SECONDS)
+    entry.update(hole_job_id=hole["job_id"], hole_status=terminal.get("status"))
+    if terminal.get("status") != "failed":
+        problems.append(
+            f"expected the material guard to fail the job, got {terminal.get('status')!r}"
+        )
+    else:
+        entry["failure"] = failure_text(terminal)
+        result = terminal.get("result") if isinstance(terminal.get("result"), dict) else {}
+        entry["rollback_succeeded"] = result.get("rollback_succeeded")
+        if result.get("rollback_succeeded") is not True:
+            problems.append(f"rollback_succeeded={result.get('rollback_succeeded')!r}")
+    after = await runner.snapshot(entry["model_id"])
+    entry["post_volume_mm3"] = LiveRunner.volume(after)
+    entry["post_faces"] = fixture.face_count(after)
+    entry["post_features"] = feature_counts(after)
+    if entry["post_volume_mm3"] is None or abs(entry["post_volume_mm3"] - PLATE_VOLUME_MM3) > 0.5:
+        problems.append("model volume changed on the rejected flip hole")
+    if entry["post_faces"] != entry["base_faces"]:
+        problems.append("face count changed on the rejected flip hole")
+    recovery = await runner.submit(
+        f"{case_key}:recovery",
+        "creo_execute_plan",
+        {
+            "model_id": entry["model_id"],
+            "expected_revision": after.get("revision"),
+            "operations": [
+                hole_op(geometry, "recovery_hole", offset1=15.0, offset2=15.0, depth=7.0)
+            ],
+        },
+    )
+    terminal = await runner.wait_job(recovery["job_id"], budget=HANG_BUDGET_SECONDS)
+    entry.update(recovery_job_id=recovery["job_id"], recovery_status=terminal.get("status"))
+    if terminal.get("status") != "succeeded":
+        problems.append(f"recovery hole status={terminal.get('status')!r}")
+        entry["recovery_failure"] = failure_text(terminal)
+    else:
+        final = await runner.snapshot(entry["model_id"])
+        fields, recovery_problems = judge_geometry(
+            entry,
+            terminal,
+            final,
+            label="recovery_hole",
+            expected_removed=fixture.oracle_removed(6.0, 7.0, {}),
+            expected_face_delta=fixture.oracle_faces({}, blind=True),
+            expected_dims={"diameter": 6.0, "depth": 7.0},
+            variants=fixture.oracle_variants(6.0, 7.0, {}),
+            cylinder_expectations=[],
+        )
+        entry["recovery"] = fields
+        problems.extend(f"recovery: {item}" for item in recovery_problems)
+    entry["problems"] = problems
+    entry["passed"] = not problems
+    runner.case(entry)
+
+
+async def case_edit_dimensions(runner: LiveRunner) -> None:
+    """Real dimension IDs from inspection; edit diameter and seat depth only."""
+    case_key = "edit_dimension_values"
+    plate = await make_plate(runner, case_key)
+    if plate is None:
+        return
+    entry, geometry, snapshot = plate
+    option = {"depth": 8.0, "counterbore": {"diameter": 10, "depth": 2}}
+    entry["option"] = option
+    problems: list[str] = []
+    hole = await runner.submit(
+        f"{case_key}:hole",
+        "creo_execute_plan",
+        {
+            "model_id": entry["model_id"],
+            "expected_revision": snapshot.get("revision"),
+            "operations": [hole_op(geometry, "edit_hole", **option)],
+        },
+    )
+    terminal = await runner.wait_job(hole["job_id"], budget=HANG_BUDGET_SECONDS)
+    entry.update(hole_job_id=hole["job_id"], hole_status=terminal.get("status"))
+    if terminal.get("status") != "succeeded":
+        entry.update(failure=failure_text(terminal), passed=False)
+        runner.case(entry)
+        return
+    after = await runner.snapshot(entry["model_id"])
+    fields, create_problems = judge_geometry(
+        entry,
+        terminal,
+        after,
+        label="edit_hole",
+        expected_removed=fixture.oracle_removed(6.0, 8.0, option),
+        expected_face_delta=fixture.oracle_faces(option, blind=True),
+        expected_dims={
+            "diameter": 6.0,
+            "depth": 8.0,
+            "counterbore_diameter": 10.0,
+            "counterbore_depth": 2.0,
+        },
+        variants=fixture.oracle_variants(6.0, 8.0, option),
+        cylinder_expectations=BLIND_CYLINDERS["blind_counterbore"],
+    )
+    entry["create_stage"] = fields
+    problems.extend(f"create: {item}" for item in create_problems)
+
+    def pick_dim(value: float):
+        for dim in fixture.hole_dimensions(after, "edit_hole"):
+            if isinstance(dim.get("value"), (int, float)) and dim.get("id") is not None:
+                if abs(float(dim["value"]) - value) <= 1e-3:
+                    return dim["id"]
+        return None
+
+    diameter_id, cbore_depth_id = pick_dim(6.0), pick_dim(2.0)
+    entry["dimension_ids"] = {"diameter": diameter_id, "counterbore_depth": cbore_depth_id}
+    if diameter_id is None or cbore_depth_id is None:
+        problems.append("could not resolve real dimension IDs for diameter/counterbore depth")
+        entry["problems"] = problems
+        entry["passed"] = False
+        runner.case(entry)
+        return
+    edit = await runner.submit(
+        f"{case_key}:edit",
+        "creo_set_dimensions",
+        {
+            "model_id": entry["model_id"],
+            "expected_revision": after.get("revision"),
+            "values": [
+                {"id": diameter_id, "value": 7.0},
+                {"id": cbore_depth_id, "value": 3.0},
+            ],
+        },
+    )
+    terminal = await runner.wait_job(edit["job_id"], budget=HANG_BUDGET_SECONDS)
+    entry.update(edit_job_id=edit["job_id"], edit_status=terminal.get("status"))
+    if terminal.get("status") != "succeeded":
+        problems.append(f"edit job status={terminal.get('status')!r}")
+        entry["edit_failure"] = failure_text(terminal)
+        entry["problems"] = problems
+        entry["passed"] = False
+        runner.case(entry)
+        return
+    final = await runner.snapshot(entry["model_id"])
+    edited = {"counterbore": {"diameter": 10, "depth": 3}}
+    fields, edit_problems = judge_geometry(
+        entry,
+        terminal,
+        final,
+        label="edit_hole",
+        expected_removed=fixture.oracle_removed(7.0, 8.0, edited),
+        expected_face_delta=fixture.oracle_faces(edited, blind=True),
+        expected_dims={
+            "diameter": 7.0,
+            "depth": 8.0,
+            "counterbore_diameter": 10.0,
+            "counterbore_depth": 3.0,
+        },
+        variants=fixture.oracle_variants(7.0, 8.0, edited),
+        cylinder_expectations=[
+            {
+                "radius": 3.5,
+                "axis_normal": [0, 0, 1],
+                "bbox_axis": 2,
+                "bbox_range": (2.0, 7.0),
+                "bbox_center": {0: 25.0, 1: 25.0},
+            },
+            {
+                "radius": 5.0,
+                "axis_normal": [0, 0, 1],
+                "bbox_axis": 2,
+                "bbox_range": (7.0, 10.0),
+                "bbox_center": {0: 25.0, 1: 25.0},
+            },
+        ],
+    )
+    entry["edit_stage"] = fields
+    problems.extend(f"edit: {item}" for item in edit_problems)
+    if fields.get("revision") == entry["create_stage"].get("revision"):
+        problems.append("edit did not change the model revision")
+    entry["problems"] = problems
+    entry["passed"] = not problems
+    runner.case(entry)
+
+
+async def run_passed_cases(runner: LiveRunner) -> None:
+    """The three cases accepted on 2026-10-29; only with --include-passed-cases."""
+    for case, option in CASES.items():
+        name = unique_name(f"t12_{case}")
+        made = await runner.submit(
+            f"{case}:create",
+            "creo_execute_plan",
+            {"model_name": name, "model_type": "part", "operations": PLATE_PLAN},
+        )
+        base = await runner.wait_job(made["job_id"], budget=HANG_BUDGET_SECONDS)
+        entry = {
+            "case": case,
+            "option": option,
+            "model_name": name,
+            "model_id": made["model_id"],
+            "base_job_id": made["job_id"],
+            "base_status": base.get("status"),
+        }
+        if base.get("status") != "succeeded":
+            entry.update(failure=failure_text(base), passed=False)
+            runner.case(entry)
+            continue
+        before = await runner.snapshot(made["model_id"])
+        geometry = pick_geometry(before)
+        entry["geometry"] = {
+            key: geometry[key] for key in ("top_face_id", "datum_x_id", "datum_y_id")
+        }
+        entry["base_volume_mm3"] = LiveRunner.volume(before)
+        entry["base_features"] = feature_counts(before)
+        if not all(geometry[key] for key in ("top_face_id", "datum_x_id", "datum_y_id")):
+            entry["problems"] = ["plate geometry could not be resolved from inspection"]
+            entry["passed"] = False
+            runner.case(entry)
+            continue
+        hole = await runner.submit(
+            f"{case}:hole",
+            "creo_execute_plan",
+            {
+                "model_id": made["model_id"],
+                "expected_revision": before.get("revision"),
+                "operations": [hole_op(geometry, "seated_hole", **option)],
+            },
+        )
+        terminal = await runner.wait_job(hole["job_id"], budget=HANG_BUDGET_SECONDS)
+        entry.update(hole_job_id=hole["job_id"], hole_status=terminal.get("status"))
+        if terminal.get("status") != "succeeded":
+            entry.update(failure=failure_text(terminal), passed=False)
+            runner.case(entry)
+            continue
+        after = await runner.snapshot(made["model_id"])
+        after_volume = LiveRunner.volume(after)
+        removed = (
+            None
+            if after_volume is None or entry["base_volume_mm3"] is None
+            else entry["base_volume_mm3"] - after_volume
+        )
+        expected_removed = fixture.oracle_removed(6.0, 10.0, option)
+        counts = feature_counts(after)
+        result = terminal.get("result") if isinstance(terminal.get("result"), dict) else {}
+        operations = result.get("operations") or []
+        entry.update(
+            revision=after.get("revision"),
+            volume_mm3=after_volume,
+            removed_mm3=removed,
+            expected_removed_mm3=expected_removed,
+            abs_error_mm3=None if removed is None else abs(removed - expected_removed),
+            volume_abs_error_mm3=None
+            if after_volume is None
+            else abs(after_volume - (PLATE_VOLUME_MM3 - expected_removed)),
+            feature_types=counts,
+            feature_delta={
+                key: counts.get(key, 0) - entry["base_features"].get(key, 0)
+                for key in set(counts) | set(entry["base_features"])
+            },
+            operation_result=operations[0] if operations else None,
+            saved_file_reloaded_and_verified=result.get("saved_file_reloaded_and_verified"),
+        )
+        entry["problems"] = []
+        if entry["volume_abs_error_mm3"] is None or entry["volume_abs_error_mm3"] > 1.0:
+            entry["problems"].append("volume outside 1 mm3 of the flat-bottom oracle")
+        if entry["feature_delta"].get("hole", 0) != 1:
+            entry["problems"].append(f"hole feature delta={entry['feature_delta'].get('hole')!r}")
+        entry["passed"] = not entry["problems"]
+        runner.case(entry)
+
+    reject = await runner.probe(
+        "creo_execute_plan",
+        {
+            "model_name": unique_name("t12_angle180"),
+            "model_type": "part",
+            "operations": [
+                {
+                    **fixture.BASE,
+                    "label": "sink_180",
+                    "countersink": {"diameter": 10, "angle": 180},
+                }
+            ],
+        },
+    )
+    body = reject["structured"] or {}
+    runner.case(
+        {
+            "case": "countersink_180_contract",
+            "rejected": bool(reject["is_error"]),
+            "job_id": body.get("job_id"),
+            "message": str(body.get("error") or body.get("message") or reject["text"])[:600],
+            "passed": bool(reject["is_error"] and not body.get("job_id")),
+        }
+    )
+
+
+async def run_live(output: Path | None, include_passed: bool) -> int:
     require_manual_start(ROOT / "config.json")
     from mcp import Client
     from mcp.client.stdio import StdioServerParameters
@@ -144,125 +782,22 @@ async def run_live(output: Path | None) -> int:
             client,
             target,
             "FEAT-035 / DEV-051 T12",
-            "custom hole: counterbore and 90-degree countersink on a 50x50x10 plate, plus the "
-            "180-degree contract refusal",
+            "hole-type remainder: blind depth, direction along the placement normal, "
+            "supported dimension edits, failure rollback and save/reload consistency; "
+            "the three passed 2026-10-29 cases run only with --include-passed-cases",
             run_id,
         )
         try:
             await runner.start()
             runner.report["hang_budget_seconds"] = HANG_BUDGET_SECONDS
             runner.report["plate_volume_mm3"] = PLATE_VOLUME_MM3
-            for case, option in CASES.items():
-                name = unique_name(f"t12_{case}")
-                made = await runner.submit(
-                    f"{case}:create",
-                    "creo_execute_plan",
-                    {"model_name": name, "model_type": "part", "operations": PLATE_PLAN},
-                )
-                base = await runner.wait_job(made["job_id"], budget=HANG_BUDGET_SECONDS)
-                entry = {
-                    "case": case,
-                    "option": option,
-                    "model_name": name,
-                    "model_id": made["model_id"],
-                    "base_job_id": made["job_id"],
-                    "base_status": base.get("status"),
-                }
-                if base.get("status") != "succeeded":
-                    entry.update(failure=failure_text(base), passed=False)
-                    runner.case(entry)
-                    continue
-                before = await runner.snapshot(made["model_id"])
-                geometry = pick_geometry(before)
-                entry["geometry"] = {
-                    key: geometry[key] for key in ("top_face_id", "datum_x_id", "datum_y_id")
-                }
-                entry["base_volume_mm3"] = LiveRunner.volume(before)
-                entry["base_features"] = feature_counts(before)
-                if not all(geometry[key] for key in ("top_face_id", "datum_x_id", "datum_y_id")):
-                    entry["problems"] = ["plate geometry could not be resolved from inspection"]
-                    entry["passed"] = False
-                    runner.case(entry)
-                    continue
-                hole = await runner.submit(
-                    f"{case}:hole",
-                    "creo_execute_plan",
-                    {
-                        "model_id": made["model_id"],
-                        "expected_revision": before.get("revision"),
-                        "operations": [hole_op(geometry, "seated_hole", **option)],
-                    },
-                )
-                terminal = await runner.wait_job(hole["job_id"], budget=HANG_BUDGET_SECONDS)
-                entry.update(hole_job_id=hole["job_id"], hole_status=terminal.get("status"))
-                if terminal.get("status") != "succeeded":
-                    entry.update(failure=failure_text(terminal), passed=False)
-                    runner.case(entry)
-                    continue
-                after = await runner.snapshot(made["model_id"])
-                after_volume = LiveRunner.volume(after)
-                removed = (
-                    None
-                    if after_volume is None or entry["base_volume_mm3"] is None
-                    else entry["base_volume_mm3"] - after_volume
-                )
-                expected_removed = fixture.oracle_removed(6.0, 10.0, option)
-                counts = feature_counts(after)
-                result = terminal.get("result") if isinstance(terminal.get("result"), dict) else {}
-                operations = result.get("operations") or []
-                entry.update(
-                    revision=after.get("revision"),
-                    volume_mm3=after_volume,
-                    removed_mm3=removed,
-                    expected_removed_mm3=expected_removed,
-                    abs_error_mm3=None if removed is None else abs(removed - expected_removed),
-                    volume_abs_error_mm3=None
-                    if after_volume is None
-                    else abs(after_volume - (PLATE_VOLUME_MM3 - expected_removed)),
-                    feature_types=counts,
-                    feature_delta={
-                        key: counts.get(key, 0) - entry["base_features"].get(key, 0)
-                        for key in set(counts) | set(entry["base_features"])
-                    },
-                    operation_result=operations[0] if operations else None,
-                    saved_file_reloaded_and_verified=result.get("saved_file_reloaded_and_verified"),
-                )
-                entry["problems"] = []
-                if entry["volume_abs_error_mm3"] is None or entry["volume_abs_error_mm3"] > 1.0:
-                    entry["problems"].append("volume outside 1 mm3 of the flat-bottom oracle")
-                if entry["feature_delta"].get("hole", 0) != 1:
-                    entry["problems"].append(
-                        f"hole feature delta={entry['feature_delta'].get('hole')!r}"
-                    )
-                entry["passed"] = not entry["problems"]
-                runner.case(entry)
-
-            reject = await runner.probe(
-                "creo_execute_plan",
-                {
-                    "model_name": unique_name("t12_angle180"),
-                    "model_type": "part",
-                    "operations": [
-                        {
-                            **fixture.BASE,
-                            "label": "sink_180",
-                            "countersink": {"diameter": 10, "angle": 180},
-                        }
-                    ],
-                },
-            )
-            body = reject["structured"] or {}
-            runner.case(
-                {
-                    "case": "countersink_180_contract",
-                    "rejected": bool(reject["is_error"]),
-                    "job_id": body.get("job_id"),
-                    "message": str(body.get("error") or body.get("message") or reject["text"])[
-                        :600
-                    ],
-                    "passed": bool(reject["is_error"] and not body.get("job_id")),
-                }
-            )
+            if include_passed:
+                await run_passed_cases(runner)
+            for case_key, option in BLIND_CASES.items():
+                await case_blind(runner, case_key, option)
+            await case_direction_side(runner)
+            await case_flip_guard(runner)
+            await case_edit_dimensions(runner)
         except BaseException as error:
             runner.report["stopped"] = f"{type(error).__name__}: {error}"
             runner.finish()
@@ -316,13 +851,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--confirm-session-usable", action="store_true")
+    parser.add_argument(
+        "--include-passed-cases",
+        action="store_true",
+        help="also rerun the three cases accepted on 2026-10-29 (off by default)",
+    )
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
     if args.live:
         if not args.confirm_session_usable:
             print("live runs require --confirm-session-usable", file=sys.stderr)
             return 2
-        return asyncio.run(run_live(args.output))
+        return asyncio.run(run_live(args.output, args.include_passed_cases))
     suite = unittest.defaultTestLoader.loadTestsFromModule(fixture)
     result = unittest.TextTestRunner(verbosity=1).run(suite)
     report = {
@@ -335,22 +875,51 @@ def main(argv: list[str] | None = None) -> int:
             "errors": len(result.errors),
         },
         "oracle_mm3": {
-            "counterbore": fixture.oracle_removed(
-                6, 12, {"counterbore": {"diameter": 10, "depth": 2}}
+            "counterbore_through": fixture.oracle_removed(
+                6, 10, {"counterbore": {"diameter": 10, "depth": 2}}
             ),
-            "countersink": fixture.oracle_removed(
-                6, 12, {"countersink": {"diameter": 10, "angle": 90}}
+            "countersink_through": fixture.oracle_removed(
+                6, 10, {"countersink": {"diameter": 10, "angle": 90}}
             ),
-            "assumption": "flat drill bottom and complete solid intersection; native tip and actual material removal unverified",
+            "blind_straight": fixture.oracle_removed(6, 7, {}),
+            "blind_counterbore": fixture.oracle_removed(
+                6, 8, {"counterbore": {"diameter": 10, "depth": 2}}
+            ),
+            "blind_countersink": fixture.oracle_removed(
+                6, 8, {"countersink": {"diameter": 10, "angle": 90}}
+            ),
+            "direction_side_normal": fixture.oracle_removed(6, 7, {}),
+            "edit_after_diameter7_depth3": fixture.oracle_removed(
+                7, 8, {"counterbore": {"diameter": 10, "depth": 3}}
+            ),
+            "assumption": "flat drill bottom, depth overall from the placement face and "
+            "complete solid intersection; the 118-degree drill tip and seat-measured "
+            "drill depth variants are reported for diagnosis and never pass a case",
         },
-        "sdk": "Creo 12.4 ProHole.h custom-hole CBORE/CSINK elements; runtime element acceptance unverified",
+        "faces_added_over_plate": {
+            key: fixture.oracle_faces(option, blind=True) for key, option in BLIND_CASES.items()
+        },
         "pending_live": [
-            "single native hole feature and element-tree readback",
-            "cylinder/frustum geometry",
-            "dimension ID edits",
-            "revision and rollback",
-            "save/reload",
+            "blind straight / blind counterbore / blind countersink: volume, face delta, "
+            "dimension readback and cylinder bbox/axis",
+            "direction_side_normal: cylinder axis parallel to the placement normal",
+            "direction_flip_guard: readable guard refusal, rollback_succeeded, unchanged "
+            "model and a legal recovery hole",
+            "edit_dimension_values: real dimension ID edits of diameter and counterbore depth, "
+            "post-edit oracle and revision change",
+            "save/reload parameter and geometry consistency is checked in every case via "
+            "saved_file_reloaded_and_verified and the reloaded snapshot",
         ],
+        "out_of_scope": [
+            "the three 2026-10-29 cases are not rerun by default",
+            "hole type / placement / flip redefinition edits (only dimension value edits "
+            "on the created hole are claimed)",
+            "thread and standard hole series, exit countersink, dual counterbore, "
+            "non-linear placements, Creo 9/10",
+        ],
+        "sdk": "Creo 12.4 ProHole.h custom-hole CBORE/CSINK/DRILLDEPTH/DEPTH_DIM_TYPE; "
+        "blind depth scheme is PRO_HLE_DEP_SHOULDER_DIM_SCHEME per native/generic.cpp, "
+        "runtime semantics still unverified",
         "provenance": provenance(),
     }
     run_id = time.strftime("%Y%m%dT%H%M%S") + "_" + uuid.uuid4().hex[:8]

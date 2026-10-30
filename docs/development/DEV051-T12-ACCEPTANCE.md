@@ -56,3 +56,65 @@
 - 两个孔型的去料量与独立解析式逐位一致（误差 1e−12 量级），说明 custom hole 元素树的孔径/沉台/锥角都真正生效，不是“建出特征但不切料”。
 - 单位：模型为毫米；沉孔深度、口径按实测量纲生效（Ø6 通孔 + Ø10 沉台深 2；锥角 90°）。
 - 未测：盲孔 + 沉台（深度约束）、真实尺寸 ID 编辑（`creo_set_dimensions` 对沉孔参数）、螺纹/标准孔、出口沉头与双端沉孔、保存重载后重开、非法组合的原生回滚、Creo 9/10。
+
+## 2026-10-30 离线余项：盲孔、方向、编辑、失败回滚、保存重载
+
+阶段：**离线实现完成，全部余项待原生验收**。分支 `codex/dev051-feedback070`，受测基线提交 `a8fbf40`（另一窗口已并入 T13/T09A 提交；本任务改动未提交，由派发方统一提交），工作区 `dirty=true`，受测源码指纹 `f12b8aaab3e6609899a145ce8f389bcc8dcdab891c945000fcbd183229b8d67f`。本阶段只覆盖 2026-10-29 三例（沉孔平座、90° 沉头、180° 契约拒绝）之外的余项，不重跑已通过用例。
+
+### 范围解读与冻结口径
+
+- “盲孔”即提供 `depth` 的孔（省略仍为通孔），沿用已冻结契约：`depth` 为自放置面起的总钻深（overall），沉孔/锥深须小于孔深。
+- “方向（轴向/法向）”按既定契约解读为：孔沿**放置面法向**生成（`flip` 选侧），深度沿孔轴（轴向）量取；用独立几何（圆柱面 `axis`/`bbox`）判定，不看工具回显轴即判过。轴系放置（coaxial）不在既定契约内，本阶段不扩展。
+- “可支持的编辑”限于：用 `creo_get_model`/inspection 取真实 dimension ID 后 `creo_set_dimensions` 修改孔自身尺寸值（基本径、孔深、沉孔径/深、沉头径/角），且改后仍满足合法尺寸关系。孔型/放置/`flip`/选项结构重定义的编辑**不承诺、不测试**。
+- 失败回滚指：任务级失败必须 `rollback_succeeded=true` 且模型回到基线（体积/面数不变），其后合法操作仍可执行。
+
+### 新增用例与独立 oracle（默认 live 运行集，6 例）
+
+| 用例 | 输入 | 去料 oracle（平底/overall） | 面数增量 | 尺寸回读 | 几何判定（圆柱面） |
+| --- | --- | --- | --- | --- | --- |
+| `blind_straight` | Ø6 深 7（通孔对照为 10） | 197.920 337（63π） | +2 | {6, 7} | r=3，轴 ∥Z，bbox z∈[3,10]，中心 (25,25) |
+| `blind_counterbore` | Ø6 深 8 + Ø10×2 | 326.725 636（104π） | +4 | {6, 8, 10, 2} | r=3 bbox z∈[2,8]；r=5 座面 bbox z∈[8,10] |
+| `blind_countersink` | Ø6 深 8 + Ø10@90° | 272.271 363（260π/3） | +3 | {6, 8, 10, 90} | r=3 bbox z∈[2,8]（锥高 2 < 孔深 8） |
+| `direction_side_normal` | Ø6 深 7 打在 x=0 侧面（y=25, z=5） | 197.920 337（63π） | +2 | {6, 7} | r=3，轴 ∥X（法向），bbox x∈[0,7]，中心 y=25, z=5 |
+| `direction_flip_guard` | `flip=true` 于顶面（向外钻）+ 同模型恢复孔 | 首孔必须失败无去料；恢复孔 Ø6 深 7 → 197.920 337 | 首孔后面数=基线 6；恢复孔 +2 | 恢复孔 {6, 7} | 失败后体积/面数/特征数不变；`rollback_succeeded=true` |
+| `edit_dimension_values` | 建 Ø6 深 8 + Ø10×2 后，真实 ID 编辑径 6→7、沉孔深 2→3 | 建后 326.725 636；编辑后 428.041 999（136.25π） | 前后均 +4 | 编辑后 {7, 8, 10, 3} | 编辑后 r=3.5 bbox z∈[2,7]；r=5 座面 z∈[7,10]；revision 必须变化 |
+
+每例统一硬性检查：去料与契约 oracle 误差 ≤1 mm³、`hole +1`、面数增量、孔特征尺寸值覆盖、`saved_file_reloaded_and_verified=true` 且重载后快照的体积/尺寸与 oracle 一致（保存重载一致性逐例判定）。`matched_variant` 字段同时给出与 118° 钻尖、座面起量（shoulder）备选算式的贴合情况：**命中备选不通过**，但属契约相关发现，须带报告回改口径，不静默采用。
+
+oracle 假设与风险：平底孔、深度自放置面 overall 量取、完整材料相交；面数按 B-rep 拓扑预测（孔壁/底面/座环/锥面）；bbox 取 `ProGeomitemdata` 的 `xyz_min/xyz_max` 修剪面范围（±0.5 容差），实机若为未修剪范围须按报告调整判定口径并记录。角度尺寸按度回读（90）待实机确认。
+
+### 支持/拒绝边界
+
+- 创建侧拒绝保持不变且有单元覆盖（互斥、口径≤基本径、角度 ∉(0,180)、沉孔/锥深 ≥ 盲孔深、负值/零深度），入口拒绝无 job、错误可读。
+- `flip` 向外钻的失败是原生材料守卫（“Hole removes no material…”）任务级失败 + 回滚，不是入口拒绝；回滚失败须判失败。
+- 编辑只承诺上表所列尺寸值编辑；孔型转换、放置/`flip` 重定义、螺纹/标准孔、出口沉头、双端沉孔、非线性放置、Creo 9/10 均不在本批，保持拒绝或不提供入口。
+
+### 本阶段修改文件
+
+- `tests/unit/test_native_countersink.py`：新增 `oracle_removed` 空选项（纯直孔）、`oracle_tip_extra`/`oracle_faces`/`oracle_variants`/`closest_variant`、面数/圆柱面/轴平行/孔尺寸回读等纯函数与 3 个新用例组（盲孔契约与数值 oracle、面数与备选算式、`judge_geometry` 判定分离）；旧用例与单特征静态断言不动。
+- `tools/test_native_countersink.py`：默认 live 改跑 6 例余项（三例已通过项仅在 `--include-passed-cases` 时运行）；每例体积/面数/尺寸/圆柱轴与 bbox 独立判定、重载证据取自 job result 块；离线报告更新 oracle、`pending_live` 与 `out_of_scope`。
+- 未改 `src/creo_mechdog/schema.py`（`depth`/`flip` 已在契约内）、未改 `native/generic.cpp` 与 `native/advanced.cpp`、未改 `capabilities.py`（工具数不变）。
+
+### 离线证据
+
+| 命令 | 结果 |
+| --- | --- |
+| `.venv\Scripts\python.exe -m unittest tests.unit.test_native_countersink -v` | 9/9 OK |
+| `.venv\Scripts\python.exe -m unittest discover -s tests -q` | 1490 tests OK（249 s，全量单测一次通过） |
+| `.venv\Scripts\python.exe tools\test_native_countersink.py` | exit 0，内置 9/9 OK；报告 `build/native_countersink/20261030T102226_76e75830/report.json`，SHA256 `ae785e6902aee1268104087a79a8f0b450feb2e298ea08319af64ee32fda5500` |
+| `.venv\Scripts\python.exe bridge.py build` | exit 0，生成 `build/creo_worker.exe`；一次通过，未出现 `advanced.cpp` 编译错误（与 T13 窗口共享该文件，构建时其改动已在 `a8fbf40` 提交内） |
+| `.venv\Scripts\ruff.exe format` / `ruff check`（两个 Python 文件）、`git diff --check` | 通过（初版新增文件执行过 `ruff format` 后干净） |
+
+环境：Windows x64、PowerShell、`.venv` Python 3.12.14、Creo 12.4 匹配 Toolkit SDK（仅读 `ProHole.h`：`PRO_E_HLE_DEPTH_DIM_TYPE` 盲深方案为 `PRO_HLE_DEP_SHOULDER_DIM_SCHEME`，运行语义仍未验）；**未连接 Creo、未启动 MCP、未提交 Toolkit 作业**。原始错误：初跑 `oracle_removed` 对无选项直孔 KeyError，补空选项分支后通过；PowerShell 包装层对 stderr 的 NativeCommandError 报 exit 1 属包装产物，以测试输出 `OK`/报告 `passed:true` 为准。
+
+### 未测与实机待验
+
+未测（全部余项）：6 例的元素树/几何/尺寸/回滚/重载均未实机；角度尺寸单位；bbox 语义；沉孔尺寸 ID 编辑的再生行为。三例 2026-10-29 证据仍有效，不并入本次。
+
+实机步骤（会话前提同 BUG-001/AGENTS.md：手动打开 Creo 12.4、`auto_start_creo=false`、唯一 `MCP_CREO_MechDog_dev` 串行，不擅自启停 Creo/清 unknown/重提作业）：
+
+```text
+.\.venv\Scripts\python.exe tools\test_native_countersink.py --live --confirm-session-usable
+```
+
+（默认只跑 6 例余项；需要连同三例重跑时加 `--include-passed-cases`。）记录每例 job/model/revision、去料实测 vs oracle 误差、`matched_variant`、面数增量、尺寸回读、圆柱轴/bbox、`saved_file_reloaded_and_verified`；`direction_flip_guard` 另记原始失败信息、`rollback_succeeded` 与恢复孔；`edit_dimension_values` 记录 dimension ID、编辑前后 revision 与 oracle。任一 `matched_variant` 非 `contract_flat_overall`、或 bbox/角度单位与假设不符时，保留报告并在本卡回写口径修订，不静默改判。首次 unknown/挂起即停止新提交并交接。

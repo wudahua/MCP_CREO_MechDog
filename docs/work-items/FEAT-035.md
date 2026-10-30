@@ -38,3 +38,7 @@
 - 180° 沉头：入口拒绝 `operations.0.hole.countersink.angle Input should be less than 180`，无 job（契约要求 `<180`，因此 180° 一侧以平座沉孔作几何对照）。
 
 两个孔型的去料量与独立解析式一致，说明 custom hole 元素树真正生效而非只建特征。未测：盲孔+沉台深度约束、沉孔尺寸 ID 编辑、保存重载、螺纹/标准孔、出口沉头与双端沉孔、Creo 9/10。本条仍开放（编辑与保存重载未验）。
+
+## 2026-10-30 离线余项：盲孔/方向/编辑/失败回滚/保存重载（DEV-051 T12）
+
+在既定孔型契约内补齐余项的离线实现与待验驱动：`depth` 盲孔（overall 语义）、方向沿放置面法向（含侧面法向孔与 `flip` 向外钻的守卫失败+回滚+恢复）、真实 dimension ID 的尺寸值编辑（径/沉孔深）、逐例保存重载与参数/几何一致性。每例带独立 oracle（平底去料解析式、面数增量、尺寸回读、圆柱面轴与 bbox），并以 `matched_variant` 区分 118° 钻尖/座面起量备选算式（命中备选不通过）。入口拒绝边界（互斥/尺寸关系/角度）保持不变。修改 `tests/unit/test_native_countersink.py`（9 用例）与 `tools/test_native_countersink.py`（默认 live 跑 6 例余项，三例已通过项仅 `--include-passed-cases` 重跑）；未改 schema、native 与 capabilities。离线：单测 1490 OK、`bridge.py build` 通过、报告 `build/native_countersink/20261030T102226_76e75830/report.json`（SHA256 `ae785e69…fda5500`）。6 例全部未实机；详见 [T12 验收卡](../development/DEV051-T12-ACCEPTANCE.md)「2026-10-30 离线余项」。本条保持开放（实机待验）。
