@@ -356,3 +356,22 @@ R1 §4.1能力摘要、§4.2成熟度、§3.3/§4.3 unchanged、§5五旧请求�
 - 无中心线无轴：作业失败（`execute_revolve`、`toolkit_code=-1`），**不输出 `revolve_axis` 块**，体积为空（job `0921884a7f6e44e89741b9c224de7935`，rev 0）。
 
 新发现（未修，待排期）：用户只画 1 条中心线时 `resolution.section_centerline_count=3`，因为计数把草图参考线也计入，导致 `id` 恒为 null；几何方向仍由 `frame=model` 给出。另：`frame` 实测优先 `model`（取回转特征自身轴），`sketch_local` 仅为回退，与卡面文字需对齐。详见[验收卡](../development/DEV051-T09B-ACCEPTANCE.md)实机节。
+
+### 2026-10-30 DEV-051 T09B：中心线计数剔除系统投影参考（离线，实机未验）
+
+提交 `6cf68d2`，基线 `3851963`。修复上述新发现：草图构建器必写的两条系统投影参考（方向参考平面投影与锚点平面/基准轴投影）此前被计入中心线根数，导致一条用户线被计成 3、`id` 恒为 null。`native/generic.cpp` 计数循环补 `ProSectionEntityIsProjection` 探测（SDK 判定「是否由投影创建」的权威测试）：`PRO_TK_NO_ERROR` 且 `is_projection=TRUE` 的实体跳过，探测失败无法分类时**保留计数**（不静默丢弃），并写原生日志 `SECTION_CENTERLINE_PROBE` 供实机诊断。
+
+- 语义：计数只含用户中心线；≥2 条真实用户线时「用了哪一根」不可判，`id` 保持 null、调用方必须显式给轴——与既有「不武断选第一条」一致，未新增准入收紧、未改 schema/回退。
+- 回归（16→19 例）：一条用户线计 1 且给出 section 实体 id；10-29 缺陷形态（count=3、id=null）必须逐字透传，投影层不得缩成 1、不得发明 `id=第一条`；真两条用户线保持 count=2、`id=null`。
+- 驱动：离线契约新增 `centerline_accounting` 块；live `internal_centerline` 期望 `section_centerline_count == 1` 且 `revolve_axis.id` 等于草图结果 `entity_ids['spin_centerline']`，显式轴用例 id 须等于 `inspection.datum_axes[0].id`；成功用例新增真实 `creo_save_model` 与重载后体积/轴再定位断言。
+- 离线证据：19 项单测 OK、94 项定向回归 OK、离线驱动 exit 0、`bridge.py build` 通过。
+- **仍未测**：投影过滤的实机计数、`ProSectionEntityIsProjection` 在 `ProFeatureSectionCopy` 重读 section 上的实际返回、保存重载、Creo 9/10、WorkBuddy。**真多用户中心线无法经本服务构造**（准入限一条草图中心线），需外部手工草绘模型——该夹具未测。
+- 修复前 10-29 实机三例的通过结论保留其历史时点，不代表修复后状态。
+
+详见[验收卡](../development/DEV051-T09B-ACCEPTANCE.md) 2026-10-30 节。
+
+### 2026-10-30 DEV-051 T01：能力发现与示例收口（文档）
+
+见 [T01 验收卡](../development/DEV051-T01-ACCEPTANCE.md)。本轮补齐本卡「能力说明一致性」范围的文档：README 增 `execute_plan` 多操作、`feature_state` 删除/抑制/恢复、独立 `draft`、组件标签查询与 `end_trim_mm` 的最小示例（全部经当前 schema `validate_operations` 校验通过，仅为文档示例、非新实机证据）；`docs/REFERENCE_SYNTAX.md` 增 `relief`/`end_trim_mm`/`feature_state`/组件标签的形状行与 `revolve_axis`、组件身份查询两节；`docs/COMPATIBILITY.md` 增「开发分支（0.8.5 之后，未发布）的兼容性边界」；README 与能力表同步标出 `end_trim_mm` 属**开发分支未发布、语义待实机确认**。公开工具仍为 94 个。
+
+本卡「首批底板 holes、对称深度与编辑、平面引用构造」等其余范围不变，整卡保持开放。

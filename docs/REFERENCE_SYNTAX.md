@@ -67,6 +67,10 @@
 | surface_fill.sketch | 草图特征标签或特征 ID（字符串或整数），无需 `{kind:...}` 对象 |
 | thicken.reference | 裸 quilt 或 quilt_feature 引用 |
 | sheetmetal_flange.edge | 裸 `{"kind":"edge","id":N}`；参数内部不再加 edge/reference 包装 |
+| sheetmetal_flange.relief | 可选对象 `{type:"none"\|"rectangular", ends:"both"\|"side1"\|"side2", width:>0, depth:>=0}`；省略等于 `none`（两端保持 `PRO_BEND_RLF_NONE`）。宽深是**绝对模型单位**、不按板厚缩放；`rip`/`stretch`/`obround`/`param`、角部释放、斜接与边撕裂不支持。释放是创建期属性，改它要删除/抑制折边后重建，没有就地改释放的入口 |
+| sheetmetal_flange.end_trim_mm | 可选正数（`>0`，上限 100000，布尔拒绝），模型单位；省略时元素树与旧行为逐字一致。**Creo 把它读作「距链端各内缩 setback」还是「自截面起算的壁长」尚未实机确认**，属诊断参数：先在自由壁上用实测体积分类再依赖修剪几何（开发分支未发布） |
+| feature_state.action / targets | `action` ∈ `delete`/`suppress`/`resume`；`targets` 是特征标签或非负特征 ID 的数组，同一批目标必须互不相同。仅用于零件/钣金模型；装配组件走 `creo_remove_component` |
+| component_placement.component / component_constraints 引用 | 组件**业务标签**（如 `part_alpha`）；标签是业务名不是身份，身份是模型身份 + feature_id，删除重插后旧标签不误指新组件 |
 | round/chamfer.references | **集合对象数组**：`[{"edge":{"kind":"edge","id":N}}]`，或 `[{"surfaces":[{"kind":"surface","id":A},{"kind":"surface","id":B}]}]`；裸边数组不等于集合数组 |
 | round/chamfer 尺寸字段 | 独立工具 `creo_round.radius`、`creo_chamfer.distance` 与计划操作 `size` 是同一数值（mm）：round 计划也接受 `radius`、chamfer 计划也接受 `distance` 作为 `size` 别名；别名与 `size` 同现或用于另一种操作时明确拒绝。任务提交回显 `operations[].size`，终态 `result.operations[].size` 回显原生应用值（compact 返回同样保留） |
 | create_sketch.plane | 主平面字符串 `XY/XZ/YZ`；字典形式为 `{"reference":{"kind":"datum_plane","id":N},"origin":[x,y,z],"u_axis":[x,y,z]}`，reference 也可取已验证平面 `plane`/`surface` 几何 ID 或 `datum_feature` 标签；origin/u_axis 可省略，reference 容器必需 |
@@ -74,6 +78,30 @@
 这些集合和坐标包装承载不同的参数含义，不能简单地给所有裸引用增加同一层包装。此修复兼容报告中的轴标签、补齐引用契约，不更改原生执行器或创建额外几何。
 
 实现与当前验收范围见 [BUG-006](work-items/BUG-006.md) 和 [本次证据](validation/BUG-006.md)。
+
+## 回转轴回显（revolve_axis）
+
+`revolve` 操作结果带 `revolve_axis` 块（只增不改；旧作业与失败作业没有该块，不补）。字段与语义：
+
+| 字段 | 含义 |
+| --- | --- |
+| `source` | `explicit`（请求显式轴）/ `internal_centerline`（省略或 null 轴）/ `unknown` |
+| `kind` | `datum_axis`（无归属面的基准轴）/ `surface`（轴由几何面解析）/ `section_centerline`（草图内部中心线）/ `unknown`；按实测分类，不按请求文本 |
+| `id` | 实际解析 id：基准轴/面轴为模型轴几何项 id（可用于 `{"kind":"axis","id":N}`），内部中心线为草图 section 实体 id；无法判定为 `null` |
+| `origin` / `direction` | 只来自实际轴或 section 中心线查询；`frame="model"` 为模型坐标 3 元，`frame="sketch_local"` 为草图 (u,v) 2 元；未知为 `null`，**不回填请求值** |
+| `frame` | `model` / `sketch_local` / `null`；实测优先 `model`（能取回转特征自身轴时），`sketch_local` 只是回退 |
+| `length_unit` | 与基准轴同形的真实单位查询块（`name`/`query_code`/`scale_to_mm`…），失败为 `null` + 原码 |
+| `geometry_known` | 严格布尔；仅当 frame 合法且 origin/direction 都是实测有效向量时为 `true` |
+| `query_code` / `resolution` | 产出几何值的查询码与辅助证据（`feature_axis_query_code`、`axis_item_query_code`、`axis_surface_query_code`、`section_centerline_count`、`section_query_code`） |
+| `section_centerline_count` | 实测**用户中心线**根数。2026-10-30 修正计数口径：草图构建器必写的两条系统投影参考不再计入（此前一条用户线被计成 3），修复后一条用户线计 1 并给出 id；真实多中心线仍保留 `id=null`，不武断选第一条 |
+
+开发分支的该修正**尚未实机验收**；服务准入仍限一条草图中心线，因此「真实多用户中心线」夹具无法经本服务构造，需外部手工草绘模型。详见 [T09B 验收卡](development/DEV051-T09B-ACCEPTANCE.md)。
+
+## 组件身份查询（list_components）
+
+`creo_list_components` 与 `creo_inspect_model` 的 components 节在组件记录上投影业务身份：每条带 `identity`（模型身份 + feature_id，即关联键本身）、`labels`、`label`（恰好一个绑定时为该值，否则 `null`）、`label_state`（`single`/`multi`/`unlabeled`）、`source_model_id`/`source_revision`（多标签或无绑定时为 `null`，不任选一个冒充）、`bindings`（每个绑定一条）。顶层另返回 `deleted_identities`（旧 feature_id 不在当前组件集时单独列出，绝不并入当前记录）与 `identity_key`。
+
+label 永远不是身份：同名 label 可以存在于不同模型，删除重插后 label 不变但 feature_id 换新，因此求交只在同一模型身份内按 feature_id 进行。物理副本名 `c_<job>_<n>` 是原生身份，不做改写。保存重载后关联与删除重插不误指的开发分支回归**尚未实机复验**。
 
 ## 圆角/倒角尺寸字段对照与部署核对（BUG-019）
 

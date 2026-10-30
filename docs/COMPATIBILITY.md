@@ -6,6 +6,18 @@
 
 钣金体并入式实体 add 在重叠与非重叠位置均原生 `-1`、元素错误为空；0.8.5 建模前以 `SHEETMETAL_SOLID_ADD_UNSUPPORTED` 拒绝。`new_body=true` 可生成独立实体（+500 mm³），不等于并入钣金体。四壁仅 2/4；第三道 `f_ny` 回滚，`relief` 只回显、无可观测切料。T13 native_bundle 导出不完整且回导 `SESSION_NAME_CONFLICT`，未通过。详见 [0.8.5 版本说明](RELEASE_NOTES_0.8.5.md)与[发布记录](validation/RELEASE-0.8.5.md)。
 
+## 开发分支（0.8.5 之后，未发布）的兼容性边界
+
+2026-10-30 的十个离线提交（分支 `codex/dev051-feedback070`，HEAD `768c673`）**未合 main、未发布、无实机验收**，因此不改变上述已发布范围，只预告下一版的接口增量与环境前提：
+
+- **新增公开参数**：`creo_sheetmetal_flange` 的可选 `end_trim_mm`（正数、模型单位，两侧链端各缩短该长度；缺省元素树不变）。**Creo 把它读作链端 setback 还是截面起算的壁长尚未实机确认**，属诊断参数；其版本影响按 MINOR 判定留待 T10。
+- **行为修正（离线）**：`revolve_axis.resolution.section_centerline_count` 改为只计用户中心线（一条用户线此前被计成 3）；`creo_list_components` 的组件身份投影补保存重载与删除重插回归锁定（生产零改动）。
+- **新增写入路径（离线）**：`sheetmetal_wall` 在首壁转换后写零件级板厚维度并回读验证（此前零件级板厚保留模板/会话默认 3.71 mm，与 1 mm 几何不同步）。
+- **环境前提不变**：本机 Windows x64 / Creo 12.4.0.0 / 匹配 SDK；Creo 9 本机无 SDK、实机编译与建模运行时仍未验收；Creo 10 独立复测不作为门槛。WorkBuddy 本批未执行。
+- **三个未定因保持未定**：BUG-085 断连根因；T05 第三壁/角部干涉（candidate）；T13 废弃 API 实际返回值。
+
+逐项状态矩阵见 [DEV-051 工作卡](work-items/DEV-051.md#2026-10-30-离线批次十个提交与当前状态矩阵)。
+
 ## 当前验收规则（2026-10-15）
 
 按用户要求取消全项目 Creo 10 独立复测、双版本验收及正式基线门槛。当前开发、合入和发布按本机 Windows x64 / Creo 12.4.0.0 / 匹配 Toolkit SDK 的实际改动范围验收；朋友反馈具体问题后再登记或沿用 ID 跟进。历史测试环境和未测事实保留，旧复测安排不再作为当前任务的前置条件，也不表示 Creo 10 新增了通过证据。条目见 [DEV-018](work-items/DEV-018.md)。

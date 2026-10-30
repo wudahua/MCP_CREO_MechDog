@@ -1,6 +1,6 @@
 # FEAT-023：控制工具返回体积——capabilities 摘要与分页实施卡
 
-日期：2026-10-20 细化（原为统一台账条目）。类型：功能。优先级：P2。状态：验收中（capabilities子项已闭环，其余体积议题未完成）。目标版本：0.4.2（用户指定 PATCH 例外，同 FEAT-044）。
+日期：2026-10-20 细化（原为统一台账条目）。类型：功能。优先级：P2。状态：验收中（capabilities子项已闭环；组件内联身份已离线实现并补离线回归，实机待验；其余体积议题未完成）。目标版本：0.4.2（用户指定 PATCH 例外，同 FEAT-044）。
 
 ## 当前剩余范围（2026-10-21）
 
@@ -58,3 +58,16 @@ capabilities摘要/分页已随0.4.2交付、0.4.4补验收闭环；0.4.5的READ
 - 查询投影实现于包内 `src/creo_mechdog/component_identity.py`，接入 `creo_list_components`（组件记录内联 label/labels/label_state/source_model_id/source_revision/bindings，顶层新增 deleted_identities/identity_key）与 `creo_inspect_model` 的 components 节/整页快照；不修改 C_<job> 物理副本命名，不改写存储载荷。
 - 离线证据：`tests/unit/test_component_identity.py` 16 项 + 既有 86 项定向回归通过；compact 不展开、full 分页与整页一致、aliases_ref 详情引用解析、40 组件分页全程 ≤ 32 KiB。详见[验收记录](../development/DEV051-T09A-ACCEPTANCE.md)。
 - 未关闭本卡其余体积议题（jobs compact 日志、翼型/履带请求体量、union 校验错误）；实机跨作业装配查询/保存重载与大装配体量验证待统一安排，工具描述/README 补充由 T01 收口。
+
+## 2026-10-30 DEV-051 T09A：保存重载关联与删除重插不误指（离线回归锁定，生产零改动）
+
+提交 `a8fbf40`，基线 `7c650cf`。本轮**未改生产代码**（只改 `tests/unit/test_component_identity.py` 与 `tools/test_component_labels_live.py`），未连接 MCP/Toolkit、未启动 Creo、未改版本、未合 main、未 push、未发布。
+
+- 依据原生既有保护判定无需生产修改：保存作业原生即 `ProMdlnameBackup` → `ProMdlErase` → 从磁盘重载 → `verify_saved`，其中逐组件比较前后 `feature_id` 与 `model_name`，id/名漂移直接作业失败；删除组件时原生即删除该 feature_id 的全部别名条目。绑定存登记侧，重载不重写。
+- 新增 3 项回归（16→19 例）：保存重载后同 id 记录标签与镜像完全不变且 `deleted_identities=[]`；重载后 id 重排时当前记录全部 unlabeled、旧 id 落 `deleted_identities`、绝不改绑新记录；remove 后同 label 重插只绑新 id、旧 id 不出现在任何当前记录或 `deleted_identities`。
+- 驱动强化：live `cross_job` 现在要求 save 作业 `saved_file_reloaded_and_verified=true` 且两组件 identity/source 镜像逐项不变；live `rename_reinsert` 新增 `old_label_observable` 记录旧标签可观测落点（预期 `absent`）。
+- 离线证据：19 项单测 OK、77 项定向回归 OK、离线驱动 exit 0（`build/component_labels/20261030T100437_7052fa7b/report.json`，projection 4 项 true、reload_guard 3 项 true）、`bridge.py build` 通过。
+- **仍未测**：实机保存重载后关联、删除重插复验、多标签挂同一 feature_id、被篡改 `aliases_ref`、40 组件大清单分页、compact/full 一致性、Creo 9/10、WorkBuddy。
+- 本卡其余体积议题（jobs compact 日志、翼型/履带请求体量、union 校验错误）仍未做。
+
+详见 [T09A 验收卡](../development/DEV051-T09A-ACCEPTANCE.md) 2026-10-30 节。本条保持开放（实机重载与删除重插复验未执行）。
