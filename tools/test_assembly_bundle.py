@@ -78,6 +78,102 @@ async def create_model(
     return {"name": name, "created": created, "terminal": terminal}
 
 
+async def run_reimport(bundle_dir: Path, output: Path | None, expected: Path) -> int:
+    """Open an existing bundle from a new directory in a session without that assembly.
+
+    Creo refuses to retrieve an assembly whose name is already loaded, and a managed
+    model cannot be erased through creo_erase_session_models (the inspect step answers
+    available=false). The live round trip therefore has to split: export in one
+    session, then run this half after the operator restarts Creo, so the retrieval
+    starts from an empty session and the bundle is proven independently of the export.
+    """
+    require_manual_start(ROOT / "config.json")
+    from mcp import Client
+    from mcp.client.stdio import StdioServerParameters
+
+    manifest_path = bundle_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    want = json.loads(Path(expected).read_text(encoding="utf-8"))["cases"][0]["components_before"]
+    run_id = time.strftime("%Y%m%dT%H%M%S") + "_" + uuid.uuid4().hex[:8]
+    target = output or ROOT / "build" / "assembly_bundle" / f"{run_id}_reimport" / "report.json"
+    fresh_root = target.parent / "reimport"
+    fresh_root.mkdir(parents=True, exist_ok=True)
+    problems: list[str] = []
+    files = manifest.get("files") or []
+    if not manifest.get("complete"):
+        problems.append("manifest is not complete")
+    if not files:
+        problems.append("manifest lists no files")
+    for item in files:
+        relative = item.get("relative_path") or item.get("path")
+        candidate = bundle_dir / str(relative)
+        if not candidate.is_file():
+            problems.append(f"missing bundle file {relative}")
+            continue
+        if hashlib.sha256(candidate.read_bytes()).hexdigest() != item.get("sha256"):
+            problems.append(f"sha256 mismatch for {relative}")
+        shutil.copy2(candidate, fresh_root / candidate.name)
+    root = manifest.get("root") or next(
+        (item.name for item in fresh_root.iterdir() if item.suffix.lower() in (".asm", ".prt")),
+        None,
+    )
+    params = StdioServerParameters(command=sys.executable, args=[str(ROOT / "server.py")], cwd=ROOT)
+    async with Client(params, read_timeout_seconds=180) as client:
+        runner = LiveRunner(
+            client, target, "FEAT-031 / DEV-051 T13", "re-import an existing bundle", run_id
+        )
+        await runner.start()
+        entry: dict = {
+            "case": "reimport_only",
+            "bundle": str(bundle_dir),
+            "bundle_root": root,
+            "files": len(files),
+            "expected_components": want,
+        }
+        opened = await runner.submit(
+            "reimport:open",
+            "creo_open_file",
+            {"file_path": str((fresh_root / root).resolve()), "idempotency_key": uuid.uuid4().hex},
+        )
+        terminal = await runner.wait_job(opened["job_id"], budget=HANG_BUDGET_SECONDS)
+        entry["open_job_id"] = opened["job_id"]
+        entry["open_status"] = terminal.get("status")
+        if terminal.get("status") != "succeeded":
+            entry["open_failure"] = failure_text(terminal)
+            problems.append("re-opened assembly did not load")
+        else:
+            session = await runner.call("creo_inspect_session_assembly", {"name": Path(root).stem})
+            components = session.get("components") or []
+            entry["session"] = {
+                key: (session.get("assembly") or {}).get(key)
+                for key in ("name", "origin", "model_type", "modified")
+            }
+            entry["components_after"] = [
+                {
+                    "name": item.get("name"),
+                    "label": item.get("occurrence_label"),
+                    "resolved": item.get("resolved"),
+                    "transform": item.get("transform_to_parent"),
+                }
+                for item in components
+            ]
+            if len(components) != len(want):
+                problems.append(f"component count {len(components)} != {len(want)}")
+            for expected_row, actual in zip(want, components):
+                if (expected_row.get("translation") or []) != (
+                    actual.get("transform_to_parent") or []
+                ):
+                    problems.append(f"transform mismatch for {expected_row.get('label')}")
+                if actual.get("resolved") is not True:
+                    problems.append(f"component {expected_row.get('label')} is not resolved")
+        entry["manifest_problems"] = problems
+        entry["passed"] = not problems
+        runner.case(entry)
+        runner.finish()
+    print(json.dumps({"passed": not problems, "problems": problems}, ensure_ascii=False))
+    return 0 if not problems else 1
+
+
 async def run_live(output: Path | None) -> int:
     require_manual_start(ROOT / "config.json")
     from mcp import Client
@@ -356,7 +452,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--confirm-session-usable", action="store_true")
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--reimport",
+        type=Path,
+        help="open an existing bundle directory instead of exporting (needs an empty session)",
+    )
+    parser.add_argument(
+        "--expected",
+        type=Path,
+        help="report from the export run; its components_before is the expected pose set",
+    )
     args = parser.parse_args(argv)
+    if args.reimport:
+        if not args.live or not args.confirm_session_usable:
+            print("--reimport needs --live --confirm-session-usable", file=sys.stderr)
+            return 2
+        if not args.expected:
+            print("--reimport needs --expected <export report.json>", file=sys.stderr)
+            return 2
+        return asyncio.run(run_reimport(args.reimport, args.output, args.expected))
     if args.live:
         if not args.confirm_session_usable:
             print("live runs require --confirm-session-usable", file=sys.stderr)

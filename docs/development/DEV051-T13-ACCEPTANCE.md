@@ -191,3 +191,29 @@ CK(ProMdlNameGet(child, name));     // 自 Creo 3 起废弃
 5. **负例**：抽掉一个 `.prt` 后重导出 → `complete=false`、`missing=1`，且驱动记目标失败、`reimport.skipped=incomplete_bundle`，**不得**继续 `creo_open_file`。
 
 未测范围（如实记录）：上述实机全部未跑；嵌套装配闭包实机、外部/缺失引用实机、保存重载 true、Creo 9/10 均未测。离线阶段不等于整项验收通过。
+
+## 2026-10-30 实机阶段（Creo 12.4.0.0，唯一 dev 服务）
+
+### 第一轮（同会话导出+回导）：失败，暴露会话约束
+
+`tools/test_assembly_bundle.py --live --confirm-session-usable`：两个源件与装配创建成功、native_bundle 导出成功（`complete=true`，3 个文件，SHA256 全部核对通过），但回导被拒：
+`SESSION_NAME_CONFLICT` —— 导出作业把装配（`t13_asm_5791a3`）留在了会话里，bundle 根与其同名。按驱动此前设计补的“回导前擦除”（`fff7b3a`）实机返回 `available=false`：**该装配是受管模型（在 `models/` 根下），`creo_erase_session_models` 按设计拒绝擦除受管模型**。
+
+### 定位出的两条硬约束（实机验证）
+
+1. `creo_open_file` 检索装配要求**空会话**：会话里还留着零件时返回 `ASSEMBLY_REQUIRES_EMPTY_SESSION`（部分加载不可观察）。
+2. 受管模型不可经 MCP 擦除；但**从 bundle 新目录打开进来的模型不是受管模型**，可以擦（`inspect available=true` → `apply` 成功，“nothing was saved and no disk file was deleted”）。
+
+### 第二轮（两段式）：通过
+
+导出沿用第一轮的 bundle（`jobs/58dead698c8c4418995eae025145035a/output/native_bundle`，`complete=true`）；重启 Creo 得到空会话后，用新增的 `tools/test_assembly_bundle.py --live --confirm-session-usable --reimport <bundle> --expected <导出报告>` 复验：
+
+- 报告 `build/assembly_bundle/20261030T141735_57dbc70b/report.json`（临时脚本等价物）与仓库内 `--reimport` 模式各通过一次：`passed=true, problems=[]`。
+- 打开自新目录的副本：组件数 2/2，`transform_to_parent` 与导出前逐项一致（part_alpha 单位阵，part_beta +100 mm X），`resolved=true`，`occurrence_label`（PART_ALPHA/PART_BETA）保留。
+- 组件文件名为复制名 `c_3afcccb56f7e4ede_0/1.prt`，与 T13 离线实现的快照名定位一致。
+
+### 交付口径
+
+`tools/test_assembly_bundle.py` 新增 `--reimport BUNDLE --expected REPORT` 两段式模式：导出与会话隔离后的回导各出一份报告，合起来构成 T13 实机验收。同会话一次跑完的形式**不可行**（受管模型保护 + 装配检索要求空会话），这不是缺陷而是两条保护在协作。
+
+仍开放：源件 revision 不变的核对本轮用导出前记录与 bundle SHA256 覆盖，未做单独的打开后 revision 查询；嵌套装配、外部引用、Creo 9/10 未测。
