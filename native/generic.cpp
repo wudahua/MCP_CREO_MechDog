@@ -1881,7 +1881,10 @@ static J revolve_axis_report(const J &op, ProFeature &created, ProFeature &sketc
         return report;
     }
     // Internal fallback: the axis decision came from the sketch's construction
-    // centerline. Count every centerline so a silent pick stays discoverable.
+    // centerline. Count only user-drawn centerlines so a silent pick stays
+    // discoverable; when more than one true user centerline exists the chosen
+    // one is not guessable, so id stays null and the caller must supply an
+    // explicit axis (the count is reported either way).
     report["kind"] = "section_centerline";
     ProSection saved = nullptr;
     ProError copy_code = ProFeatureSectionCopy(&sketch_f, 0, &saved);
@@ -1901,6 +1904,22 @@ static J revolve_axis_report(const J &op, ProFeature &created, ProFeature &sketc
                 if (ProSectionEntityGet(saved, ids[index], &def))
                     continue;
                 if (def->type != PRO_2D_CENTER_LINE)
+                    continue;
+                // Sketch creation projects the orientation and anchor
+                // references into the section (sketch()), and Creo stores
+                // those system references as center-line entities too, so the
+                // type alone does not identify a user centerline: the 10-29
+                // live run counted 3 for one drawn line. An entity "created by
+                // projection" (ProSectionEntityIsProjection, same filter as
+                // the profile summary walk) is a system reference, never a
+                // user line; a failed probe cannot classify, so the entity
+                // stays counted instead of being silently dropped.
+                ProBoolean is_projection = PRO_B_FALSE;
+                ProError projection_code =
+                    ProSectionEntityIsProjection(saved, ids[index], &is_projection);
+                log("SECTION_CENTERLINE_PROBE entity=%d code=%d is_projection=%d\n", ids[index],
+                    (int)projection_code, is_projection == PRO_B_TRUE ? 1 : 0);
+                if (!projection_code && is_projection == PRO_B_TRUE)
                     continue;
                 if (centerlines.empty()) {
                     auto line = (Pro2dLinedef *)def;

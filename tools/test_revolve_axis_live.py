@@ -7,6 +7,13 @@ Creo really resolved, never from the request. This driver measures three cases:
 * ``explicit_datum_axis`` - a datum axis feature built from two datum planes
 * ``no_centerline``       - neither, so the job must fail without the block
 
+For the successful cases it also locks the fixed centerline accounting: the
+count reports user-drawn centerlines only (the sketch's system reference
+projections must not inflate it - the 10-29 run counted 3 for one drawn line),
+the reported ``id`` is the sketch section entity id of that centerline, and an
+explicit save with ``saved_file_reloaded_and_verified=true`` leaves the same
+axis resolvable at the same id and geometry.
+
 Default is strictly offline (contract shape and volume oracles only, no MCP
 client). ``--live --confirm-session-usable`` runs the three cases serially with a
 fresh model each; a job that is not terminal within HANG_BUDGET_SECONDS stops
@@ -119,6 +126,10 @@ EXPECTED = {
         "volume_mm3": RING_VOLUME,
         "geometry_known": True,
         "succeeds": True,
+        # The sketch draws exactly one user centerline; the two system
+        # reference projections must not be counted (the fixed accounting).
+        "section_centerline_count": 1,
+        "sketch_entity": "spin_centerline",
     },
     "explicit_datum_axis": {
         "source": "explicit",
@@ -143,9 +154,19 @@ def check_contract() -> dict:
             "ring": round(RING_VOLUME, 6),
             "cylinder": round(CYLINDER_VOLUME, 6),
         },
+        "centerline_accounting": {
+            "internal_centerline.section_centerline_count": 1,
+            "internal_centerline.id_source": "sketch result entity_ids['spin_centerline']",
+            "rule": (
+                "the count covers user-drawn centerlines only; the sketch's system reference "
+                "projections are never user lines and a count above the drawn user lines is a "
+                "regression, while truly multiple user centerlines keep id=null (never guessed)"
+            ),
+        },
         "note": (
             "revolve_axis comes from the resolved axis/centerline; the driver compares it with "
-            "these request-derived volumes and with the direction/origin it can predict"
+            "these request-derived volumes, with the direction/origin it can predict, with the "
+            "sketch section entity id, and with a verified save/reload of the same axis"
         ),
     }
 
@@ -156,6 +177,31 @@ def axis_block(terminal: dict) -> dict:
         if isinstance(operation, dict) and isinstance(operation.get("revolve_axis"), dict):
             return operation["revolve_axis"]
     return {}
+
+
+def sketch_entity_ids(terminal: dict) -> dict:
+    """Section entity ids (name -> id) from the plan's sketch operation record."""
+    result = terminal.get("result") if isinstance(terminal.get("result"), dict) else {}
+    for operation in result.get("operations") or []:
+        if isinstance(operation, dict) and operation.get("op") == "sketch":
+            ids = operation.get("entity_ids")
+            if isinstance(ids, dict):
+                return ids
+    return {}
+
+
+def reload_flag(terminal: dict) -> object:
+    result = terminal.get("result") if isinstance(terminal.get("result"), dict) else {}
+    return result.get("saved_file_reloaded_and_verified")
+
+
+def axes_of(snapshot: dict) -> list:
+    inspection = snapshot.get("inspection") if isinstance(snapshot.get("inspection"), dict) else {}
+    return [
+        item
+        for item in (inspection.get("datum_axes") or inspection.get("axes") or [])
+        if isinstance(item, dict)
+    ]
 
 
 def volume_of(snapshot: dict) -> float | None:
@@ -251,16 +297,99 @@ async def run_case(runner: LiveRunner, case: str) -> dict:
 
     # Independent axis-geometry read: the same revolve feature must expose one datum
     # axis whose geometry matches the reported direction.
-    inspection = snapshot.get("inspection") if isinstance(snapshot.get("inspection"), dict) else {}
-    axes = [
-        item
-        for item in (inspection.get("datum_axes") or inspection.get("axes") or [])
-        if isinstance(item, dict)
-    ]
+    axes = axes_of(snapshot)
     entry["datum_axes"] = [
         {key: item.get(key) for key in ("id", "origin", "direction", "geometry_known")}
         for item in axes
     ]
+
+    # Fixed centerline accounting: the count is user-drawn centerlines only.
+    # An inflated count (the 10-29 run measured 3 for one drawn line because
+    # the two system reference projections were counted) is a regression.
+    resolution = block.get("resolution") if isinstance(block.get("resolution"), dict) else {}
+    expected_count = EXPECTED[case].get("section_centerline_count")
+    if expected_count is not None and resolution.get("section_centerline_count") != expected_count:
+        problems.append(
+            f"section_centerline_count={resolution.get('section_centerline_count')!r} "
+            f"expected {expected_count!r} (system reference lines must not be counted)"
+        )
+
+    # ID source: the section_centerline id is the sketch section entity id of
+    # the drawn centerline (same id space as the sketch result entity_ids).
+    entity_ids = sketch_entity_ids(terminal)
+    if entity_ids:
+        entry["sketch_entity_ids"] = entity_ids
+    expected_entity = EXPECTED[case].get("sketch_entity")
+    if expected_entity is not None:
+        source_id = entity_ids.get(expected_entity)
+        entry["id_source"] = {"entity": expected_entity, "sketch_entity_id": source_id}
+        if block.get("id") != source_id:
+            problems.append(
+                f"id={block.get('id')!r} does not match sketch "
+                f"entity_ids[{expected_entity!r}]={source_id!r}"
+            )
+    if EXPECTED[case].get("kind") == "datum_axis" and len(axes) == 1:
+        if block.get("id") != axes[0].get("id"):
+            problems.append(
+                f"id={block.get('id')!r} does not match inspection datum_axes[0].id="
+                f"{axes[0].get('id')!r}"
+            )
+
+    # Save + reload: the axis must stay resolvable at the same identity and
+    # geometry after the save erased and reloaded the file. Model inspection
+    # does not list a revolve feature's own section axis, so the identity
+    # comparison runs on the explicit datum-axis case; for the internal
+    # centerline the reload evidence is the save job's verified reload plus
+    # unchanged volume, and the entry records that the axis re-location itself
+    # is not observable via inspection.
+    if EXPECTED[case]["succeeds"]:
+        saved = await runner.submit(
+            f"{case}:save",
+            "creo_save_model",
+            {"model_id": created["model_id"], "expected_revision": entry["revision"]},
+        )
+        save_terminal = await runner.wait_job(saved["job_id"], budget=HANG_BUDGET_SECONDS)
+        post = await runner.snapshot(created["model_id"])
+        post_volume = volume_of(post)
+        post_axes = axes_of(post)
+        save_problems = []
+        if save_terminal.get("status") != "succeeded":
+            save_problems.append(f"save job {save_terminal.get('status')}")
+        if reload_flag(save_terminal) is not True:
+            save_problems.append(f"saved_file_reloaded_and_verified={reload_flag(save_terminal)!r}")
+        if not near(post_volume, entry["volume_mm3"], 1.0):
+            save_problems.append(f"post-reload volume={post_volume!r} pre={entry['volume_mm3']!r}")
+        if EXPECTED[case].get("kind") == "datum_axis" and len(axes) == 1 and len(post_axes) == 1:
+            pre_axis, post_axis = axes[0], post_axes[0]
+            if pre_axis.get("id") != post_axis.get("id"):
+                save_problems.append(
+                    f"axis id changed after reload: {pre_axis.get('id')!r} -> {post_axis.get('id')!r}"
+                )
+            else:
+                for key in ("origin", "direction"):
+                    before, after = pre_axis.get(key), post_axis.get(key)
+                    if not (
+                        isinstance(before, list)
+                        and isinstance(after, list)
+                        and len(before) == len(after)
+                        and all(near(b, a, 1e-6) for b, a in zip(before, after))
+                    ):
+                        save_problems.append(f"axis {key} changed after reload")
+        else:
+            entry["axis_relocation_after_reload"] = "not_observable_via_inspection"
+        entry["save_reload"] = {
+            "job_id": save_terminal.get("job_id"),
+            "status": save_terminal.get("status"),
+            "saved_file_reloaded_and_verified": reload_flag(save_terminal),
+            "post_reload_revision": post.get("revision"),
+            "post_reload_volume_mm3": post_volume,
+            "post_reload_datum_axes": [
+                {key: item.get(key) for key in ("id", "origin", "direction")} for item in post_axes
+            ],
+            "problems": save_problems,
+        }
+        problems.extend(f"save_reload:{name}" for name in save_problems)
+
     entry["problems"] = problems
     entry["passed"] = not problems
     return runner.case(entry)

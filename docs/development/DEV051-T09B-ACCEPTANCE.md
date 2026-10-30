@@ -112,3 +112,71 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；ruff 0.17
 - **回显局限（本轮新发现，未修）**：`internal_centerline` 用例里用户只画了 1 条中心线，`resolution.section_centerline_count` 实测为 **3**，于是 `id` 只能为 `null`。计数把草图参考几何（两条参考线）也算了进去，既高估了“多中心线歧义”，也让 `id` 分支在正常草图上永远走不到。几何不受影响（frame=model 已给出方向），但“选了哪一条”的可观测性没有兑现。需要后续按真实 section 实体类型过滤参考线后再给 `id`，本轮只记录、不改代码。
 - `frame` 的实测口径与卡面文字需要对齐：卡面把 `sketch_local` 列为内部中心线的形式，实测在能取到回转特征自身轴时 **优先给 `model`**，`sketch_local` 只在特征轴不可读时作为回退。本卡以实测为准，代码注释同样如此。
 - 未测：多中心线草图（用户真的画 2 条以上）、`surface` 解析轴样例（非基准轴特征标签）、`ProAxisSurfaceGet` 非 E_NOT_FOUND 分支、显式轴解析失败时的 unknown 分支、保存重载、Creo 9/10。
+
+## 2026-10-30 中心线计数修复（离线阶段，沿用 FEAT-008，不新增工作 ID）
+
+日期：2026-10-30（Asia/Shanghai）。分支：`codex/dev051-feedback070`，基线 HEAD `3851963`；本批改动未提交（按派发约定由派发方统一提交）。任务来源：[DEV051 续派表](DEV051-CONTINUATION-TASKS-2026-10-30.md)「可单独指派的横切任务」T09B 行、[当前完善计划](../superpowers/plans/2026-10-30-feedback-072-to-085.md)任务 6。本轮仅离线：未连接 MCP/Toolkit、未启动 Creo、未改版本、未合 main、未 push、未发布。
+
+### 根因（带文件行号，实测证据 + SDK 语义，非数量猜测）
+
+缺陷现象：10-29 实机 `internal_centerline` 用例只画 1 条用户中心线，`resolution.section_centerline_count` 实测 **3**（报告 `build/revolve_axis/20261029T230937_a27309f6/report.json`），`id` 因此恒为 null。
+
+身份链路，每条 section 线元素的真实来源：
+
+1. `sketch()` 建草图时向 section 投影**系统参考**：方向参考平面投影 `ProSectionEntityFromProjection`（`native/generic.cpp:1420`，必有一次）+ 锚点平面/基准轴投影（`native/generic.cpp:1443` 或 `:1467`，标准情形恰一次）——即正常草图恰含 **2 条系统投影参考**。
+2. Creo 将这些投影参考以 center-line 类型实体存入 section（`Pro2dLinedef` 覆盖 `PRO_2D_LINE, PRO_2D_CENTER_LINE`，`Pro2dEntdef.h`）；10-29 实测 3 = 2 系统投影 + 1 用户线，与本链路精确吻合。
+3. 计数循环只按类型过滤 `def->type == PRO_2D_CENTER_LINE`（修复前 `native/generic.cpp:1899-1911`），**缺少本仓库其他 section 遍历都有的投影/构造过滤**（对照 `native/generic.cpp:1203-1211` 的 `ProSectionEntityIsConstruction`/`ProSectionEntityIsProjection`、`native/advanced.cpp:195-199` 同模式）——这就是错的那个过滤条件。
+
+SDK 语义（本机 Creo 12.4.0.0 匹配 SDK `ProSection.h`）：`ProSectionEntityIsProjection` 判定实体是否"created by projection"，即系统参考的权威身份测试。用户画线 vs 系统参考由此区分，不靠数量推断。
+
+### 最小修复
+
+`native/generic.cpp`（21 行增量，clang-format 23.1.3 字节一致）：
+
+- 计数循环内对每个 `PRO_2D_CENTER_LINE` 实体补 `ProSectionEntityIsProjection` 探测（现 `native/generic.cpp:1908-1926`）：`code==PRO_TK_NO_ERROR && is_projection==TRUE` → 系统参考，跳过；探测失败无法分类时**保留计数**（不静默丢弃）；并写 `SECTION_CENTERLINE_PROBE entity=… code=… is_projection=…` 原生日志供实机诊断。
+- 语义收紧说明（注释，`native/generic.cpp:1883-1887`）：计数只含用户中心线；≥2 条真实用户线时"用了哪根"不可判，`id` 保持 null，调用方必须显式给轴——与既有"不武断选第一条"行为一致，未新增准入收紧、未改 schema/回退。
+- 未改：`validate_revolve_axis` 准入、显式轴分支、sketch/extrude 建弧路径、`operation_results.py` 归一化白名单（按窗口边界未触碰）、`native/advanced.cpp`、schema、server。
+
+### 新增回归
+
+`tests/unit/test_revolve_axis_report.py`（16→19 项）新增 `CenterlineAccountingContract`：
+
+1. `test_single_user_centerline_count_one_with_entity_id`——修复后形态：count=1 + id=草图 section 实体 id，原样透传（ID 来源锁）。
+2. `test_inflated_reference_count_is_reported_verbatim_never_reinterpreted`——10-29 缺陷形态（count=3、id=null）必须逐字透传：投影层不得缩成 1、不得发明 `id=第一条`。
+3. `test_two_true_user_centerlines_stay_ambiguous_without_a_guessed_id`——真 2 条用户线：count=2 保留、`id=null`、不猜几何（歧义不误判为单线）。
+
+`tools/test_revolve_axis_live.py`（离线契约 + 实机判定同步收紧，离线模式 exit 0）：
+
+- `internal_centerline` 期望新增 `section_centerline_count=1` 与 `sketch_entity="spin_centerline"`；实机判定补：计数膨胀即失败（系统参考不得计入）、`id` 必须等于计划结果 sketch 操作 `entity_ids['spin_centerline']`（ID 来源）、显式轴用例 `id` 必须等于 `inspection.datum_axes[0].id`。
+- 成功用例新增**保存重载阶段**：`creo_save_model`（带 `expected_revision`）→ 校验作业 `succeeded` 且 `result.saved_file_reloaded_and_verified is True` → 重载后快照体积不变；显式轴用例进一步要求重载后 `inspection.datum_axes` 同 id、origin/direction 逐项 1e-6 一致（同一轴线可再定位）。内部中心线用例的 inspection 不列出回转特征自身轴（10-29 实测 `datum_axes=[]`），故该用例的轴再定位记 `axis_relocation_after_reload="not_observable_via_inspection"`，不猜通过。
+- 离线报告契约新增 `centerline_accounting` 块（count 规则、ID 来源）；本次离线报告 `build/revolve_axis/20261030T092522_401c7896/report.json`。
+
+### 命令与真实结果（本机 Windows 11 x64 / Python 3.12.14 venv / Creo 12.4.0.0 匹配 SDK 仅离线编译）
+
+| # | 命令 | 真实结果 |
+| --- | --- | --- |
+| 1 | `.venv\Scripts\python.exe -m unittest tests.unit.test_revolve_axis_report -v` | **Ran 19 tests, OK**（16 旧 + 3 新） |
+| 2 | `.venv\Scripts\python.exe -m ruff check <两文件>` + `ruff format --check` | 全部通过；format 后复跑 MATCH |
+| 3 | clang-format 23.1.3 vs `native/generic.cpp` | 字节一致（MATCH，257793 bytes） |
+| 4 | `.venv\Scripts\python.exe tools\test_revolve_axis_live.py`（离线） | exit 0；报告 `build/revolve_axis/20261030T092522_401c7896/report.json` |
+| 5 | `.venv\Scripts\python.exe bridge.py build` | exit 0，`build/creo_worker.exe`（09:25:44）新于 `native/generic.cpp`（09:20:30）；`build/build.log` 仅存量 C4819 告警，无新增错误；`native/advanced.cpp` 未报错（T13 窗口当时未改动它） |
+| 6 | `.venv\Scripts\python.exe -m unittest tests.unit.test_revolve_axis_report tests.unit.test_arc_direction tests.unit.test_body_count_semantics tests.unit.test_dev049_profile_replay` | **Ran 94 tests, OK**（T02 弧/T08B 巡检/T07 回放均不回归） |
+| 7 | `.venv\Scripts\python.exe -m unittest discover -s tests` | 第一次（与 T13 窗口并发同工作区）：**Ran 1482 tests, FAILED (errors=6)**，6 错全部在 `tests/unit.test_assembly_bundle.test_unresolved_identity_never_marks_complete`（"native_bundle already exists for this job"）——该用例属于 T13 窗口当时正在修改的 `assembly_bundle.py`/`test_assembly_bundle.py`（本批开始时干净、中途变为 modified），且该模块单独复跑 9 项 OK，判为瞬态并发冲突、与本批无关；空闲复跑（`build/t09b_full_unittest2.log`）：**Ran 1482 tests, OK**，exit 0 |
+
+### 未测项与实机待验步骤
+
+未测（离线不可达）：一切真实 Creo 行为——投影过滤的实机计数、`ProSectionEntityIsProjection` 在 `ProFeatureSectionCopy` 重读 section 上的实际返回、真多条用户线（服务准入限一条，**无法经本服务 MCP 构造**，需外部 Creo 手工草绘模型）、保存重载、Creo 9/10、WorkBuddy 黑盒。修复前 10-29 实机三例的通过结论保留其历史时点，不代表修复后状态。
+
+实机待验（按共同契约另指派；唯一 `MCP_CREO_MechDog_dev` 串行，满足 BUG-001 会话条件）：
+
+1. `.\.venv\Scripts\python.exe tools\test_revolve_axis_live.py --live --confirm-session-usable`（驱动已内置以下断言）：
+   - **一条线=1**：`internal_centerline` 用例 `resolution.section_centerline_count == 1`（旧缺陷会得 3）；原生日志应出现 `SECTION_CENTERLINE_PROBE` 行，2 条系统参考 `is_projection=1` 被剔除。
+   - **ID 来源**：`revolve_axis.id == sketch 结果 entity_ids['spin_centerline']`；显式轴用例 `id == inspection.datum_axes[0].id`。
+   - **轴帧**：既有 origin/direction/frame 断言保持（model 或 sketch_local 均须与独立体积 oracle 一致）。
+   - **保存重载**：每成功用例真实 `creo_save_model` 且 `saved_file_reloaded_and_verified=true`、重载后体积不变；显式轴重载后同 id 同几何（同一轴线可再定位）。
+2. **真多线不误判**：在 Creo 中手工绘制含 ≥2 条用户中心线的草图并入会话（或采用外部文件收养），对其实际提交 revolve——预期 `section_centerline_count≥2` 且 `id=null`，不静默选第一根；随后用显式轴完成同几何。若无法取得该夹具，如实记"真多线未测"。
+3. 记录 job/model/revision、体积 oracle、原生 `SECTION_CENTERLINE_PROBE` 日志行、重载与适用回滚；首次挂起/unknown 即停，保留现场。
+
+### 给集成人的冲突面
+
+本批只改 `native/generic.cpp`（`revolve_axis_report` 内部回退分支 + 两段注释，约 21 行）、`tools/test_revolve_axis_live.py`、`tests/unit/test_revolve_axis_report.py` 与本卡；未触碰 `native/advanced.cpp`、`server.py`、`schema.py`、`operation_results.py`、钣金/弧方向驱动及任何台账。接口形态不变：`revolve_axis.resolution.section_centerline_count` 语义修正为"仅用户中心线"，无字段增删、无版本影响。

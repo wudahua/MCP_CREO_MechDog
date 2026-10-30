@@ -229,6 +229,93 @@ class ResolvedAxisProjection(unittest.TestCase):
         self.assertEqual(entry["length_unit"], {"name": None, "query_code": -3})
 
 
+class CenterlineAccountingContract(unittest.TestCase):
+    """Count accounting fixed for DEV-051 T09B (one drawn line counted as 3).
+
+    The native executor now filters the sketch's system reference projections
+    out of ``section_centerline_count`` (``ProSectionEntityIsProjection``), so
+    one drawn centerline counts as 1 and its sketch section entity id becomes
+    ``id``. Truly multiple user centerlines keep the count and never receive a
+    guessed id. The projection layer must carry both verbatim: it never
+    reinterprets an inflated or ambiguous count into a single-line pick.
+    """
+
+    def test_single_user_centerline_count_one_with_entity_id(self):
+        entry = normalize_revolve_axis(
+            model_frame_block(
+                source="internal_centerline",
+                kind="section_centerline",
+                id=17,
+                frame=None,
+                origin=[0.0, -5.0],
+                direction=[0.0, 1.0],
+                geometry_known=True,
+                query_code=0,
+                resolution={
+                    "feature_axis_query_code": 0,
+                    "axis_item_query_code": None,
+                    "axis_surface_query_code": None,
+                    "section_centerline_count": 1,
+                    "section_query_code": 0,
+                },
+            )
+        )
+        self.assertEqual(entry["resolution"]["section_centerline_count"], 1)
+        self.assertEqual(entry["id"], 17)
+        self.assertEqual(entry["kind"], "section_centerline")
+
+    def test_inflated_reference_count_is_reported_verbatim_never_reinterpreted(self):
+        # Shape the broken build produced on 10-29 (two system reference
+        # projections counted with one user line): the projection keeps the
+        # count and the null id exactly as measured - it must not shrink the
+        # count to 1 or invent id=<first line>.
+        entry = normalize_revolve_axis(
+            model_frame_block(
+                source="internal_centerline",
+                kind="section_centerline",
+                id=None,
+                frame="model",
+                origin=[0.0, -5.0, 0.0],
+                direction=[0.0, 1.0, 0.0],
+                geometry_known=True,
+                query_code=0,
+                resolution={
+                    "feature_axis_query_code": 0,
+                    "axis_item_query_code": None,
+                    "axis_surface_query_code": None,
+                    "section_centerline_count": 3,
+                    "section_query_code": 0,
+                },
+            )
+        )
+        self.assertEqual(entry["resolution"]["section_centerline_count"], 3)
+        self.assertIsNone(entry["id"])
+
+    def test_two_true_user_centerlines_stay_ambiguous_without_a_guessed_id(self):
+        entry = normalize_revolve_axis(
+            model_frame_block(
+                source="internal_centerline",
+                kind="section_centerline",
+                id=None,
+                frame=None,
+                origin=None,
+                direction=None,
+                geometry_known=False,
+                query_code=None,
+                resolution={
+                    "feature_axis_query_code": -1,
+                    "axis_item_query_code": None,
+                    "axis_surface_query_code": None,
+                    "section_centerline_count": 2,
+                    "section_query_code": 0,
+                },
+            )
+        )
+        self.assertEqual(entry["resolution"]["section_centerline_count"], 2)
+        self.assertIsNone(entry["id"])
+        self.assertFalse(entry["geometry_known"])
+
+
 class NoRequestEcho(unittest.TestCase):
     def test_missing_block_stays_missing_and_is_not_fabricated(self):
         request_axis = {"kind": "datum_axis_feature", "label": "axis_label"}
