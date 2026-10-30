@@ -203,3 +203,7 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；ruff 0.17
 全部实机未跑。多标签挂同一 feature_id 实机、被篡改 `aliases_ref` 实机、40 组件大清单分页实机、compact/full 一致性实机均未测。**`ID 重排不误绑` 仅部分实机可验**：原生 `verify_saved` 拒绝该保存（可观测为拒绝），但"重排后仍被提交的模型"无法经本服务构造 —— 投影侧由离线回归证明，原生侧只能观察拒绝，**该半场景不得整体记为实机通过**。离线阶段不等于整项验收通过。
 
 离线产物：`build/post090_live_precheck_20261030T212525_b09a058e/n09_component_labels/report.json`（含 `projection`、`reload_guard`、`scenarios`、`contract_failures`）。合并预检小结：同目录 `precheck.md`。
+
+## 2026-10-30～31 N09 实机复测追加
+
+分支 codex/dev051-feedback070，基线 7288f2f，runid 20261030T234952。双组件 label→feature ID 40/43 创建通过；重载身份比较遭字典排序 TypeError，删除重插与 ID 重排未执行。 完整 job_id/model_id/revision、原始错误、命令、报告路径与 SHA256 见 [七段实机总报告](../development/POST090-LIVE-SEVEN-SEGMENTS-2026-10-31.md)；原始 JSON 留在 build/post090_live_20261030T234952/，未入库。未重放已受理作业，会话保持运行。

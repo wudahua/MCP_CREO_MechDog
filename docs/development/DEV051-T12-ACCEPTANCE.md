@@ -160,3 +160,7 @@ oracle 假设与风险：平底孔、深度自放置面 overall 量取、完整�
 全部 6 例余项未实机（元素树/几何/尺寸/回滚/重载均未观察）。2026-10-29 三例证据保留其历史时点，**不并入本次**。角度尺寸按度回读（90）待实机确认；bbox 语义（`ProGeomitemdata` 修剪面范围 vs 未修剪范围）待实机确认，实机若为未修剪范围须按报告调整判定口径并记录。盲深方案 `PRO_HLE_DEP_SHOULDER_DIM_SCHEME` 的运行语义仍未验（仅读 SDK 头文件）。不承诺孔型/放置/`flip` 重定义的编辑；螺纹、标准孔系列、出口沉头、双端沉孔、非线性放置不在范围；Creo 9/10 未测。
 
 离线产物：`build/post090_live_precheck_20261030T212525_b09a058e/n10_countersink/report.json`（含 `remainder_cases`、`selected_cases`、`accepted_2026_10_29_cases`）。合并预检小结：同目录 `precheck.md`。
+
+## 2026-10-30～31 N10 实机复测追加
+
+分支 codex/dev051-feedback070，基线 7288f2f，runid 20261030T234952。3 盲孔重载 true，但严格几何 oracle 未通过；后续方向用例因 31 字符模型名约束中断，尺寸编辑与翻向回滚未执行。 完整 job_id/model_id/revision、原始错误、命令、报告路径与 SHA256 见 [七段实机总报告](../development/POST090-LIVE-SEVEN-SEGMENTS-2026-10-31.md)；原始 JSON 留在 build/post090_live_20261030T234952/，未入库。未重放已受理作业，会话保持运行。

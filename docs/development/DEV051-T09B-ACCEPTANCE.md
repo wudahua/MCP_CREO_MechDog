@@ -219,3 +219,7 @@ SDK 语义（本机 Creo 12.4.0.0 匹配 SDK `ProSection.h`）：`ProSectionEnti
 - 修复前 10-29 实机三例的通过结论保留其历史时点，**不代表修复后状态**。
 
 离线产物：`build/post090_live_precheck_20261030T212525_b09a058e/n08_revolve_axis/report.json`（含 `id_source_rule`、`multiple_user_centerlines`）。合并预检小结：同目录 `precheck.md`。
+
+## 2026-10-30～31 N08 实机复测追加
+
+分支 codex/dev051-feedback070，基线 7288f2f，runid 20261030T234952。内部单中心线计数 3（预期 1）且 spin_centerline ID 来源缺失；显式轴与无中心线负例通过；外部真多线未验。 完整 job_id/model_id/revision、原始错误、命令、报告路径与 SHA256 见 [七段实机总报告](../development/POST090-LIVE-SEVEN-SEGMENTS-2026-10-31.md)；原始 JSON 留在 build/post090_live_20261030T234952/，未入库。未重放已受理作业，会话保持运行。

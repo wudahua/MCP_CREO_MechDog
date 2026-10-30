@@ -191,3 +191,7 @@ flip→方向映射只离线定义判定规则，未观测。实机命令（本�
 ```
 .\.venv\Scripts\python.exe tools\test_detail_feature_observation.py --live --confirm-session-usable --output build/post090_n04_<新runid>/report.json
 ```
+
+## 2026-10-30～31 N04 实机复测追加
+
+分支 codex/dev051-feedback070，基线 7288f2f，runid 20261030T234952。首例创建后驱动读取 result.revision 抛 KeyError；材料变化、draft_geometry、应用集数、回滚与重载矩阵均未验。 完整 job_id/model_id/revision、原始错误、命令、报告路径与 SHA256 见 [七段实机总报告](../development/POST090-LIVE-SEVEN-SEGMENTS-2026-10-31.md)；原始 JSON 留在 build/post090_live_20261030T234952/，未入库。未重放已受理作业，会话保持运行。

@@ -188,3 +188,7 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；pydantic 
 全部实机行为未验（真实原生回显、方向编辑后下游再生体积、revision 递增语义、保存重载、非法编辑的原生拒绝/回滚字段形态、恢复编辑、busy/单通道）。`creo_update_sketch_geometry` 弧编辑服务端标注 experimental；XZ 倾斜帧弧编辑与开口 profile 原生失败是否恰带回滚字段未实测。并发未验证。本节未改任何生产代码；若实机发现原生缺回显/回滚字段，另按条目登记生产修复，**不得先放宽判定**。
 
 离线产物：`build/post090_live_precheck_20261030T212525_b09a058e/n07_arc_direction/report.json`（含 `coverage` 与 `provenance`）。合并预检小结：同目录 `precheck.md`。
+
+## 2026-10-30～31 N07 实机复测追加
+
+分支 codex/dev051-feedback070，基线 7288f2f，runid 20261030T234952。5 创建例通过；首个方向编辑体积与重载通过，但 native arc 回显 source=unknown/query_code=-2，整段失败；后续编辑与非法编辑未执行。 完整 job_id/model_id/revision、原始错误、命令、报告路径与 SHA256 见 [七段实机总报告](../development/POST090-LIVE-SEVEN-SEGMENTS-2026-10-31.md)；原始 JSON 留在 build/post090_live_20261030T234952/，未入库。未重放已受理作业，会话保持运行。
