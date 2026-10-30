@@ -262,6 +262,35 @@ class DirectionEditTests(unittest.TestCase):
         self.assertIsNone(row["identity"]["sketch_feature_id_preserved"])
         self.assertIsNone(row["identity"]["downstream_feature_id_preserved"])
 
+    def test_n07_unknown_edit_echo_with_original_query_code_fails(self):
+        """The 2026-10-31 live incident shape must keep failing the edit.
+
+        A direction edit that succeeded geometrically (volume, revision, reload
+        all right) but echoed ``source=unknown, query_code=-2`` with every
+        measured value null (the native echo once queried the rebuilt section
+        by the pre-rebuild entity ids) is never a pass; the driver already
+        required this and the native side now reports the rebuilt ids.
+        """
+        volume = driver.oracle_volume_mm3(0.0, 90.0, -1)
+        echo = {
+            "name": "arc_a",
+            "source": "unknown",
+            "query_code": -2,
+            "frame": None,
+            "start_uv": None,
+            "end_uv": None,
+            "center_uv": None,
+            "radius_mm": None,
+            "start_tangent_uv": None,
+            "end_tangent_uv": None,
+            "dir": None,
+            "sweep_deg": None,
+        }
+        after = terminal(operations=[update_record(40, echo)], aliases=ALIASES, revision=2)
+        row = driver.judge_direction_edit(EDIT_CASE, self.good_before(), after, inspection(volume))
+        self.assertFalse(row["passed"])
+        self.assertIn("native_arc_echo_not_measured", row["failures"])
+
 
 class IllegalEditTests(unittest.TestCase):
     """Illegal edits must be rejected and must not touch geometry or revision."""

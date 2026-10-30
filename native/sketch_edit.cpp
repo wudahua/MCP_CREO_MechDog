@@ -444,6 +444,16 @@ static void generic_sketch_edit(const J &op) {
             meta["entity_ids"][name] = replacement;
         }
     }
+    // FEAT-034/T02 (N07 2026-10-31): the loop above replaced the entities whose
+    // stored geometry changed and recorded their new section ids in
+    // meta["entity_ids"]; the pre-edit snapshot in named_ids still held the
+    // deleted ids, so the post-edit arc echo queried the rebuilt section with
+    // PRO_TK_E_NOT_FOUND (-2) and degraded to source="unknown" while the edit
+    // itself succeeded. Re-snapshot so the echo reads the rebuilt section by
+    // the ids that now exist.
+    named_ids.clear();
+    for (auto it = meta["entity_ids"].begin(); it != meta["entity_ids"].end(); ++it)
+        named_ids[it.key()] = it.value();
     trace_section_ids(section, "after_rebuild");
     trace_section_constraints(section, "after_rebuild");
     trace_section_entities(section, "after_rebuild");

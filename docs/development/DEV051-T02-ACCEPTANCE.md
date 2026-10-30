@@ -192,3 +192,39 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；pydantic 
 ## 2026-10-30～31 N07 实机复测追加
 
 分支 codex/dev051-feedback070，基线 7288f2f，runid 20261030T234952。5 创建例通过；首个方向编辑体积与重载通过，但 native arc 回显 source=unknown/query_code=-2，整段失败；后续编辑与非法编辑未执行。 完整 job_id/model_id/revision、原始错误、命令、报告路径与 SHA256 见 [七段实机总报告](../development/POST090-LIVE-SEVEN-SEGMENTS-2026-10-31.md)；原始 JSON 留在 build/post090_live_20261030T234952/，未入库。未重放已受理作业，会话保持运行。
+
+## 2026-10-31 N07 编辑路径弧回显缺失：根因定性与原生修复（离线）
+
+基线提交 `a94139e`。定性：**原生生产缺陷（编辑回显查询用了过期实体 id），既不是驱动误读，也不是编辑路径缺回显能力**。驱动读取的 `result.operations[].arc_geometry` 字段与判定均正确（T02 契约不变）。
+
+### 根因链（逐条有据）
+
+1. 编辑终端的 `arc_echo.source=unknown, query_code=-2` 出自 `native/sketch_edit.cpp` 编辑路径自身的回显块：redefine 之后 `ProFeatureSectionCopy` 复制重建后的 section，再以 `arc_geometry_report(saved, copy_code, …, named_ids, …)` 按实体名→section id 查询；查不到时原样透传失败码。
+2. 该编辑作业原生日志（`jobs/e676db6877724808b3e67cd826cea9be/native.log`）有 `BUG082_PHASE phase=after_redefine section_copy=0`——section 复制**成功**，`-2` 不是复制码。
+3. 因此 `-2`（PRO_TK_E_NOT_FOUND）来自 `ProSectionEntityGet(saved, 旧id)`：`named_ids` 在重建循环**之前**从 `meta["entity_ids"]` 快照；方向翻转使弧的存储表示改变，循环按 BUG-079 语义删除旧实体、加入新实体并把**新 id** 写回 `meta["entity_ids"]`，而 `named_ids` 仍持旧 id → 复制件中旧 id 已不存在 → 回显降级 unknown。创建路径（`generic.cpp` sketch()）用本次新建的实体映射，故五例创建回显全为 native，与本现象吻合。
+4. 不是"编辑后 feature/geom id 变化需重新解析 feature"：feature id 保持（`preserved_feature_id=40`），变的是 section 内被替换实体的 id。
+
+### 修复（最小）
+
+`native/sketch_edit.cpp`：重建循环结束后、回显查询之前，把 `named_ids` 从已更新的 `meta["entity_ids"]` 重新快照（10 行含注释）。unchanged 捷径路径（重建前返回）不受影响；`arc_logical_swapped` 按名索引，语义不变。
+
+### 回归单元
+
+`tests/unit/test_arc_direction_live.py` 新增 `DirectionEditTests.test_n07_unknown_edit_echo_with_original_query_code_fails`：把 N07 事故形态（source=unknown、query_code=-2、全部实测字段 null、其余证据齐全的编辑终端）钉死为 `native_arc_echo_not_measured` 失败，防止"空过"回归；严格判定未放宽。
+
+### 命令与真实结果
+
+| # | 命令 | 真实结果 |
+| --- | --- | --- |
+| 1 | `.\.venv\Scripts\python.exe -m unittest tests.unit.test_arc_direction tests.unit.test_arc_direction_live tests.unit.test_revolve_axis tests.unit.test_revolve_axis_report` | exit 0，Ran 97，OK（29+34+5+29，含新增 1 项） |
+| 2 | `ruff check` + `ruff format --check`（两测试文件） | 全部通过 |
+| 3 | `clang-format --dry-run -Werror native\sketch_edit.cpp native\generic.cpp`（23.1.3） | 通过（generic.cpp 仅本节新增行曾需重排，已格式化） |
+| 4 | `.\.venv\Scripts\python.exe bridge.py build` | exit 0（24 s），产出 `build\creo_worker.exe`；构建由 `toolkit.lock` 的 `build_native` 互斥保护，构建前核对 F1 窗口提交未落地但工作区无其未提交文件、无并行构建迹象；`build\build.log` 无本节新增错误 |
+
+### 实机重跑命令与预期（待指派；须先满足会话可操作条件）
+
+```powershell
+.\.venv\Scripts\python.exe tools\test_arc_direction_live.py --live --confirm-session-usable --output build\post090_live_<runid>\n07_arc_direction\report.json
+```
+
+预期：5 创建例与 3 编辑例全 passed；编辑例 `arc_echo.source="native"`、`query_code=0`、dir/扫角与 to_dir 一致（编辑后回显不再 unknown/-2）；体积按 to_dir oracle、revision +1、identity 保持、各阶段保存重载 true；5 非法例照旧拒绝且模型不变。若编辑例回显仍为 unknown，以原生日志新证据定性，不得放宽判定。
