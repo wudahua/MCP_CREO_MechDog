@@ -219,3 +219,62 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；pydantic 
 - 报告：`build/sheetmetal_relief/20261029T222754_44e6ab6a/report.json`（SHA256 `d2de17487469f10fba9859a0459cfeb64e593537105c8d5a6df5be9bf829d58f`）。
 - 下一道探针（未执行，仍待指派）：把 `f_ny` 的边在两端各内缩 20 mm 后再提交，用于区分"短边可行=角部干涉"与"任何长度都失败=其它原因"；不要重提已回滚的原边。
 - **勘误**：前文「给 T01 的公共文档变更需求」第 1 条"`flip` 只切轨迹法向、不等同于材料侧开关"已被本轮 2×2 实测推翻，现行口径为"`flip` = 从依附面向外 / 材料侧 两个方向的切换"。
+
+## 2026-10-30：T05 离线阶段续做——第三壁对照设计冻结、`end_trim_mm` 契约贯通、驱动补齐
+
+分支 `codex/dev051-feedback070`，HEAD `641edb3`（T09D 提交），工作区 dirty（含其他会话未提交改动）。本节为离线阶段续做：接续第六轮"四壁止于第二道、`f_ny` status=6 空几何回滚"的观察，把对照实验设计、夹具、驱动与最小原生修改补完。**未连接 Creo、未提交任何 Toolkit 作业、未改版本、未合 main、未 push、未发布。角部干涉仍为候选解释，未定因。**
+
+### 继承的前序改动（上一窗口已写入工作区，本窗口确认并沿用，未回退、未重写）
+
+| 文件 | 内容 | 本窗口核对结论 |
+| --- | --- | --- |
+| `native/advanced.cpp`（+43 行） | `generic_sheetmetal_flange` 新增 `end_trim_mm` 分支：两侧深度从 `TO_END` 改为 `BLIND` + `PRO_E_SMT_FLANGE_DEPTH_OFFSET`；无该字段时元素树与旧版逐字节一致（静态断言覆盖） | 完整、非半成品；`bridge.py build` 通过 |
+| `server.py`（+13 行） | `creo_sheetmetal_flange` 新增可选参数 `end_trim_mm`，仅在非 None 时写入 operation | **端到端已接通**：server 写 op → `SheetmetalFlangeOp.end_trim_mm` 校验保留 → bridge 全量 JSON 提交 → `native/generic.cpp:2716` 分派 → `advanced.cpp:831` 读取。不是默默无效的参数 |
+| `src/creo_mechdog/schema.py`（+14 行） | `SheetmetalFlangeOp.end_trim_mm` 可选正数字段 + 拒绝布尔校验 | 派发时标注为 T02 改动，但内容实为 T05 trim 契约（与 `native/`/`server.py` 同一设计）。按指令未触碰；静态断言 `contract_source` 确认其与本任务其余契约一致 |
+| `tests/unit/test_sheetmetal_box_live.py`（新文件） | 三组对照夹具、trim 语义探针与分类器、失败壁五段记录、角部判定表、原生/契约静态守卫，27 用例 | 到位时即 27/27 通过，仅一处 ruff F841（未用变量）由本窗口移除 |
+
+### 本窗口新增
+
+- `tools/test_sheetmetal_box_live.py`（新驱动）：默认严格离线，落盘 `build/sheetmetal_box/<run_id>/report.json` + SHA256；`--live` 无 `--confirm-session-usable` 返回 2，带该开关仍返回 2（`LIVE_REFUSAL` 指向唯一 dev 服务 `MCP_CREO_MechDog_dev`）。检查项：对照设计（full_length / trimmed_20 / order_ny_first / order_ny_second，每 fresh 模型逐道一 job、每道重选边）、oracle 行（trim 行仅按 setback 读法）、trim 探针计划与语义分类自检、准入（全部组计划过 `validate_operations`）、原生 trim 分支静态守卫、契约静态守卫、失败壁五段记录夹具自检、角部判定表可达结论、第六轮证据登记、实机步骤清单。
+- `tests/unit/test_sheetmetal_box_live.py`：仅移除 F841 未用变量，其余未改。
+- 本卡、`docs/work-items/FEAT-014.md`、`docs/work-items/BUG-047.md` 各追加本节/对应记录。
+
+### 对照实验设计（冻结，未运行）
+
+三组对照 + 顺序梯度，全部在第六轮已验证的 185×232×1 底板与 h80/R2.54/Y0.5 折弯上：
+
+| 组 | 顺序 | f_ny 材料角数 | 目的 |
+| --- | --- | --- | --- |
+| `full_length` | f_px → f_nx → f_ny | 2 | 复现第六轮形态（观察项） |
+| `trimmed_20` | f_px → f_nx → f_ny(两端各缩 20 mm) | 2 | 修剪后成功=角部接触是承重差异（**须先确认 setback 语义**） |
+| `order_ny_first` | f_ny → f_px → f_nx | 0 | 0 角失败 ⇒ 角部假设被反驳 |
+| `order_ny_second` | f_px → f_ny | 1 | 单角失败 ⇒ 单邻即致命 |
+
+判定表保证：角部干涉仅在「全长失败 + 低角位成功 + 修剪壁成功且 setback 语义被自由壁探针确认」三者齐备时升为 supported；其余一律 undetermined 并记录阻塞原因。**离线无任何观察，现状为 `undetermined_incomplete`，角部干涉 `candidate_only_no_contrast_run`。**
+
+### `end_trim_mm` 语义边界（离线不可定，老实记录）
+
+`ProSmtFlangeWall.h` 对 `PRO_E_SMT_FLANGE_DEPTH_OFFSET` 只记载为 double；Creo 把该偏移量读作「距链端各内缩 setback」还是「自截面起算的壁长」离线无法判定。驱动因此规定：先在自由首壁（f_px on +x，两端均为自由板角）上探测，用实测体积增量对四个候选（setback_from_ends / length_from_section / length_both_sides / trim_ignored）分类，仅 `setback_from_ends` 被确认后才允许提交修剪的第三壁；否则 trim 对照对"角部让位"无判别力，结论保持 undetermined。修剪组回显 `extra["depth_trim"]` 仅作记录，分类以实测体积为准。
+
+### 命令与真实结果
+
+| # | 命令 | 真实结果 |
+| --- | --- | --- |
+| 1 | `.\.venv\Scripts\python.exe -m unittest tests.unit.test_sheetmetal_box_live` | 27/27 OK（改动前即通过；F841 修复后复跑仍 OK） |
+| 2 | `.\.venv\Scripts\python.exe tools\test_sheetmetal_box_live.py` | exit 0；报告 `build/sheetmetal_box/20261030T082547_09fb8658/report.json`，SHA256 `366701e7b13e2c1d3cbef11877a931f07e3fffb15044a1810766f27c3e27a45b`；`status=not_run_offline / undetermined`；内置单测复跑 27/27 OK（首次运行 `20261030T082529_6d3569c7` 为 F841 修复前同内容运行，保留不覆盖） |
+| 3 | 同驱动 `--live` 与 `--live --confirm-session-usable` | 均 exit 2；第二条打印 `LIVE_REFUSAL` 指向唯一 dev 服务 |
+| 4 | `.\.venv\Scripts\python.exe -m ruff format` / `-m ruff check`（两个新文件） | 格式化后 `All checks passed!`，无新增诊断 |
+| 5 | `.\.venv\Scripts\python.exe bridge.py build` | exit 0，执行器 `build/creo_worker.exe` 重建成功（含 `advanced.cpp` trim 分支）；未出现 `native/generic.cpp` 或 `tools/test_arc_direction_live.py` 相关错误 |
+| 6 | `.\.venv\Scripts\python.exe -m unittest discover -s tests` | exit 0，`Ran 1449 tests`，OK（287.4 s；含本批 27 个新用例与 schema/server 改动） |
+
+### 未测范围与实机待验步骤
+
+- 未测（全部需实机，按共同契约另行指派、唯一 dev 服务串行、先满足 BUG-001 会话条件）：trim 语义探针及其分类；四组对照的真实创建/失败/回滚；`f_ny` 是否再现 status=6；每道 material_side/direction/revision/重载；`end_trim_mm` 在 Creo 中被接受后的真实几何（setback 还是长度读法）；角部干涉的成立或反驳。
+- 实机步骤按驱动 `live_checklist`：探针先行 → 仅 setback 确认后跑 trimmed_20 → full_length/order 两组 → 失败壁按 `third_wall_stage_record` 五段取证（terminal、UNHEALTHY_FEATURES dump、健康检查消息、revision/体积恢复）→ `corner_decision` 映射结论；180 s 未终态即停，不重提、不清场。
+- 状态口径：本轮可表述为"第三壁对照设计冻结、`end_trim_mm` 契约贯通、离线构建与回归通过、**根因未定**"；不可表述为"角部干涉已定因"或"四壁能力已具备"。
+
+### 给集成人的冲突文件与接口变化
+
+- 接口变化：`creo_sheetmetal_flange` 新增可选 `end_trim_mm`（>0，缺省行为不变）；`SheetmetalFlangeOp` 同名字段。无破坏性变化，旧计划不受影响（静态守卫 `default_to_end_both_sides` 断言缺省树不变）。
+- 本批触碰：`native/advanced.cpp`、`server.py`、`tests/unit/test_sheetmetal_box_live.py`、`tools/test_sheetmetal_box_live.py`（新）、上述三份文档。`src/creo_mechdog/schema.py` 的 `end_trim_mm` 字段为继承的前序改动，本窗口未改。
+- 共享冲突面：`native/advanced.cpp`（T03/T11/T05/T13/T12 共用）——本批仅 `generic_sheetmetal_flange` 内新增 trim 分支，与 T02/T09B 正在编辑的 `native/generic.cpp`、`tools/test_arc_direction_live.py` 无交集。`bridge.py build` 时未遇到这两文件的语法错误。

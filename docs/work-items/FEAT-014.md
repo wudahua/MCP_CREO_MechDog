@@ -131,3 +131,12 @@ T05 可交付可复现/未复现结论与根因证据，但只有四壁原生特
 - **实现**：创建+再生成功后回读创建特征树的释放段（`ProFeatureElemtreeExtract` + 按元素路径取值），与请求逐项核对，不一致即失败并回滚；一致则把 `relief_element_echo` 记入别名并写日志 `SHEETMETAL_FLANGE_RELIEF_ELEMS`。`LENGTH_TYPE/LENGTH/ANGLE` 只记录不断言（默认值是实机待答问题）。写路径未变，默认 none 不变，schema 不变。
 - **有效材料场景**：`f_px`（+x，自由端负对照）→ `f_ny`（−y 第二道，+x 链端撞 `f_px` 折弯 = 1 个材料端）；none/1×1/4×4/单端对照，去料期望按实际相交材料独立推导（−1/−16 mm³、自由端 0），体积模型锚定第六轮实测（18 025.291233 vs 实测 …234）。verdict 拒绝"参数写了但几何没去料"（第六轮形状）与板厚矛盾。
 - **未测（实机）**：`f_ny` 作第二道能否建成、`relief_element_echo` 一致性、缺口位置/尺寸/面/差值、单端映射、LENGTH 三元素默认值、板厚 1.0、保存重载、四壁 profile 新期望（0/−2）复测。
+
+## 2026-10-30：T05 离线续做——第三壁对照设计冻结与 `end_trim_mm` 契约贯通（实机未验）
+
+分支 `codex/dev051-feedback070`，HEAD `641edb3`。接续第六轮"`f_ny` status=6、空几何、回滚"的观察，离线补完对照实验；未连接 Creo。详见 [T05 验收卡](../development/DEV051-T05-ACCEPTANCE.md) 2026-10-30 节。
+
+- **对照设计冻结**：full_length（复现第六轮）/ trimmed_20（第三壁两端各缩 20 mm）/ order_ny_first（0 材料角）/ order_ny_second（1 角）四组，每 fresh 模型逐道一 job、每道重选边；判定表规定角部干涉仅在全长失败 + 低角位成功 + 修剪壁成功且 setback 语义被自由壁探针确认三者齐备时升为 supported。**角部干涉仍是候选，未定因。**
+- **`end_trim_mm` 贯通**：`sheetmetal_flange` 可选正数字段，两侧深度 `TO_END`→`BLIND`+offset（`advanced.cpp`），schema/server 同步；缺省时元素树逐字节不变（静态守卫断言）。语义（链端 setback 还是壁长）离线不可定，由自由首壁探针按实测体积分类，仅 setback 确认后才允许修剪第三壁提交。
+- **驱动**：`tests/unit/test_sheetmetal_box_live.py`（27 用例）与 `tools/test_sheetmetal_box_live.py`（默认离线、`--live` 拒绝）；单测 27/27、全量 discover 通过、`bridge.py build` 成功。报告 `build/sheetmetal_box/20261030T082547_09fb8658/report.json`。
+- **未测（实机）**：trim 语义探针、四组对照创建/失败/回滚、`f_ny` 是否再现 status=6、`end_trim_mm` 真实几何、角部干涉成立或反驳；四壁能力继续开放。

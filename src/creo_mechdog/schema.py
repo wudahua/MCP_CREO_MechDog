@@ -869,6 +869,20 @@ class SheetmetalFlangeOp(StrictModel):
     flip: bool = False
     y_factor: Annotated[float, Field(gt=0, le=1)] = 0.5
     relief: FlangeRelief | None = None
+    # DEV-051 T05 third-wall contrast: shorten the wall at both chain ends by this
+    # absolute model-unit length (both depth sides become blind with this offset).
+    # Omitting it keeps the previous full-edge tree. Whether Creo measures the blind
+    # offset as a setback from each chain end or a length from the section is a live
+    # measurement; the T05 driver probes that on a free wall before the trimmed
+    # third wall, so no geometric claim is made from this field alone.
+    end_trim_mm: Annotated[float, Field(gt=0, le=100000)] | None = None
+
+    @field_validator("end_trim_mm", mode="before")
+    @classmethod
+    def trim_is_a_number(cls, value: Any) -> Any:
+        if isinstance(value, bool):
+            raise ValueError("end_trim_mm is a length in model units, not a boolean")
+        return value
 
 
 class SheetmetalUnbendOp(StrictModel):

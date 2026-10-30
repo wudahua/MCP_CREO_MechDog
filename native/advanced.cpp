@@ -813,11 +813,39 @@ static void generic_sheetmetal_flange(const J &op) {
     integer(root, PRO_E_SMT_FLANGE_SEC_FLIP, sec_flip);
     log("FLANGE_SIDE sec_flip=%d bend_side=%s\n", sec_flip,
         sec_flip == PRO_B_TRUE ? "outward" : "inward");
+    // DEV-051 T05 (2026-10-30): the third-wall trimmed contrast needs a flange that
+    // stops short of both chain ends. Without end_trim_mm the tree is byte-for-byte
+    // the old one (both sides TO_END, same as the stock UgSmtFlgWallCreate.c). With
+    // it, both sides become blind with the requested offset. ProSmtFlangeWall.h only
+    // documents DEPTH_OFFSET as "double", so whether Creo measures that offset as a
+    // setback from each chain end or a wall length from the section is not decidable
+    // offline: the T05 box driver first probes the semantics on a free first wall
+    // (measured volume classifies the interpretation) and only then uses the trim on
+    // the third wall. This branch exists to make that mandated contrast runnable.
+    bool trim_requested = op.contains("end_trim_mm") && !op.at("end_trim_mm").is_null();
+    double trim = 0.0;
+    if (trim_requested) {
+        trim = op.at("end_trim_mm").get<double>();
+        if (!(trim > 0.0))
+            throw std::runtime_error(
+                "sheetmetal_flange end_trim_mm must be a number greater than 0 in model "
+                "units; omit it for the full-edge wall");
+        log("FLANGE_END_TRIM requested_mm=%.6f\n", trim);
+    }
     ProElement depth = node(root, PRO_E_SMT_FLANGE_DEPTH);
-    integer(node(depth, PRO_E_SMT_FLANGE_SIDE_1_DEPTH), PRO_E_SMT_FLANGE_DEPTH_TYPE,
-            PRO_WALL_LEN_TYPE_TO_END);
-    integer(node(depth, PRO_E_SMT_FLANGE_SIDE_2_DEPTH), PRO_E_SMT_FLANGE_DEPTH_TYPE,
-            PRO_WALL_LEN_TYPE_TO_END);
+    if (trim_requested) {
+        integer(node(depth, PRO_E_SMT_FLANGE_SIDE_1_DEPTH), PRO_E_SMT_FLANGE_DEPTH_TYPE,
+                PRO_WALL_LEN_TYPE_BLIND);
+        real(node(depth, PRO_E_SMT_FLANGE_SIDE_1_DEPTH), PRO_E_SMT_FLANGE_DEPTH_OFFSET, trim);
+        integer(node(depth, PRO_E_SMT_FLANGE_SIDE_2_DEPTH), PRO_E_SMT_FLANGE_DEPTH_TYPE,
+                PRO_WALL_LEN_TYPE_BLIND);
+        real(node(depth, PRO_E_SMT_FLANGE_SIDE_2_DEPTH), PRO_E_SMT_FLANGE_DEPTH_OFFSET, trim);
+    } else {
+        integer(node(depth, PRO_E_SMT_FLANGE_SIDE_1_DEPTH), PRO_E_SMT_FLANGE_DEPTH_TYPE,
+                PRO_WALL_LEN_TYPE_TO_END);
+        integer(node(depth, PRO_E_SMT_FLANGE_SIDE_2_DEPTH), PRO_E_SMT_FLANGE_DEPTH_TYPE,
+                PRO_WALL_LEN_TYPE_TO_END);
+    }
     ProElement fillet = node(root, PRO_E_SMT_FILLETS);
     integer(fillet, PRO_E_SMT_FILLETS_USE_RAD, PRO_B_TRUE);
     integer(fillet, PRO_E_SMT_FILLETS_SIDE, PRO_BEND_RAD_INSIDE);
@@ -869,6 +897,13 @@ static void generic_sheetmetal_flange(const J &op) {
         extra["relief_element_echo"] = {{"side1", side1}, {"side2", side2}};
     }
     extra["section_path"] = J::array({PRO_E_STD_SECTION, PRO_E_SKETCHER});
+    if (trim_requested)
+        // Request echo next to the measured geometry: the driver's trim-semantics
+        // probe classifies the interpretation from the measured volume, not from
+        // this echo, so a misread offset shows up as a geometry mismatch.
+        extra["depth_trim"] = {{"end_trim_mm", trim},
+                               {"side1_depth_type", PRO_WALL_LEN_TYPE_BLIND},
+                               {"side2_depth_type", PRO_WALL_LEN_TYPE_BLIND}};
     extra["bend_side"] = sec_flip == PRO_B_TRUE ? "outward" : "inward";
     extra["sec_flip_element"] = sec_flip;
     extra["flip_input"] = op.value("flip", false);

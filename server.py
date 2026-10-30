@@ -1537,6 +1537,17 @@ async def creo_sheetmetal_flange(
             )
         ),
     ] = None,
+    end_trim_mm: Annotated[
+        float | None,
+        Field(
+            description=(
+                "Optional positive length in model units: shorten the wall at both chain "
+                "ends (both depth sides become blind with this offset). Omit it for the "
+                "full-edge wall. Diagnostic use first: run one free-wall probe before "
+                "trusting the trimmed geometry."
+            )
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """Attach a native bent flange to a sheetmetal edge. The section exposes named height for dimension edits.
 
@@ -1560,6 +1571,8 @@ async def creo_sheetmetal_flange(
     }
     if relief is not None:
         operation["relief"] = relief
+    if end_trim_mm is not None:
+        operation["end_trim_mm"] = end_trim_mm
     return await invoke(general.submit, [operation], model_id, None, expected_revision)
 
 
