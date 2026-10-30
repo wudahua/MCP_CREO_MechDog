@@ -6,7 +6,7 @@
 
 本项目按可交付的 Creo MCP 工具维护，采用功能条目驱动、短分支和分批整理。日常开发从 [统一台账](BACKLOG.md) 选择条目；新增工作先登记，复杂条目复制 [模板](templates/WORK_ITEM.md)。开发准入对小修复同样适用，内容可精简为几行。
 
-服务／源码版本以 [version.py](../version.py) 为准，当前为 **0.8.5**（DEV-051 折边方向语义变更及钣金 add 支持边界拒绝码，MINOR 性质，公开工具仍 94）。本机 Creo 12.4.0.0 两例折边均向外成弯、Z 增长 79 mm 并保存重载；四壁仅 2/4、relief 去料未证实。T04 钣金体并入式 add 已定案不支持，T08B/T09A/T09B/T12 指定实机通过，T13 bundle 不通过。T02/T06/T07/T08A 和 T03 的通过范围分别保留 0.8.3 与 0.8.4 归属。见 [0.8.5 版本说明](RELEASE_NOTES_0.8.5.md)、[发布记录](validation/RELEASE-0.8.5.md)及 [0.8.0 能力说明](RELEASE_NOTES_0.8.0.md)。
+服务／源码版本以 [version.py](../version.py) 为准，当前为 **0.9.0**（DEV-051 实机修复批次：首壁板厚改由 `SMT_THICKNESS` 参数驱动并实机通过、新增 `creo_sheetmetal_flange` 可选 `end_trim_mm`，MINOR 性质，公开工具仍 94）。本机 Creo 12.4.0.0 实机：T03 板厚 5/5 通过（1 mm 壁零件厚度读数 1.0）、T13 两段式回导通过、T05 第三道折边定因为“附着边端部与既有折弯相邻”（四壁仍开放）、T09D 出基准。T02/T09B/T12 为离线交付待实机，BUG-085 根因未定。见 [0.9.0 版本说明](RELEASE_NOTES_0.9.0.md)、[发布记录](validation/RELEASE-0.9.0.md)；0.8.5 及更早范围见 [0.8.5 版本说明](RELEASE_NOTES_0.8.5.md)、[发布记录](validation/RELEASE-0.8.5.md)。
 
 当前开发批次为 [DEV-051](work-items/DEV-051.md)：0.7.0/0.7.2 反馈已归档，T00—T13 离线实现、调查和文档随 0.8.0/0.8.1 交付；T02/T06/T07/T08A 的指定实机子项随 0.8.3 补证，0.8.4 修复首壁阻断并补 T03 五组证据，0.8.5 交付折边方向和钣金 add 边界及 T08B/T09A/T09B/T12 证据。**0.8.5 之后另有 2026-10-30 的十个离线提交在开发分支上（HEAD `768c673`），未合 main、未发布、无实机验收**，其中新增的公开参数只有 `creo_sheetmetal_flange` 的可选 `end_trim_mm`（正数、两侧链端缩短；其 setback 语义待实机确认，属诊断用途）。四壁、relief 几何、T13 bundle 与 T05/T06 原件仍开放；WorkBuddy 本轮未执行。后续反馈入口为 [0.7.2 续版计划](development/0.7.2-FEEDBACK-PLAN-2026-10-28.md)与[0.7.0 派发表](development/0.7.0-FEEDBACK-TASKS-2026-10-28.md)，具体原案和缺件范围按各卡继续核对。前批 DEV-049 已随 0.7.2 交付并移入[完成档案](BACKLOG_COMPLETED.md)。
 
