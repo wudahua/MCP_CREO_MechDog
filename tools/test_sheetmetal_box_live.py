@@ -21,7 +21,13 @@ This driver turns that one-off probe capability into the formal N05 entry:
 4. the regression locks: one missing live switch means no connection, the
    output path never overwrites, unknown measurements never pass, a failing
    third wall is never counted as a built wall and four_walls_complete stays
-   False in every verdict branch.
+   False in every verdict branch;
+5. the edge-selection fix from the 2026-10-30 live first run: every wall is
+   selected against the plate bounds frozen from its base snapshot (never the
+   post-flange body bbox, whose top is the wall top), thickness-scale rim
+   edges are never candidates, and a selection that is ambiguous or
+   unqualified is recorded as driver_edge_selection_error -- a driver failure,
+   never a Creo failure and never a trigger reproduction.
 
 Default is strictly offline: no MCP client, no Toolkit connection, no job.
 --live --confirm-session-usable together start the formal live probes on the
@@ -192,7 +198,8 @@ def check_live_probe_plan() -> dict:
         "rules": [
             "one fresh model per group (two for the trim probe), unique lowercase name",
             "one job per wall; the edge is re-selected from a fresh inspection with an "
-            "explicit face before every submission",
+            "explicit face against the plate bounds frozen from the base snapshot "
+            "(never the post-flange body bbox) before every submission",
             "assert the measured edge span before submitting; never resubmit an accepted "
             "job; a job that is not terminal within 180 s stops everything",
             "the trim probe runs first; the trimmed third wall of the offline trimmed_20 "
@@ -458,13 +465,23 @@ async def submit_wall(
     model_id: str,
     side: str,
     label: str,
+    plate_bounds: tuple,
     end_trim_mm: float | None = None,
 ) -> tuple[dict, dict, dict]:
-    """One wall, one job: fresh inspection for the edge, submit, wait, snapshot."""
+    """One wall, one job: fresh inspection for the edge, submit, wait, snapshot.
+
+    plate_bounds is the plate slab frozen from the base snapshot before any
+    flange; the fresh inspection only supplies the candidate edges and the
+    revision. The 2026-10-30 live run classified "top" against the post-flange
+    body bbox instead, submitted the 1 mm wall-end rim edge for f_ny
+    (PRO_TK_BAD_CONTEXT) and found no -x top edge at all -- both driver
+    defects this signature rules out.
+    """
     snapshot = await runner.snapshot(model_id)
     inspection = LiveRunner.inspection(snapshot)
-    bounds = fx.active_bbox(inspection)
-    reference = fx.select_wall_edge(inspection, bounds, side, face="top", allow_shortened=True)
+    reference = fx.select_wall_edge(
+        inspection, plate_bounds, side, face="top", allow_shortened=True
+    )
     request = {
         "model_id": model_id,
         "expected_revision": snapshot.get("revision"),
@@ -540,8 +557,9 @@ async def run_trim_probe(runner: LiveRunner) -> dict:
         verdict.update(full={"not_executed": "the full base wall did not succeed"})
         return runner.case(verdict)
     full_base = full_case[0]
+    full_bounds = fx.active_bbox(LiveRunner.inspection(full_case[1]))
     full_ref, full_terminal, full_after = await submit_wall(
-        runner, "trim_full", full_base["model_id"], "+x", "f_px"
+        runner, "trim_full", full_base["model_id"], "+x", "f_px", full_bounds
     )
     full_added = (
         LiveRunner.volume(full_after) - full_base["base_volume_mm3"]
@@ -568,8 +586,15 @@ async def run_trim_probe(runner: LiveRunner) -> dict:
         verdict.update(full=full_entry, trimmed={"not_executed": "the trimmed base failed"})
         return runner.case(verdict)
     trimmed_base = trimmed_case[0]
+    trimmed_bounds = fx.active_bbox(LiveRunner.inspection(trimmed_case[1]))
     trimmed_ref, trimmed_terminal, trimmed_after = await submit_wall(
-        runner, "trim_trimmed", trimmed_base["model_id"], "+x", "f_px", end_trim_mm=box.TRIM_MM
+        runner,
+        "trim_trimmed",
+        trimmed_base["model_id"],
+        "+x",
+        "f_px",
+        trimmed_bounds,
+        end_trim_mm=box.TRIM_MM,
     )
     trimmed_added = (
         LiveRunner.volume(trimmed_after) - trimmed_base["base_volume_mm3"]
@@ -619,14 +644,38 @@ async def run_wall_group(runner: LiveRunner, group: str) -> dict:
         return runner.case(verdict)
     revision = snapshot.get("revision")
     volume = LiveRunner.volume(snapshot)
+    plate_bounds = fx.active_bbox(LiveRunner.inspection(snapshot))
     records = []
     for side, label in WALL_SEQUENCES[group]:
-        reference, terminal, after = await submit_wall(
-            runner, group, base_entry["model_id"], side, label
-        )
+        try:
+            reference, terminal, after = await submit_wall(
+                runner, group, base_entry["model_id"], side, label, plate_bounds
+            )
+        except fx.EdgeSelectionError as error:
+            # The 2026-10-30 run died on this unhandled error. An ambiguous or
+            # unqualified selection is a driver defect: record it, keep it out
+            # of the Creo verdicts and stop this group.
+            records.append(
+                {
+                    "label": label,
+                    "side": side,
+                    "outcome": "driver_edge_selection_error",
+                    "terminal_status": None,
+                    "error": f"EdgeSelectionError: {error}",
+                    "note": (
+                        "probe selection defect, recorded as a driver failure; never "
+                        "a Creo failure and never a trigger reproduction"
+                    ),
+                }
+            )
+            break
         log_text = read_native_log(terminal.get("job_id", terminal.get("id")))
         record = wall_record(label, side, reference, terminal, after, revision, volume, log_text)
         record["outcome"] = box.wall_outcome(record)
+        if record["outcome"] == "failed" and box.driver_selection_error(record):
+            # A failed wall on a thickness-scale rim edge is the selector's
+            # defect (2026-10-30), never a trigger reproduction.
+            record["outcome"] = "driver_edge_selection_error"
         records.append(record)
         if terminal.get("status") == "succeeded":
             revision = record["revision_after"]
@@ -705,7 +754,11 @@ def live_checklist() -> list[str]:
         "the driver runs the trim probe first (two fresh free first walls, one with "
         "end_trim_mm=20) and then the three groups ny_first / px_then_ny / px_nx_then_ny; "
         "one fresh model per group, one job per wall, edge re-selected from a fresh "
-        "inspection with an explicit face",
+        "inspection with an explicit face against the plate bounds frozen from the "
+        "base snapshot; thickness-scale rim edges are never candidates",
+        "a selection that is ambiguous, unqualified or rim-scale is recorded as "
+        "driver_edge_selection_error (passed=false) and never submitted, never judged "
+        "as a Creo failure and never as trigger_reproduced",
         "record per wall: edge span, terminal status, revision and volume before/after, "
         "bbox, saved_file_reloaded_and_verified and the native flange_failure_evidence "
         "block; a failing wall also gets third_wall_stage_record from the UNHEALTHY_FEATURES "

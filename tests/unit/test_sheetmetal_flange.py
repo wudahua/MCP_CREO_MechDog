@@ -80,6 +80,19 @@ ORIGINAL_OPERATION_RESULTS = (
 TOL_MM = 0.01
 SPAN_TOL_MM = 0.5
 
+# A rim edge runs across the sheet thickness, so its span is comparable to the
+# thickness itself; a wall boundary edge spans the plate width or length. The
+# 2026-10-30 live run submitted a 1 mm rim edge as a "shortened" boundary and
+# Creo refused the attachment (PRO_TK_BAD_CONTEXT, -8) -- a driver selection
+# defect, never a modelling failure.
+THICKNESS_SCALE_FACTOR = 2.0
+
+
+def is_thickness_scale_span(span_mm: float, thickness_mm: float) -> bool:
+    """True when an edge span is comparable to the sheet thickness (a rim edge)."""
+    return span_mm <= THICKNESS_SCALE_FACTOR * thickness_mm + TOL_MM
+
+
 # side -> (coordinate axis of the side plane, axis the edge runs along)
 SIDE_AXES = {"+x": (0, 1), "-x": (0, 1), "+y": (1, 0), "-y": (1, 0)}
 # side -> the two plan corners it ends at, as (x sign, y sign)
@@ -176,6 +189,88 @@ def box_inspection(bounds: tuple = PLATE_BOUNDS) -> dict:
     }
 
 
+# --- the measured post-flange topology (2026-10-30 live px_then_ny) ---------
+
+# What plate_bounds must be (the plate slab: top stays z=0.5) versus what the
+# buggy caller passed (the whole body bbox: the +x wall lifts the top to
+# z=79.5). Classifying "top" against the body bbox is the shared root cause of
+# both live selection failures.
+POST_FLANGE_PLATE_BOUNDS = ((0.0, -232.0, -0.5), (185.0, 0.0, 0.5))
+POST_FLANGE_BODY_BOUNDS = ((0.0, -232.0, -0.5), (185.0, 0.0, 79.5))
+
+
+def post_flange_inspection() -> dict:
+    """The measured px_then_ny topology after the +x wall (2026-10-30 live).
+
+    The plate's -y top edge lost the bend width (radius + thickness = 3.54) at
+    the +x corner and spans 181.46 mm; the -x top edge is untouched (232 mm).
+    The wall contributes its end rim edge (id 211: 1 mm at y=-232, z=79.5) --
+    the edge the buggy selection submitted and Creo refused with
+    PRO_TK_BAD_CONTEXT (-8). Edge ids and adjacent surfaces echo the report.
+    """
+    edges = [
+        {
+            "id": 211,
+            "start": [185.0, -232.0, 79.5],
+            "end": [184.0, -232.0, 79.5],
+            "adjacent_surfaces": [214, 213],
+        },
+        {
+            "id": 103,
+            "start": [0.0, -232.0, 0.5],
+            "end": [181.46, -232.0, 0.5],
+            "adjacent_surfaces": [303, 306],
+        },
+        {
+            "id": 101,
+            "start": [0.0, -232.0, -0.5],
+            "end": [185.0, -232.0, -0.5],
+            "adjacent_surfaces": [303, 305],
+        },
+        {
+            "id": 106,
+            "start": [0.0, -232.0, 0.5],
+            "end": [0.0, 0.0, 0.5],
+            "adjacent_surfaces": [301, 306],
+        },
+        {
+            "id": 108,
+            "start": [0.0, -232.0, -0.5],
+            "end": [0.0, 0.0, -0.5],
+            "adjacent_surfaces": [301, 305],
+        },
+        {
+            "id": 219,
+            "start": [185.0, 0.0, 79.5],
+            "end": [185.0, -232.0, 79.5],
+            "adjacent_surfaces": [302, 214],
+        },
+        {
+            "id": 222,
+            "start": [0.0, -232.0, -0.5],
+            "end": [0.0, -232.0, 0.5],
+            "adjacent_surfaces": [301, 303],
+        },
+    ]
+    return {
+        "model_id": "n05_post_flange",
+        "bodies": [
+            {
+                "id": 1,
+                "state": 2,
+                "has_geometry": True,
+                "bbox": [
+                    list(POST_FLANGE_BODY_BOUNDS[0]),
+                    list(POST_FLANGE_BODY_BOUNDS[1]),
+                ],
+            }
+        ],
+        "surfaces": [],
+        "edges": edges,
+        "counts": {"bodies": 1, "surfaces": 0, "edges": len(edges)},
+    }
+
+
 # --- geometric edge selection (no id from the report) ----------------------
 
 
@@ -232,6 +327,13 @@ def select_wall_edge(
     face="top"/"bottom" names which of the two parallel 1 mm-apart boundaries is
     meant. Omitting it is an error, not a silent pick: the choice changes which
     face the bend is built from, and the reported run never recorded it.
+
+    plate_bounds must be the base plate slab (the bbox captured from the base
+    snapshot before any flange), never the whole body: after a flange the body
+    top is the wall top, and classifying "top" against it misroutes every later
+    side. Thickness-scale rim edges are never candidates, and a shortened pick
+    is bounded by what adjacent bends can consume -- anything else fails here
+    as a driver selection error instead of reaching Creo as a bogus edge.
     """
     if side not in SIDE_AXES:
         raise EdgeSelectionError(f"unknown side {side!r}; use one of {sorted(SIDE_AXES)}")
@@ -241,6 +343,7 @@ def select_wall_edge(
     axis, run = SIDE_AXES[side]
     coordinate = plate_bounds[1][axis] if side[0] == "+" else plate_bounds[0][axis]
     expected = plate_bounds[1][run] - plate_bounds[0][run]
+    thickness = plate_bounds[1][normal] - plate_bounds[0][normal]
 
     on_plane = []
     skipped = []
@@ -253,6 +356,9 @@ def select_wall_edge(
             continue
         if abs(start[normal] - end[normal]) > TOL_MM:
             skipped.append({"id": edge["id"], "reason": "corner edge along the plate normal"})
+            continue
+        if is_thickness_scale_span(abs(end[run] - start[run]), thickness):
+            skipped.append({"id": edge["id"], "reason": "thickness-scale rim edge"})
             continue
         on_plane.append(edge)
 
@@ -274,7 +380,9 @@ def select_wall_edge(
 
     candidates = [edge for edge in on_plane if _edge_face(edge, plate_bounds, normal) == face]
     if not candidates:
-        raise EdgeSelectionError(f"side {side} has no {face} boundary edge")
+        raise EdgeSelectionError(
+            f"side {side} has no {face} boundary edge ({len(skipped)} edge(s) skipped: {skipped})"
+        )
 
     full = [
         edge
@@ -292,6 +400,19 @@ def select_wall_edge(
     longest_span, longest = measured[-1]
     shortfall = expected - longest_span
     if allow_shortened:
+        # Bounded shortfall: each adjacent bend consumes at most radius +
+        # thickness of this boundary at one end, both ends at most twice that
+        # (the round-six shape: 185 - 2 x 3.54 = 177.92). Anything shorter is
+        # not the plate boundary; refuse it as a driver selection failure.
+        max_shortfall = 2.0 * (FLANGE_RADIUS_MM + thickness)
+        if shortfall > max_shortfall + SPAN_TOL_MM:
+            raise EdgeSelectionError(
+                f"side {side} face {face}: longest boundary edge id {longest['id']} spans "
+                f"{longest_span:.3f} mm, short by {shortfall:.3f} mm, beyond the bounded "
+                f"allowance {max_shortfall:.3f} mm (two bend ends of radius "
+                f"{FLANGE_RADIUS_MM} mm + thickness {thickness:.3f} mm); driver selection "
+                "failure, not a Creo failure"
+            )
         return _record(longest, side, face, run, expected)
     raise EdgeSelectionError(
         f"side {side} face {face} has no full-length edge: nearest id {longest['id']} spans "
@@ -845,6 +966,67 @@ class EdgeSelectionTest(unittest.TestCase):
             select_wall_edge(box_inspection(), PLATE_BOUNDS, "+z", face="top")
         with self.assertRaises(EdgeSelectionError):
             select_wall_edge(box_inspection(), PLATE_BOUNDS, "+x", face="middle")
+
+
+class PostFlangeSelectionTest(unittest.TestCase):
+    """The 2026-10-30 live first run: both selection failure modes, locked offline."""
+
+    def test_minus_y_selects_the_shortened_plate_edge_not_the_rim_edge(self):
+        reference = select_wall_edge(
+            post_flange_inspection(),
+            POST_FLANGE_PLATE_BOUNDS,
+            "-y",
+            face="top",
+            allow_shortened=True,
+        )
+        geometry = reference["geometry"]
+        self.assertNotEqual(reference["edge"]["id"], 211)
+        self.assertAlmostEqual(geometry["span_mm"], 181.46, places=6)
+        self.assertAlmostEqual(geometry["start"][2], 0.5, places=6)
+        self.assertEqual(geometry["face"], "top")
+
+    def test_body_bbox_cannot_trick_the_selector_into_the_rim_edge(self):
+        # The live defect: classifying "top" against the post-flange body bbox
+        # (wall top at z=79.5) left the rim edge as the only candidate. It must
+        # fail the driver, never pick the rim.
+        with self.assertRaises(EdgeSelectionError) as ctx:
+            select_wall_edge(
+                post_flange_inspection(),
+                POST_FLANGE_BODY_BOUNDS,
+                "-y",
+                face="top",
+                allow_shortened=True,
+            )
+        self.assertIn("no top boundary edge", str(ctx.exception))
+
+    def test_thickness_scale_edges_are_never_candidates(self):
+        inspection = post_flange_inspection()
+        inspection["edges"] = [edge for edge in inspection["edges"] if edge["id"] != 103]
+        with self.assertRaises(EdgeSelectionError) as ctx:
+            select_wall_edge(
+                inspection, POST_FLANGE_PLATE_BOUNDS, "-y", face="top", allow_shortened=True
+            )
+        self.assertIn("rim", str(ctx.exception))
+
+    def test_minus_x_selection_is_deterministic_after_the_flange(self):
+        inspection = post_flange_inspection()
+        first = select_wall_edge(
+            inspection, POST_FLANGE_PLATE_BOUNDS, "-x", face="top", allow_shortened=True
+        )
+        second = select_wall_edge(
+            inspection, POST_FLANGE_PLATE_BOUNDS, "-x", face="top", allow_shortened=True
+        )
+        self.assertEqual(first["edge"]["id"], second["edge"]["id"])
+        self.assertAlmostEqual(first["geometry"]["span_mm"], 232.0, places=6)
+        self.assertAlmostEqual(first["geometry"]["start"][2], 0.5, places=6)
+        self.assertNotEqual(first["edge"]["id"], 211)
+
+    def test_minus_x_with_body_bbox_fails_as_a_driver_error(self):
+        # The exact live stop ("side -x has no top boundary edge"): with the
+        # plate bounds it selects deterministically; with the body bbox it is
+        # a bounded driver failure, never a silent pick.
+        with self.assertRaises(EdgeSelectionError):
+            select_wall_edge(post_flange_inspection(), POST_FLANGE_BODY_BOUNDS, "-x", face="top")
 
 
 class SequentialRefreshTest(unittest.TestCase):

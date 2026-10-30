@@ -350,3 +350,15 @@ GUI 控制接口不可用，无法确认菜单、视图和对话框可操作；�
 
 完整 job/model ID、revision、几何、原始错误、停止范围、报告路径与 SHA256、N06 机理边界见 [N05 实机记录](DEV052-N05-LIVE-2026-10-30.md)。本次未改源码、未结束 Creo、未清保护；Creo 9/10 和 WorkBuddy 黑盒未测。
 
+
+
+## 2026-10-31：N05 首跑结论更正——px_then_ny 的 trigger_reproduced 判定无效（追加，不改写上节）
+
+对上节首跑（run `20261030T233639_cb833e2b`）的判定做如下更正，原记录保留不改写：
+
+- **`px_then_ny` 的 `trigger_reproduced` 无效。** 驱动为 `f_ny` 选到的是 +X 墙端 1 mm rim 边（edge 211，span 1.0 mm，z=79.5），不是 185 mm 级的 −Y 顶部长边。根因在驱动选边：`submit_wall` 用折边后的整件 body bbox（Z 顶=79.5）做 `face="top"` 分类，真正的板顶边（z=0.5）被归为 other；`allow_shortened` 又无下限，1 mm 厚度尺度边被当作缩短边提交，Creo 以 `ProSmtedgeContourGet` 返回 `PRO_TK_BAD_CONTEXT (-8)` 拒绝附着。这是**输入附着失败（驱动缺陷）**，不是特征再生失败机理的复现；`FLANGE_FAILURE_EVIDENCE` 未取得，机理证据仍缺。
+- **同根第二处：`px_nx_then_ny` 的停止也是驱动缺陷。** +X 成功后 −X 侧报 `side -x has no top boundary edge`，是同一 bbox 误分类把 −X 板顶边（z=0.5、span 232）排除所致；−X/−Y 未提交属选边异常中止，不构成该组判定。
+- **不受更正影响的事实**：trim 两组实测与 `trim_ignored` 分类、`ny_first` 的 −Y 自由壁建成（Z 增长 80 mm、保存重载 true）、全部 job/model ID、revision、回滚证据与原始错误原文均维持原记录。
+- **离线修复（随本次提交交付，未实机）**：选边改为相对基线板 bbox（base snapshot 冻结，fresh inspection 只供候选边与 revision）；排除厚度尺度 rim 边（span ≤ 2×板厚）；`allow_shortened` 加有界下限（超过两端 bend 消耗 2×(R+t) 即拒绝）；选边不唯一/不合格在驱动中记 `driver_edge_selection_error`（组判定 passed=false），永不记为 Creo 失败或触发复现。新增单元锁定：rim 边失败判驱动错误而非 `trigger_reproduced`、−X 侧选边确定性、body bbox 误用必失败。
+- 实机需以新 runid 重跑正式驱动复验本修复；本更正只改判定有效性，"机理证据仍缺、四壁未完成"的现状不变。
+

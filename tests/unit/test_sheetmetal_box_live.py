@@ -564,6 +564,23 @@ def wall_outcome(record: dict) -> str:
     return status
 
 
+def driver_selection_error(record: dict) -> bool:
+    """A failed wall whose attachment edge is thickness-scale is a driver defect.
+
+    The 2026-10-30 live first run submitted a 1 mm rim edge (edge 211, the +x
+    wall end) for f_ny; Creo refused the attachment (PRO_TK_BAD_CONTEXT, -8)
+    and the driver marked trigger_reproduced, which was invalid. A rim edge can
+    only come from the selector, so a failed wall on such an edge is a probe
+    failure, never a reproduction of the proven trigger condition.
+    """
+    span = record.get("edge_span_mm")
+    return (
+        record.get("terminal_status") == "failed"
+        and span is not None
+        and fx.is_thickness_scale_span(span, fx.PLATE_THICKNESS_MM)
+    )
+
+
 def probe_group_verdict(group: str, outcomes: dict) -> dict:
     """Map one live wall group's per-wall outcomes to a diagnostic verdict.
 
@@ -581,6 +598,26 @@ def probe_group_verdict(group: str, outcomes: dict) -> dict:
     labels = LIVE_PROBE_GROUPS[group]["walls"]
     missing = [label for label in labels if outcomes.get(label) not in ("succeeded", "failed")]
     failed_walls = [label for label in labels if outcomes.get(label) == "failed"]
+    selection_errors = [
+        label for label in labels if outcomes.get(label) == "driver_edge_selection_error"
+    ]
+    if selection_errors:
+        # The 2026-10-30 live first run marked trigger_reproduced on a rim-edge
+        # attach failure. A selection defect is judged as a driver failure and
+        # never feeds the trigger gradient.
+        return {
+            "group": group,
+            "outcome": "driver_edge_selection_error",
+            "passed": False,
+            "selection_error_walls": selection_errors,
+            "failed_walls": failed_walls,
+            "four_walls_complete": False,
+            "note": (
+                "the driver selected a thickness-scale rim edge or could not select a "
+                "deterministic boundary edge; this is a probe defect, never a Creo "
+                "failure and never a reproduction of the proven trigger condition"
+            ),
+        }
     if missing:
         return {
             "group": group,
@@ -1085,6 +1122,58 @@ class ProbeGroupVerdictTest(unittest.TestCase):
         verdicts = [probe_group_verdict(group, wall) for group, wall in outcomes.items()]
         self.assertTrue(all(v["passed"] is not None for v in verdicts))
         self.assertFalse(any(v["four_walls_complete"] for v in verdicts))
+
+
+class DriverSelectionErrorVerdictTest(unittest.TestCase):
+    """The 2026-10-30 live first run: a rim edge must never read as trigger_reproduced."""
+
+    def test_rim_span_failed_wall_is_a_driver_selection_error(self):
+        record = {
+            "terminal_status": "failed",
+            "edge_span_mm": 1.0,
+            "revision_after": 2,
+            "volume_after_mm3": 60_945.29,
+        }
+        self.assertTrue(driver_selection_error(record))
+
+    def test_real_shortened_boundary_edges_are_not_driver_errors(self):
+        record = {
+            "terminal_status": "failed",
+            "edge_span_mm": 177.92,
+            "revision_after": 3,
+            "volume_after_mm3": 80_040.0,
+        }
+        self.assertFalse(driver_selection_error(record))
+        self.assertFalse(driver_selection_error({"terminal_status": "failed"}))
+        self.assertFalse(
+            driver_selection_error(
+                {
+                    "terminal_status": "succeeded",
+                    "edge_span_mm": 1.0,
+                    "revision_after": 2,
+                    "volume_after_mm3": 42_920.0,
+                }
+            )
+        )
+
+    def test_rim_edge_failure_is_judged_driver_error_not_trigger_reproduced(self):
+        verdict = probe_group_verdict(
+            "px_then_ny", {"f_px": "succeeded", "f_ny": "driver_edge_selection_error"}
+        )
+        self.assertEqual(verdict["outcome"], "driver_edge_selection_error")
+        self.assertFalse(verdict["passed"])
+        self.assertIn("f_ny", verdict["selection_error_walls"])
+        self.assertFalse(verdict["four_walls_complete"])
+        self.assertNotEqual(verdict["outcome"], "trigger_reproduced")
+
+    def test_later_wall_selection_error_keeps_the_group_failed_and_incomplete(self):
+        verdict = probe_group_verdict(
+            "px_nx_then_ny", {"f_px": "succeeded", "f_nx": "driver_edge_selection_error"}
+        )
+        self.assertEqual(verdict["outcome"], "driver_edge_selection_error")
+        self.assertFalse(verdict["passed"])
+        self.assertIn("f_nx", verdict["selection_error_walls"])
+        self.assertFalse(verdict["four_walls_complete"])
 
 
 class TrimProbeVerdictTest(unittest.TestCase):
