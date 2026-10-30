@@ -207,6 +207,45 @@ async def run_live(output: Path | None) -> int:
                         problems.append("incomplete bundle: re-import refused")
                         reopened["skipped"] = "incomplete_bundle"
                     elif root_file:
+                        # The export job loaded its own assembly into this session and the
+                        # bundle root carries that same name, so opening the copy would be
+                        # refused with SESSION_NAME_CONFLICT (2026-10-30 live run). Erase
+                        # exactly this run's exported root - the driver's own artifact -
+                        # before the re-import; no other session model is touched, and an
+                        # unavailable target fails the case instead of skipping the check.
+                        erase_target = [{"name": Path(root_file).stem, "model_type": "assembly"}]
+                        probe = await runner.call(
+                            "creo_erase_session_models",
+                            {"mode": "inspect", "targets": erase_target},
+                        )
+                        erase_summary = probe.get("session_erase") or {}
+                        reopened["erase_inspect"] = {
+                            "available": erase_summary.get("available"),
+                            "erase_order": erase_summary.get("erase_order"),
+                        }
+                        if not (erase_summary.get("available") and probe.get("evidence_token")):
+                            problems.append(
+                                "the exported assembly was not erasable, so the re-import "
+                                "would collide with the session name"
+                            )
+                        else:
+                            applied = await runner.call(
+                                "creo_erase_session_models",
+                                {
+                                    "mode": "apply",
+                                    "evidence_token": probe["evidence_token"],
+                                    "idempotency_key": uuid.uuid4().hex,
+                                },
+                            )
+                            erased = await runner.wait_job(
+                                applied["job_id"], budget=HANG_BUDGET_SECONDS
+                            )
+                            reopened["erase_job_id"] = applied["job_id"]
+                            reopened["erase_status"] = erased.get("status")
+                            if erased.get("status") != "succeeded":
+                                problems.append(
+                                    "the exported assembly could not be erased before re-import"
+                                )
                         fresh_root.mkdir(parents=True, exist_ok=True)
                         for item in Path(str(bundle.get("directory"))).iterdir():
                             if item.is_file():
