@@ -1098,10 +1098,18 @@ static void assemble_component(const J &op) {
     if (child_type == PRO_MDL_ASSEMBLY)
         throw std::runtime_error(
             "Nested assembly copying is not yet supported; insert owned part/sheetmetal models");
-    ProMdlName copy_name;
+    // T13: this exact string is the copy's identity and the stem Creo writes on
+    // Backup (c_<job16>_<n>.prt.N). It is captured before the copy call because
+    // ProMdlnameCopy takes a non-const name buffer, and it is recorded so the
+    // bundle looks the file up from the same source as the file name instead of
+    // a name read back later.
     std::wstring token = std::filesystem::path(generic_job).filename().wstring();
-    swprintf_s(copy_name, L"c_%s_%u", token.substr(0, 16).c_str(),
+    wchar_t copy_text[PRO_MDLNAME_SIZE] = {};
+    swprintf_s(copy_text, L"c_%s_%u", token.substr(0, 16).c_str(),
                (unsigned)generated_identity_index());
+    const std::wstring snapshot(copy_text);
+    ProMdlName copy_name;
+    wcscpy_s(copy_name, snapshot.c_str());
     ProMdl copy;
     CK(ProMdlnameCopy(child, copy_name, &copy));
     child = copy;
@@ -1130,6 +1138,7 @@ static void assemble_component(const J &op) {
               {"source_revision", source["revision"]},
               {"placement", placement},
               {"source_snapshot", true},
+              {"snapshot_name", utf8(std::filesystem::path(snapshot))},
               {"component_aliases", source["aliases"]}});
 }
 static J constraint_reference(ProSelection ref) {
@@ -1138,8 +1147,11 @@ static J constraint_reference(ProSelection ref) {
     ProModelitem mi;
     if (ProSelectionModelitemGet(ref, &mi))
         return nullptr;
-    ProName owner;
-    CK(ProMdlNameGet(mi.owner, owner));
+    // BUG-070: the deprecated ProMdlNameGet left an uninitialized ProName
+    // untouched and stale bytes surfaced as a garbled model name. The
+    // successor fills a zeroed buffer (see worker.cpp).
+    ProMdlName owner = {};
+    CK(ProMdlMdlnameGet(mi.owner, owner));
     J result = {{"id", mi.id}, {"type", (int)mi.type}, {"owner", utf8(owner)}};
     ProAsmcomppath context;
     if (!ProSelectionAsmcomppathGet(ref, &context)) {
@@ -1210,8 +1222,19 @@ static J assembly_inspection() {
             }
             ProMdlType child_type;
             CK(ProMdlTypeGet(child, &child_type));
-            ProName name;
-            CK(ProMdlNameGet(child, name));
+            // BUG-070: the deprecated ProMdlNameGet left an uninitialized
+            // ProName untouched and stale bytes surfaced as a garbled model
+            // name. The successor fills a zeroed buffer (see worker.cpp).
+            ProMdlName name = {};
+            ProError name_code = ProMdlMdlnameGet(child, name);
+            if (name_code) {
+                components.push_back({{"feature_id", comp.id},
+                                      {"model_name", nullptr},
+                                      {"model_type", nullptr},
+                                      {"missing", true},
+                                      {"model_query_code", (int)name_code}});
+                continue;
+            }
             ProMatrix position;
             CK(component_to_assembly_transform(&comp, position));
             ProMatrix initial;

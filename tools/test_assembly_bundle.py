@@ -197,11 +197,16 @@ async def run_live(output: Path | None) -> int:
                             digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
                             if digest != item.get("sha256"):
                                 problems.append(f"sha256 mismatch for {relative}")
-                    entry["manifest_problems"] = problems
-
                     root_file = manifest.get("root")
                     reopened: dict = {}
-                    if root_file:
+                    # A partial bundle is not a deliverable: the target fails
+                    # immediately and an incomplete package is never fed back
+                    # into a session. Only a complete bundle prepares the
+                    # re-import.
+                    if not (bundle.get("complete") and not problems):
+                        problems.append("incomplete bundle: re-import refused")
+                        reopened["skipped"] = "incomplete_bundle"
+                    elif root_file:
                         fresh_root.mkdir(parents=True, exist_ok=True)
                         for item in Path(str(bundle.get("directory"))).iterdir():
                             if item.is_file():
@@ -237,15 +242,16 @@ async def run_live(output: Path | None) -> int:
                                 key: session.get(key)
                                 for key in ("name", "path", "revision", "component_count")
                             }
+                        expected_count = len(entry["components_before"])
+                        if reopened.get("open_status") != "succeeded":
+                            problems.append("re-opened assembly did not load")
+                        if reopened.get("session_component_count") != expected_count:
+                            problems.append(
+                                "re-opened component count "
+                                f"{reopened.get('session_component_count')!r} != {expected_count}"
+                            )
                     entry["reimport"] = reopened
-                    expected_count = len(entry["components_before"])
-                    if reopened.get("open_status") != "succeeded":
-                        problems.append("re-opened assembly did not load")
-                    if reopened.get("session_component_count") != expected_count:
-                        problems.append(
-                            "re-opened component count "
-                            f"{reopened.get('session_component_count')!r} != {expected_count}"
-                        )
+                    entry["manifest_problems"] = problems
                     entry["passed"] = not problems
                     runner.case(entry)
         except BaseException as error:

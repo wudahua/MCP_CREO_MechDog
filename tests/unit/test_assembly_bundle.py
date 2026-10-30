@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import stat
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,6 +12,22 @@ from unittest.mock import patch
 
 from creo_mechdog.assembly_bundle import create_bundle
 from creo_mechdog.schema import validate_operations
+
+
+def component(feature_id: int, kind: str = "part", **extra) -> dict:
+    record = {"feature_id": feature_id, "model_type": kind}
+    record.update(extra)
+    return record
+
+
+def binding(feature_id: int, snapshot_name: object, label: str) -> dict:
+    return {
+        label: {
+            "op": "assemble_component",
+            "feature_id": feature_id,
+            "snapshot_name": snapshot_name,
+        }
+    }
 
 
 class AssemblyBundleTest(unittest.TestCase):
@@ -27,16 +44,32 @@ class AssemblyBundleTest(unittest.TestCase):
         (self.owned / "pump.asm.1").write_bytes(b"old version")
         (self.owned / "c_one.prt.1").write_bytes(b"old part")
         (self.owned / "c_one.prt.2").write_bytes(b"part version 2")
-        self.model = {"model_type": "assembly", "part_file": str(self.asm), "revision": 7}
+        self.model = {
+            "model_type": "assembly",
+            "part_file": str(self.asm),
+            "revision": 7,
+            "aliases": binding(40, "c_one", "part_alpha"),
+        }
+
+    def bundle(self, inspection: dict, model: dict | None = None) -> dict:
+        # create_bundle refuses to overwrite a job's bundle directory, so every
+        # call in one test gets its own job output directory.
+        output = self.job / f"attempt-{len(list(self.job.iterdir()))}"
+        output.mkdir()
+        result = create_bundle(model or self.model, inspection, output, self.owned)
+        result["manifest_payload"] = json.loads(
+            Path(result["manifest"]).read_text(encoding="utf-8")
+        )
+        return result
 
     def test_closure_relative_paths_hashes_and_source_unchanged(self):
-        inspection = {"components": [{"model_name": "c_one", "model_type": "part"}]}
+        inspection = {"components": [component(40)]}
         before = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in self.owned.iterdir()}
-        result = create_bundle(self.model, inspection, self.job, self.owned)
-        manifest = json.loads(Path(result["manifest"]).read_text(encoding="utf-8"))
+        result = self.bundle(inspection)
+        manifest = result["manifest_payload"]
         self.assertTrue(result["complete"])
         self.assertEqual([f["path"] for f in manifest["files"]], ["pump.asm", "c_one.prt"])
-        self.assertEqual((self.job / "native_bundle" / "c_one.prt").read_bytes(), b"part version 2")
+        self.assertEqual((Path(result["directory"]) / "c_one.prt").read_bytes(), b"part version 2")
         self.assertFalse(any(":" in f["path"] or ".." in f["path"] for f in manifest["files"]))
         self.assertEqual(self.model["revision"], 7)
         self.assertEqual(
@@ -44,38 +77,126 @@ class AssemblyBundleTest(unittest.TestCase):
             {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in self.owned.iterdir()},
         )
 
-    def test_missing_and_nested_unknown_are_explicit(self):
-        inspection = {
-            "components": [
-                {"model_name": "absent", "model_type": "part"},
-                {"model_name": "nested", "model_type": "assembly"},
-            ]
+    def test_unresolved_identity_never_marks_complete(self):
+        """No record, a mangled name and an ambiguous name all refuse to bundle."""
+        cases = {
+            "no_record": (
+                {"components": [component(40)]},
+                {**self.model, "aliases": {}},
+            ),
+            "foreign_name": (
+                {"components": [component(40)]},
+                {**self.model, "aliases": binding(40, "▩C_ONE0001", "part_alpha")},
+            ),
+            "path_name": (
+                {"components": [component(40)]},
+                {**self.model, "aliases": binding(40, "../secret", "part_alpha")},
+            ),
+            "upper_name": (
+                {"components": [component(40)]},
+                {**self.model, "aliases": binding(40, "C_ONE", "part_alpha")},
+            ),
+            "name_is_not_a_string": (
+                {"components": [component(40)]},
+                {**self.model, "aliases": binding(40, None, "part_alpha")},
+            ),
+            "missing_feature_id": (
+                {"components": [{"model_type": "part"}]},
+                self.model,
+            ),
+            "ambiguous_identity": (
+                {"components": [component(40)]},
+                {
+                    **self.model,
+                    "aliases": {
+                        **binding(40, "c_one", "part_alpha"),
+                        **binding(40, "c_other", "part_alpha_again"),
+                    },
+                },
+            ),
         }
-        result = create_bundle(self.model, inspection, self.job, self.owned)
-        manifest = json.loads(Path(result["manifest"]).read_text(encoding="utf-8"))
+        for label, (inspection, model) in cases.items():
+            with self.subTest(label):
+                result = self.bundle(inspection, model)
+                manifest = result["manifest_payload"]
+                self.assertFalse(manifest["complete"], label)
+                self.assertFalse(result["complete"], label)
+                self.assertEqual(
+                    [ref["reason"] for ref in manifest["unresolved_references"]],
+                    ["unresolved_identity"],
+                    label,
+                )
+
+    def test_repeated_occurrences_share_verified_file(self):
+        (self.owned / "c_two.prt.1").write_bytes(b"second part")
+        model = {
+            **self.model,
+            "aliases": {
+                **binding(40, "c_one", "part_alpha"),
+                **binding(41, "c_one", "part_alpha_again"),
+                **binding(42, "c_two", "part_beta"),
+            },
+        }
+        result = self.bundle({"components": [component(40), component(41), component(42)]}, model)
+        manifest = result["manifest_payload"]
+        self.assertTrue(manifest["complete"])
+        self.assertEqual(
+            [entry["path"] for entry in manifest["files"]],
+            ["pump.asm", "c_one.prt", "c_two.prt"],
+        )
+        self.assertEqual(result["missing"], 0)
+
+    def test_missing_and_nested_unknown_are_explicit(self):
+        (self.owned / "c_nested.asm.1").write_bytes(b"nested assembly")
+        model = {
+            **self.model,
+            "aliases": {
+                **binding(40, "c_absent", "part_alpha"),
+                **binding(41, "c_nested", "part_beta"),
+            },
+        }
+        result = self.bundle({"components": [component(40), component(41, "assembly")]}, model)
+        manifest = result["manifest_payload"]
         self.assertFalse(manifest["complete"])
         self.assertGreaterEqual(result["missing"], 2)
         self.assertIn("nested_closure_unknown", str(manifest["unresolved_references"]))
 
     def test_nested_reference_closure_when_children_are_known(self):
-        (self.owned / "nested.asm.1").write_bytes(b"nested assembly")
-        (self.owned / "leaf.prt.1").write_bytes(b"leaf part")
-        inspection = {
-            "components": [
-                {
-                    "model_name": "nested",
-                    "model_type": "assembly",
-                    "components": [{"model_name": "leaf", "model_type": "part"}],
-                }
-            ]
+        (self.owned / "c_nested.asm.1").write_bytes(b"nested assembly")
+        (self.owned / "c_leaf.prt.1").write_bytes(b"leaf part")
+        model = {
+            **self.model,
+            "aliases": {
+                **binding(40, "c_nested", "part_alpha"),
+                **binding(41, "c_leaf", "part_beta"),
+            },
         }
-        result = create_bundle(self.model, inspection, self.job, self.owned)
-        manifest = json.loads(Path(result["manifest"]).read_text(encoding="utf-8"))
+        result = self.bundle(
+            {
+                "components": [
+                    component(40, "assembly", components=[component(41)]),
+                ]
+            },
+            model,
+        )
+        manifest = result["manifest_payload"]
         self.assertTrue(manifest["complete"])
         self.assertEqual(
             [entry["path"] for entry in manifest["files"]],
-            ["pump.asm", "nested.asm", "leaf.prt"],
+            ["pump.asm", "c_nested.asm", "c_leaf.prt"],
         )
+
+    def test_read_only_source_is_copied_without_writing_back(self):
+        source = self.owned / "c_one.prt.2"
+        source.chmod(stat.S_IREAD)
+        self.addCleanup(source.chmod, stat.S_IREAD | stat.S_IWRITE)
+        self.assertEqual(source.stat().st_mode & stat.S_IWRITE, 0)
+        digest = hashlib.sha256(source.read_bytes()).hexdigest()
+        result = self.bundle({"components": [component(40)]})
+        self.assertTrue(result["manifest_payload"]["complete"])
+        self.assertEqual((Path(result["directory"]) / "c_one.prt").read_bytes(), b"part version 2")
+        self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(), digest)
+        self.assertEqual(source.stat().st_mode & stat.S_IWRITE, 0)
 
     def test_external_root_and_unsafe_identity_refused(self):
         external = self.root / "external.asm.1"
@@ -84,12 +205,14 @@ class AssemblyBundleTest(unittest.TestCase):
             create_bundle(
                 {**self.model, "part_file": str(external)}, {"components": []}, self.job, self.owned
             )
-        result = create_bundle(
-            self.model, {"components": [{"model_name": "../secret"}]}, self.job, self.owned
+        result = self.bundle(
+            {"components": [component(40)]},
+            {**self.model, "aliases": binding(40, "../secret", "part_alpha")},
         )
-        manifest = json.loads(Path(result["manifest"]).read_text(encoding="utf-8"))
-        self.assertFalse(manifest["complete"])
-        self.assertEqual(manifest["unresolved_references"][0]["reason"], "unresolved_identity")
+        self.assertFalse(result["manifest_payload"]["complete"])
+        self.assertEqual(
+            result["manifest_payload"]["unresolved_references"][0]["reason"], "unresolved_identity"
+        )
 
     def test_failure_removes_only_new_bundle_directory(self):
         sentinel = self.job / "existing.txt"

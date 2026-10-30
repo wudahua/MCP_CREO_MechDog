@@ -41,3 +41,9 @@
 - 原因：磁盘副本名是 `c_fec6a06a17f54953_0.prt.1`（与装配 job 前 16 位一致，符合契约），而巡检 `model_name` 返回 `\u25a9C_FEC6A06A17F549530001`（前导 U+25A9、全大写、后缀 `0001` 而非 `_0`），`_references` 的 `[a-z][a-z0-9_]{0,30}` 校验失败。
 - 回导未完成：同名装配仍在会话中，`creo_open_file` 返回 `SESSION_NAME_CONFLICT`（`open_file_session_check`、`toolkit_code=-1`）；未擅自擦除会话模型。
 - 本轮**未**放宽校验或猜测名字映射（会把不完整包伪装成自包含），也未改原生名称读取。修复方向：让巡检名与磁盘文件名同源（核对 `ProMdlNameGet` 缓冲区与前导 U+25A9 是否未初始化内存），再补"擦除会话模型 + 新目录打开"的回导验收。本条仍开放。
+
+## DEV-051 T13 离线阶段（2026-10-30）：身份链路定因与最小修复
+
+定因（带行号）：磁盘名来自 `native/advanced.cpp` `insert_component` 自己生成的复制名 `c_<job16>_<n>`（`ProMdlnameCopy` → `ProMdlnameBackup` 逐字落盘）；巡检名来自另一条独立读取 `ProMdlNameGet`（自 Creo 3 废弃）+ 未初始化 `ProName`，两者不同源。该废弃调用即本仓库 BUG-070（`native/worker.cpp`）已定因并修过的同一缺陷，`assembly_inspection`/`constraint_reference` 未跟上。全量取样 1483 个 `model_name` 无一正常，形状恒为 `U+25A9` + 名字形字符串；其内部成因离线无法证实，记**未定因**，未据此实现任何字符串映射。
+
+最小修复：复制名在生成时登记进持久化别名记录（`snapshot_name`），打包按 `feature_id` 取回该字符串逐字符精确定位自有源件；名称读取改用 `ProMdlMdlnameGet` + 清零缓冲；补异常身份/重复 occurrence/缺件/只读源/未知嵌套闭包回归，完整性不足一律 `complete=false`；驱动改为残包立即记失败且不回导。离线 9/9、全量 1482/1482 通过，`bridge.py build` 通过。实机回导待验（新目录打开、组件/位姿/体积/哈希、源 revision 不变、不得擦用户模型）。详见 [T13 验收卡](../development/DEV051-T13-ACCEPTANCE.md)。状态保持离线实现完成、实机未验。

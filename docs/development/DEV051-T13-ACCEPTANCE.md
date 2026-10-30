@@ -67,3 +67,127 @@
 1. 原生侧确认 `model_name` 的真实来源（`ProMdlNameGet` 缓冲区初始化/长度、是否需要 `ProMdlFileNameGet`），让巡检名与磁盘文件名同源；用 `tool dump` 或一次只读探针确认前导 U+25A9 是否未初始化内存。
 2. 修好后重跑本驱动，再补 `creo_erase_session_models`（或另开会话）完成"新目录打开 + 组件数/变换/标签"回读。
 3. 未测：嵌套装配闭包、缺件/外部/只读源件、revision 不变与保存重载、Creo 9/10。
+
+## 2026-10-30 离线阶段：身份链路定因与最小修复（未实机）
+
+阶段：**离线实现与回归完成；实机两件装配导出/回导仍未重跑，整项仍不通过**。工作区 `E:\Projects\MCP_CREO_MechDog`，分支 `codex/dev051-feedback070`，基线 HEAD `f4adc99`，本阶段改动**未提交**（提交由派发方统一做），`dirty=true`。未改 `version.py`、`schema.py`、`docs/BACKLOG.md`、`docs/validation/`、钣金相关代码与驱动，未连接 MCP/Toolkit、未启动 Creo、未擦任何会话模型、未改 git index。
+
+### 一、根因：巡检名与磁盘名是两条不同的来源（已定因，带行号）
+
+一条组件记录的名字要同时满足两件事：身份可判定、能定位自有源件。这两件事此前各自由**不同字符串**提供，因此永远对不上。
+
+**（1）磁盘名来源——`insert_component` 自己生成的复制名。** `native/advanced.cpp:1101-1110`：
+
+```cpp
+std::wstring token = std::filesystem::path(generic_job).filename().wstring();
+wchar_t copy_text[PRO_MDLNAME_SIZE] = {};
+swprintf_s(copy_text, L"c_%s_%u", token.substr(0, 16).c_str(),
+           (unsigned)generated_identity_index());
+...
+CK(ProMdlnameCopy(child, copy_name, &copy));
+```
+
+即 `c_<job_id 前16位>_<操作序号>`。Creo 的 `ProMdlnameBackup`（`native/generic.cpp:5177`，保存阶段）按**该字符串**把组件快照写进本模型 `output/`。实测对账：
+
+| 来源 | 值 |
+| --- | --- |
+| 装配作业号 | `fec6a06a17f54953905512d39cbea214` |
+| 生成的复制名 | `c_fec6a06a17f54953_0` / `c_fec6a06a17f54953_1`（`generated_identity_index()`=0/1） |
+| 磁盘实际文件 | `models/c319d95a5e0c469786e8bc5754b7ec7f/output/c_fec6a06a17f54953_0.prt.1`、`_1.prt.1` |
+
+另一例：`models/072e2254ed6d4e118f870cbe44101a9f/output/c_1f809c3532ce435c_0.._4.prt.1` 对应作业 `1f809c3532ce435c8d85e931a4e24fb9` 的操作序号 0–4。**文件名与我们生成的字符串逐字相同。**
+
+**（2）巡检名来源——另一条完全独立的 SDK 读取，且用的是废弃接口。** `native/advanced.cpp:1225-1229`（修复前为 `1213-1214`）：
+
+```cpp
+ProName name;                       // wchar_t[32]，未初始化
+CK(ProMdlNameGet(child, name));     // 自 Creo 3 起废弃
+...
+{"model_name", utf8(name)},
+```
+
+`ProName` 是 `wchar_t[PRO_NAME_SIZE]`（32，`ProSizeConst.h:25/63`，注释为"任何**其它** Creo 名字"），而模型名的正规类型是 `ProMdlName`（`wchar_t[PRO_MDLNAME_SIZE]`，180，`ProSizeConst.h:24/59`）。SDK 头 `ProMdl.h:591-598` 明确 `ProMdlNameGet` **DEPRECATED: Since Creo 3 / SUCCESSORS: ProMdlMdlnameGet**。
+
+这条废弃调用正是本仓库**已经定因并修过一次**的同一缺陷：`native/worker.cpp:399-405` 的 BUG-070 注释——"the deprecated ProMdlNameGet left an uninitialized ProName untouched ... and stale stack bytes surfaced as a garbled model name. The successor fills a zeroed buffer"，修复是换用 `ProMdlMdlnameGet` + 清零的 `ProMdlName`。`assembly_inspection()` 与 `constraint_reference()`（`native/advanced.cpp:1141-1142` 修复前）没有跟上那次修复。
+
+**（3）消费端因此判定身份不可解。** `src/creo_mechdog/assembly_bundle.py:47-56`（修复前）用 `[a-z][a-z0-9_]{0,30}` 校验 `model_name` 并据此找 `<名字>.prt.N`；外来字符串校验失败 → `unresolved_identity` → `complete=false`。拒绝本身是对的（残包确实不能算自包含），但功能目标没达到。
+
+### 二、实测到的异常形状（只记录，不作映射规则）
+
+对 `jobs/**/inspection*.json` 全量取样：**1483 个 `model_name` 全部异常，0 个正常**，形状高度一致（不是随机栈残留）：
+
+- 全部 23 字符，首字符恒为 **U+25A9**（UTF-8 `E2 96 A9`，原始字节已核对），其后为 ASCII 名字形字符串；
+- 组件副本一律是 `C_<16位十六进制大写><4位数字>`，例如 `C_FEC6A06A17F549530001`、`C_FEC6A06A17F549530002`；
+- 约束引用的 `owner` 字段（同一废弃调用）也带同一前缀，非副本模型则**名字本体不变**，例如 `U+25A9 T09_DST_20261026T20002`；
+- 该值在"保存→擦除→重载"前后自比通过（`native/generic.cpp:3059` 的 `a["model_name"] != b["model_name"]` 判等，装配作业 `fec6a06a17f54953…` 成功），说明它是模型身份的确定性产物，而非未初始化内存的随机字节。
+
+**未定因（不编映射规则）：** 该废弃入口究竟返回了什么（遗留/occurrence 显示名、还是缓冲区越界/偏移读）**无法在离线条件下证实**，需一次实机只读探针。已观测到的重拼形状（副本 `c_<16hex>_<n>` 变成 `C_<16HEX><%04d(n+1)>`，无 `_<n>` 结尾的名字原样通过）仅作现象记录，**未据此实现任何前缀裁剪、大小写折叠或后缀改写**。
+
+### 三、最小修复：让身份与文件名出自同一字符串
+
+不猜映射，改为让两侧引用**同一个已记录字符串**——`insert_component` 生成复制名时就把该字符串登记进组件的持久化别名记录（跨作业、跨 worker 进程可取回），打包时按 `feature_id` 取回它去定位自有源件。
+
+| 文件 | 改动 |
+| --- | --- |
+| `native/advanced.cpp:1101-1110` | 复制名先落到 `std::wstring snapshot`（在 `ProMdlnameCopy` 之前捕获，因其 `ProMdlName` 入参非 const），再传给 SDK |
+| `native/advanced.cpp:1128-1138` | `remember(...)` 追加 `snapshot_name` = 该字符串，随别名记录持久化 |
+| `native/advanced.cpp:1141-1145` | `constraint_reference`：废弃 `ProMdlNameGet` + 未初始化 `ProName` → `ProMdlMdlnameGet` + 清零 `ProMdlName`（BUG-070 同款） |
+| `native/advanced.cpp:1225-1237` | `assembly_inspection`：同上；名称读取失败改记 `missing=true`/`model_query_code`，不再 `CK` 抛掉整份巡检 |
+| `src/creo_mechdog/assembly_bundle.py:36-114` | 新增 `_snapshot_identities(model)`：从持久化别名记录按 `feature_id` 取 `snapshot_name`（关联键沿用 `component_identity.py` 的 `model_identity+feature_id`）；`_references` 改用该身份定位源件，**逐字符精确匹配**，无前缀裁剪/大小写折叠/后缀改写；两条不同 `snapshot_name` 指向同一 `feature_id` 视为歧义 → `unresolved_identity` |
+| `src/creo_mechdog/assembly_bundle.py:22-34` | `_latest` 增加**大小写精确**前缀核对（Windows glob 不区分大小写，此前会把不同大小写当作同一文件） |
+| `src/creo_mechdog/assembly_bundle.py:127` | 根名去 `.lower()`，与文件名逐字一致 |
+| `tools/test_assembly_bundle.py:200-255` | **残包不得回导**：`complete=false` 或清单有问题 → 立即记目标失败（`reimport.skipped=incomplete_bundle`），不复制、不 `creo_open_file`；只有完整包才准备新目录回导 |
+
+保护面全部保留：目录/链接拒绝、`MAX_FILES=128`、`MAX_BYTES`、manifest 32 KiB、引用深度 32、只读源件不写回、失败只删本次新建的 bundle 子目录。缺件/身份异常/未知嵌套闭包仍一律 `complete=false`。
+
+业务标签（`part_alpha`/`part_beta`）仍只存在于登记侧别名记录，**随包不保留**（`.prt/.asm` 原生文件不自带标签）；包内保留的是可回导的几何与引用身份，标签需由调用方按 `feature_id` 重新绑定。
+
+### 四、回归与离线证据
+
+新增/改造回归（`tests/unit/test_assembly_bundle.py`，9 例）：
+
+| 用例 | 覆盖 |
+| --- | --- |
+| `test_unresolved_identity_never_marks_complete` | 异常身份 7 种：无记录、`▩C_ONE0001` 形状、路径名、大写名、非字符串、缺 `feature_id`、同一 `feature_id` 两个名字（歧义）——全部 `complete=false` 且 `reason=unresolved_identity` |
+| `test_repeated_occurrences_share_verified_file` | 重复 occurrence 共用同一已验文件：清单只含一份 `c_one.prt`，`missing=0`，`complete=true` |
+| `test_missing_and_nested_unknown_are_explicit` | 缺件 + 未知嵌套闭包 → `complete=false`，含 `nested_closure_unknown` |
+| `test_read_only_source_is_copied_without_writing_back` | 只读源被复制、源字节与只读位不变 |
+| `test_nested_reference_closure_when_children_are_known` | 已知子级时递归闭包正确 |
+| 其余 4 例 | 哈希/相对路径/源不变、外部根拒绝、失败只清本次目录、导出格式契约 |
+
+命令与结果（Windows x64 / PowerShell / `.venv` Python 3.12 / Creo 12.4 匹配 Toolkit SDK / MSVC x64，仅离线，不连 Creo）：
+
+```text
+.\.venv\Scripts\python.exe -m unittest tests.unit.test_assembly_bundle -v
+    Ran 9 tests in 0.291s   OK
+
+.\.venv\Scripts\python.exe -m unittest discover -s tests
+    Ran 1482 tests in 279.395s   OK
+
+.\.venv\Scripts\python.exe bridge.py build
+    exit 0 -> build\creo_worker.exe
+
+.\.venv\Scripts\python.exe tools\test_assembly_bundle.py
+    Ran 9 tests ... OK
+    {"report": "build\\assembly_bundle\\20261030T093807_ad9f17ff\\report.json",
+     "sha256": "204baaf35137ecefd8ed27fddd81e9c3d1637402f97041f8ba0816e75babf30f",
+     "passed": true}
+
+.\.venv\Scripts\python.exe -m ruff format --check  ...  3 files already formatted
+.\.venv\Scripts\python.exe -m ruff check          ...  All checks passed!
+.\.venv\Scripts\clang-format.exe --dry-run --Werror native\advanced.cpp   (无输出，通过)
+```
+
+原始错误保留：本次唯一失败是首轮 6 个 `ValueError: native_bundle already exists for this job`（测试夹具对同一 job 目录重复建包，属夹具问题，改用每用例独立 job 输出目录后消除）；另有一条 `guard_live ... "status": "unknown_outcome"` 为本机安全策略的守卫产物（见 `guarded_live_*.json`），非测试失败，整套仍 `OK`。
+
+### 五、实机回导待验步骤（本轮未执行，需另派实机阶段）
+
+前提：唯一 dev 服务 `MCP_CREO_MechDog_dev` 指向 E 盘项目，满足 BUG-001 本次会话可操作条件；**不擅自启动/结束 Creo、不擦用户模型**。
+
+1. **新目录打开**：两件装配（`part_alpha` 固定、`part_beta` 平移 [100,0,0]）建好后执行 `creo_export_model(format="native_bundle")`，把 `native_bundle/` 复制到**全新目录**再 `creo_open_file`。断言 `manifest.complete=true`、`files=3`（根 `.asm` + 两个唯一源件）、`missing=0`、`unresolved_references=[]`，清单 SHA256 与产物一致。
+2. **组件/位姿/体积**：`creo_inspect_session_assembly` 回读组件数=2、两组件 `feature_id` 与导出前一致、`transform`/`initial_transform` 与导出前逐元素一致（容差 1e-7）、总体积与导出前一致（容差 0.01 mm³）。
+3. **哈希与源件不变**：包内三个文件的 SHA256 与源目录对应文件逐一相等；导出前后 `models/<源件 id>/…` 的 `part_sha256` 与 `revision` 均不变（只读导出不加 revision，见 `generic_bridge.py` 只读成功分支）。
+4. **同名冲突**：会话中仍有同名装配时必须报 `SESSION_NAME_CONFLICT` 而不是覆盖；**仅在明确指定的本轮测试模型范围或隔离可用会话内**处理同名，不得擦除用户模型。
+5. **负例**：抽掉一个 `.prt` 后重导出 → `complete=false`、`missing=1`，且驱动记目标失败、`reimport.skipped=incomplete_bundle`，**不得**继续 `creo_open_file`。
+
+未测范围（如实记录）：上述实机全部未跑；嵌套装配闭包实机、外部/缺失引用实机、保存重载 true、Creo 9/10 均未测。离线阶段不等于整项验收通过。
