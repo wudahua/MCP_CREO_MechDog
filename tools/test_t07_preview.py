@@ -7,10 +7,19 @@ submits startup/retry commands, or resubmits a busy/failed job.
 
 The fixtures replay BUG-066 step by step on a disk, then add a cut and an
 angular pattern. For each job the driver records the raw preview return codes
-and keeps a copy of the image under build/t07-preview/ so the T13 reviewer can
+and keeps a copy of the image under the run directory so the reviewer can
 compare it with the model by eye. Image content is deliberately NOT judged
 here: a successful raster call or a non-empty file never proves the picture is
 right, and geometry stays with the native inspection evidence.
+
+The empty new part is the configuration the 0.8.x feedback names (a new part
+with no operations). That case is recorded, not asserted as written, and the
+same model is then continued in the same session with real geometry so the two
+file outcomes can be compared. A sheetmetal part is captured as well, so a
+thin wall is compared with a solid body instead of with another disk.
+
+Every run writes a unique report and image directory and refuses to overwrite
+an existing report, so historical evidence is never replaced.
 """
 
 from __future__ import annotations
@@ -27,6 +36,7 @@ import shutil
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -43,7 +53,32 @@ CUT_RADIUS_MM = 10.0
 CUT_OFFSET_MM = 20.0
 PATTERN_COUNT = 4
 PATTERN_INCREMENT_DEG = 90.0
-EVIDENCE = ROOT / "build/t07-preview"
+WALL_LENGTH_MM = 185.0
+WALL_DEPTH_MM = 232.0
+WALL_THICKNESS_MM = 1.0
+
+
+def new_run_id() -> str:
+    return f"{time.strftime('%Y%m%dT%H%M%S')}_{uuid.uuid4().hex[:8]}"
+
+
+def resolve_output(output: Path | None, run_id: str) -> Path:
+    """Refuse to overwrite an existing report before any connection is made."""
+    path = (
+        Path(output)
+        if output is not None
+        else ROOT / "build" / "post090_n11_preview" / run_id / "report.json"
+    )
+    if path.exists():
+        raise ValueError(f"Refusing to overwrite an existing report: {path}")
+    return path
+
+
+def resolve_images(output: Path | None, run_id: str) -> Path:
+    """Every run keeps its own image directory; history is never replaced."""
+    if output is not None:
+        return Path(output).parent / "images"
+    return ROOT / "build" / "post090_n11_preview" / run_id / "images"
 
 
 def disk_volume() -> float:
@@ -54,11 +89,11 @@ def cut_volume(instances: int = 1) -> float:
     return instances * math.pi * CUT_RADIUS_MM**2 * DISK_DEPTH_MM
 
 
-def sketch(label: str, entities: list[dict]) -> dict:
+def sketch(label: str, entities: list[dict], plane: str = "XY") -> dict:
     return {
         "op": "sketch",
         "label": label,
-        "plane": "XY",
+        "plane": plane,
         "entities": entities,
         "dimensioning": "coordinates",
     }
@@ -123,6 +158,47 @@ def pattern_plan() -> list[dict]:
             "increment_deg": PATTERN_INCREMENT_DEG,
         }
     ]
+
+
+def empty_plan() -> list[dict]:
+    """A new part with no operations: the configuration the 0.8.x reports name.
+
+    Nothing is modelled, so this plan is exactly the "empty part" whose preview
+    the external reports record as ``failed_step="output_file"``. The driver
+    records the outcome instead of asserting a written image.
+    """
+    return []
+
+
+def sheetmetal_plan() -> list[dict]:
+    """One flat sheetmetal wall, used as the thin-body comparison case."""
+    return [
+        sketch(
+            "wall_sketch",
+            [
+                {
+                    "type": "line",
+                    "name": "wall_line",
+                    "start": [0.0, 0.0],
+                    "end": [WALL_LENGTH_MM, 0.0],
+                    "construction": False,
+                }
+            ],
+            plane="XZ",
+        ),
+        {
+            "op": "sheetmetal_wall",
+            "label": "base_wall",
+            "sketch": "wall_sketch",
+            "depth": WALL_DEPTH_MM,
+            "thickness": WALL_THICKNESS_MM,
+            "direction": "positive",
+        },
+    ]
+
+
+def sheetmetal_volume() -> float:
+    return WALL_LENGTH_MM * WALL_THICKNESS_MM * WALL_DEPTH_MM
 
 
 def require_live(args: argparse.Namespace) -> bool:
@@ -191,11 +267,13 @@ def local_provenance() -> dict:
 
 
 class Acceptance:
-    def __init__(self, client: Any, output: Path) -> None:
+    def __init__(self, client: Any, output: Path, images: Path, run_id: str) -> None:
         self.client = client
         self.output = output
+        self.images = images
         self.report: dict = {
             "task": "DEV-047 T07",
+            "run_id": run_id,
             "fixture_dimensioning": "coordinates",
             "started_at": time.time(),
             "calls": [],
@@ -275,6 +353,16 @@ class Acceptance:
         accepted = await self.call("creo_execute_plan", args)
         return await self.terminal(accepted["job_id"])
 
+    async def empty_part_case(self) -> dict:
+        """Create the empty new part with the tool the 0.8.x reports name.
+
+        ``creo_new_part`` is the public tool the external reports call out
+        ("``creo_new_part`` preview always fails"). Using it here keeps the
+        reproduction on the same entry point the report describes.
+        """
+        accepted = await self.call("creo_new_part", {})
+        return await self.terminal(accepted["job_id"])
+
     async def terminal(self, job_id: str) -> dict:
         deadline = time.monotonic() + 360
         while time.monotonic() < deadline:
@@ -291,10 +379,9 @@ class Acceptance:
 
         return await read_full_model(self.call, model_id)
 
-    @staticmethod
-    def keep_image(case: str, path: Path) -> dict:
-        EVIDENCE.mkdir(parents=True, exist_ok=True)
-        target = EVIDENCE / f"{case}{path.suffix}"
+    def keep_image(self, case: str, path: Path) -> dict:
+        self.images.mkdir(parents=True, exist_ok=True)
+        target = self.images / f"{case}{path.suffix}"
         shutil.copyfile(path, target)
         data = target.read_bytes()
         return {
@@ -305,8 +392,21 @@ class Acceptance:
             "content_verification": "human_review_pending",
         }
 
-    def check_preview(self, case: str, terminal: dict, *, operation: dict | None = None) -> dict:
-        """Assert the raw capture codes and keep the image; never judge pixels."""
+    def check_preview(
+        self,
+        case: str,
+        terminal: dict,
+        *,
+        operation: dict | None = None,
+        expect_written: bool = True,
+    ) -> dict:
+        """Record the raw capture codes and keep the image; never judge pixels.
+
+        ``expect_written=False`` records the outcome of a capture that is
+        allowed to fail (the empty new part) without turning the failure into a
+        driver error. The filesystem evidence is kept either way, so a missing
+        file can be told apart from a failed raster call.
+        """
         result = terminal["result"]
         preview = result.get("preview") if operation is None else operation.get("preview")
         assert isinstance(preview, dict), (case, result)
@@ -332,22 +432,47 @@ class Acceptance:
         }
         # Raw codes are the evidence. A zero raster code alone does not mean the
         # picture is correct, so the image is retained for human review.
-        assert preview.get("status") == "written", record
-        assert codes.get("raster") == 0, record
-        assert codes.get("display") == 0, record
-        assert codes.get("refit") == 0, record
-        assert codes.get("repaint") == 0, record
-        assert preview.get("file_verified") is True, record
-        image = Path(preview["path"])
-        assert image.is_file() and image.stat().st_size > 0, record
-        record["image"] = self.keep_image(case, image)
+        if expect_written:
+            assert preview.get("status") == "written", record
+            assert codes.get("raster") == 0, record
+            assert codes.get("display") == 0, record
+            assert codes.get("refit") == 0, record
+            assert codes.get("repaint") == 0, record
+            assert preview.get("file_verified") is True, record
+            image = Path(preview["path"])
+            assert image.is_file() and image.stat().st_size > 0, record
+            record["image"] = self.keep_image(case, image)
+        else:
+            # The empty part may legitimately produce no image. Record what the
+            # filesystem stage reported and keep the raw codes; a missing image
+            # must never be reported as a successful capture.
+            record["image"] = None
+            if preview.get("status") == "written":
+                image = Path(preview["path"])
+                assert image.is_file() and image.stat().st_size > 0, record
+                record["image"] = self.keep_image(case, image)
+            else:
+                assert preview.get("status") == "failed", record
+                assert preview.get("failed_step"), record
         return record
 
-    async def run_case(self, case: str, operations: list, previous: dict | None) -> dict:
-        terminal = await self.plan(
-            operations,
-            previous["model_id"] if previous else None,
-            previous["revision"] if previous else None,
+    async def run_case(
+        self,
+        case: str,
+        operations: list,
+        previous: dict | None,
+        *,
+        expect_written: bool = True,
+        empty_part: bool = False,
+    ) -> dict:
+        terminal = (
+            await self.empty_part_case()
+            if empty_part
+            else await self.plan(
+                operations,
+                previous["model_id"] if previous else None,
+                previous["revision"] if previous else None,
+            )
         )
         record: dict = {
             "case": case,
@@ -365,7 +490,7 @@ class Acceptance:
         record["saved_file_reloaded_and_verified"] = terminal["result"].get(
             "saved_file_reloaded_and_verified"
         )
-        record["preview"] = self.check_preview(case, terminal)
+        record["preview"] = self.check_preview(case, terminal, expect_written=expect_written)
         try:
             snapshot = await self.snapshot(terminal["model_id"])
             inspection = snapshot["inspection"]
@@ -414,6 +539,20 @@ class Acceptance:
         return record
 
     async def run(self) -> None:
+        # The empty new part first: it is the configuration the 0.8.x feedback
+        # names, and its capture is allowed to fail. The same model is then
+        # continued in this session with real geometry, so the empty-part file
+        # outcome and a solid-body file outcome are directly comparable.
+        empty = await self.run_case(
+            "empty_part", empty_plan(), None, expect_written=False, empty_part=True
+        )
+        empty_model = {
+            "model_id": empty["terminal"]["model_id"],
+            "revision": empty["terminal"]["revision"],
+        }
+        empty_solid = await self.run_case(
+            "empty_part_solid", disk_plan(), empty_model, expect_written=False
+        )
         disk = await self.run_case("disk", disk_plan(), None)
         disk_model = {
             "model_id": disk["terminal"]["model_id"],
@@ -429,24 +568,54 @@ class Acceptance:
             "model_id": pattern["terminal"]["model_id"],
             "revision": pattern["terminal"]["revision"],
         }
+        # A thin sheetmetal wall as the body-shape comparison: the raster path is
+        # the same one, so a difference in the written file is attributable to
+        # the body and not to a second capture implementation.
+        sheetmetal = await self.run_case("sheetmetal_wall", sheetmetal_plan(), None)
+        sheetmetal_model = {
+            "model_id": sheetmetal["terminal"]["model_id"],
+            "revision": sheetmetal["terminal"]["revision"],
+        }
         await self.export_case(pattern_model)
         self.report.update(
             preview_acceptance="passed",
             fixtures={
+                "empty_part": empty_plan(),
+                "empty_part_solid": disk_plan(),
                 "disk": disk_plan(),
                 "cut": cut_plan(),
                 "pattern": pattern_plan(),
+                "sheetmetal_wall": sheetmetal_plan(),
             },
             expected_volumes_mm3={
                 "disk": disk_volume(),
                 "after_cut": disk_volume() - cut_volume(1),
                 "after_pattern": disk_volume() - cut_volume(PATTERN_COUNT),
+                "sheetmetal_wall": sheetmetal_volume(),
             },
+            # The empty part is expected to produce no image in the reported
+            # configuration. Its file outcome is recorded, never asserted as a
+            # written capture, and the image content stays human review. The
+            # same model continued with a solid body in the same session shows
+            # the second half of the comparison.
+            empty_part_expectation="capture_may_fail_recorded_not_asserted",
+            empty_part_file_outcome={
+                "empty_part": empty["record"]["preview"]["status"],
+                "empty_part_solid": empty_solid["record"]["preview"]["status"],
+                "same_model_id": empty_model["model_id"],
+                "note": (
+                    "Both rows are recorded outcomes. An empty part with no "
+                    "operations and the same model after a solid body are "
+                    "separate file-write results; the image content of the "
+                    "written one is still human review."
+                ),
+            },
+            sheetmetal_model_id=sheetmetal_model["model_id"],
             pending_native_acceptance=[],
         )
 
 
-async def live(output: Path) -> None:
+async def live(output: Path, images: Path, run_id: str) -> None:
     require_manual_start(ROOT / "config.json")
     from mcp import Client
     from mcp.client.stdio import StdioServerParameters
@@ -455,7 +624,7 @@ async def live(output: Path) -> None:
         StdioServerParameters(command=sys.executable, args=[str(ROOT / "server.py")], cwd=ROOT),
         read_timeout_seconds=60,
     ) as client:
-        acceptance = Acceptance(client, output)
+        acceptance = Acceptance(client, output, images, run_id)
         acceptance.save()
         try:
             acceptance.report["capabilities"] = await acceptance.call("creo_capabilities", {})
@@ -477,20 +646,31 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--confirm-session-usable", action="store_true")
-    parser.add_argument("--output", type=Path, default=ROOT / "build/t07_preview_acceptance.json")
+    parser.add_argument("--output", type=Path, default=None)
     args = parser.parse_args(argv)
     try:
         enabled = require_live(args)
     except ValueError as error:
         parser.error(str(error))
+
+    run_id = new_run_id()
+    try:
+        output = resolve_output(args.output, run_id)
+        images = resolve_images(args.output, run_id)
+    except ValueError as error:
+        print(f"REFUSED BEFORE CONNECTION: {error}")
+        return 2
+
     if enabled:
-        asyncio.run(live(args.output))
+        asyncio.run(live(output, images, run_id))
     else:
         print(
             "OFFLINE ONLY: no MCP client, connection or preview capture executed; use both "
             "explicit live flags after human session confirmation. Expected fixture volumes: "
             f"disk={disk_volume():.3f}, after_cut={disk_volume() - cut_volume(1):.3f}, "
-            f"after_pattern={disk_volume() - cut_volume(PATTERN_COUNT):.3f} mm3."
+            f"after_pattern={disk_volume() - cut_volume(PATTERN_COUNT):.3f}, "
+            f"sheetmetal_wall={sheetmetal_volume():.3f} mm3. "
+            f"run_id={run_id} report={output} images={images}"
         )
     return 0
 

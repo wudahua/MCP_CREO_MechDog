@@ -3,6 +3,11 @@
 Offline coverage only. The native assertions read the sources that the single
 translation unit (native/worker.cpp) compiles, so a second screenshot path that
 bypasses the shared step fails here; nothing connects to Creo.
+
+The driver coverage added for BUG-088/BUG-066 is asserted here as well: the
+empty new part is recorded instead of being asserted as a written capture, the
+run writes a unique report and image directory, and an existing report is
+never overwritten.
 """
 
 from __future__ import annotations
@@ -19,6 +24,7 @@ import bridge
 import generic_bridge as general
 from creo_mechdog import model_registry
 from creo_mechdog.preview import apply_preview_projection, normalize_preview
+from tools import test_t07_preview as driver
 
 NATIVE = Path(__file__).resolve().parents[2] / "native"
 SCREENSHOT_PATHS = ("worker.cpp", "generic.cpp", "drawing.cpp")
@@ -561,6 +567,179 @@ class JobLevelDecoupling(unittest.TestCase):
         self.assertEqual(manifest["status"], "failed")
         self.assertEqual(manifest["result"]["preview_status"], "failed")
         self.assertIn("save failed", manifest["message"])
+
+
+class DriverCoverage(unittest.TestCase):
+    """BUG-088/BUG-066: the empty part, the solid body and the sheetmetal wall.
+
+    The driver must be able to record the empty-part capture without turning a
+    failed image into a driver error, and it must never overwrite an earlier
+    report or image directory.
+    """
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix="t07_driver_")
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+
+    def acceptance(self) -> driver.Acceptance:
+        return driver.Acceptance(
+            client=None, output=self.root / "report.json", images=self.root / "images", run_id="r1"
+        )
+
+    def terminal(self, preview: dict) -> dict:
+        return {
+            "job_id": "j" * 32,
+            "model_id": "m" * 32,
+            "status": "succeeded",
+            "revision": 1,
+            "result": {"preview": preview, "preview_code": preview.get("codes", {}).get("raster")},
+        }
+
+    def failed_preview(self) -> dict:
+        # The exact shape the 0.8.x feedback reports for the empty new part.
+        return {
+            "status": "failed",
+            "path": str(self.root / "output" / "preview.jpg"),
+            "bytes": -1,
+            "file_verified": False,
+            "codes": {
+                "display": 0,
+                "window_get": 0,
+                "window_model_get": 0,
+                "current_set": 0,
+                "current_get": 0,
+                "activate": 0,
+                "view_matrix_set": 0,
+                "view_matrix_get": 0,
+                "refit": 0,
+                "refresh": 0,
+                "repaint": 0,
+                "raster": 0,
+            },
+            "failed_step": "output_file",
+            "failed_code": -4,
+            "file_check": {
+                "stage": "after_raster",
+                "absolute": True,
+                "parent_exists": True,
+                "exists": False,
+                "is_file": False,
+                "size": -1,
+                "error_code": 2,
+                "error_category": "system",
+                "error_message": "The system cannot find the file specified.",
+            },
+            "verification_error": "FileNotFoundError",
+        }
+
+    def written_preview(self) -> dict:
+        image = self.root / "output" / "preview.jpg"
+        image.parent.mkdir(parents=True, exist_ok=True)
+        image.write_bytes(b"\xff\xd8\xff real capture bytes")
+        return {
+            "status": "written",
+            "path": str(image),
+            "bytes": image.stat().st_size,
+            "file_verified": True,
+            "codes": {
+                "display": 0,
+                "window_get": 0,
+                "window_model_get": 0,
+                "current_set": 0,
+                "current_get": 0,
+                "activate": 0,
+                "view_matrix_set": 0,
+                "view_matrix_get": 0,
+                "refit": 0,
+                "refresh": 0,
+                "repaint": 0,
+                "raster": 0,
+            },
+            "failed_step": None,
+            "failed_code": None,
+            "file_check": {
+                "stage": "after_raster",
+                "absolute": True,
+                "parent_exists": True,
+                "exists": True,
+                "is_file": True,
+                "size": image.stat().st_size,
+                "error_code": 0,
+                "error_category": None,
+                "error_message": None,
+            },
+            "verification_error": None,
+        }
+
+    def test_the_empty_part_failure_is_recorded_not_raised(self):
+        record = self.acceptance().check_preview(
+            "empty_part", self.terminal(self.failed_preview()), expect_written=False
+        )
+        self.assertEqual(record["status"], "failed")
+        self.assertEqual(record["failed_step"], "output_file")
+        self.assertEqual(record["failed_code"], -4)
+        self.assertIsNone(record["image"])
+        # The filesystem evidence survives so the reviewer can tell a missing
+        # file apart from a failed raster call.
+        self.assertEqual(record["file_check"]["error_code"], 2)
+        self.assertEqual(record["verification_error"], "FileNotFoundError")
+
+    def test_a_missing_image_is_never_reported_as_a_capture(self):
+        # The same failed block must still be refused by the strict path: an
+        # empty part cannot be counted as a written image.
+        with self.assertRaises(AssertionError):
+            self.acceptance().check_preview(
+                "empty_part", self.terminal(self.failed_preview()), expect_written=True
+            )
+
+    def test_the_solid_body_capture_is_kept_for_human_review(self):
+        record = self.acceptance().check_preview(
+            "empty_part_solid", self.terminal(self.written_preview())
+        )
+        self.assertEqual(record["status"], "written")
+        self.assertIsNotNone(record["image"])
+        self.assertGreater(record["image"]["bytes"], 0)
+        self.assertEqual(record["image"]["content_verification"], "human_review_pending")
+
+    def test_the_empty_plan_models_nothing(self):
+        self.assertEqual(driver.empty_plan(), [])
+
+    def test_the_sheetmetal_fixture_is_one_flat_wall(self):
+        from creo_mechdog.schema import validate_operations
+
+        operations = validate_operations(driver.sheetmetal_plan())
+        self.assertEqual([op["op"] for op in operations], ["sketch", "sheetmetal_wall"])
+        wall = operations[1]
+        self.assertEqual(wall["plane"] if "plane" in wall else operations[0]["plane"], "XZ")
+        self.assertEqual(wall["depth"], driver.WALL_DEPTH_MM)
+        self.assertEqual(wall["thickness"], driver.WALL_THICKNESS_MM)
+        self.assertEqual(
+            driver.sheetmetal_volume(),
+            driver.WALL_LENGTH_MM * driver.WALL_THICKNESS_MM * driver.WALL_DEPTH_MM,
+        )
+
+    def test_a_new_run_id_is_unique(self):
+        self.assertNotEqual(driver.new_run_id(), driver.new_run_id())
+
+    def test_an_existing_report_is_never_overwritten(self):
+        existing = self.root / "report.json"
+        existing.write_text("{}", encoding="utf-8")
+        with self.assertRaises(ValueError):
+            driver.resolve_output(existing, "r1")
+
+    def test_a_new_report_gets_its_own_directory(self):
+        output = driver.resolve_output(None, "run-1")
+        self.assertIn("run-1", str(output))
+        self.assertFalse(output.exists())
+        images = driver.resolve_images(None, "run-1")
+        self.assertIn("run-1", str(images))
+        self.assertNotEqual(str(images), str(output))
+
+    def test_the_images_directory_follows_the_report(self):
+        output = self.root / "run-2" / "report.json"
+        images = driver.resolve_images(output, "run-2")
+        self.assertEqual(images, self.root / "run-2" / "images")
 
 
 if __name__ == "__main__":
