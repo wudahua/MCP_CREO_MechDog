@@ -499,7 +499,174 @@ def corner_decision(
     }
 
 
-# --- static source guards ----------------------------------------------------
+# --- live probe plan and verdicts (DEV-052 N05) ------------------------------
+#
+# The 2026-10-30 live contrast (one-off build probe, not in the repo) fixed the
+# trigger: a wall whose attachment edge ends adjacent to an existing bend fails
+# even when only one end touches, while the full free edge builds. N05 freezes
+# that probe into the formal driver: three wall groups plus the end_trim_mm
+# measurement, each on a fresh model, one job per wall, edge re-selected from a
+# fresh inspection. These helpers are the verdict side; the live entry in
+# tools/test_sheetmetal_box_live.py only fills observations in.
+
+# Measurements every wall record must carry before its status may be trusted.
+REQUIRED_WALL_MEASUREMENTS = ("edge_span_mm", "revision_after", "volume_after_mm3")
+
+LIVE_PROBE_GROUPS = {
+    "trim_probe": {
+        "walls": ["f_px_full", "f_px_trimmed"],
+        "verdict": "volume_classification",
+        "why": (
+            "one free first wall measured with and without end_trim_mm on a fresh model "
+            "each; the measured increments classify the blind-offset semantics before the "
+            "trim is trusted anywhere else"
+        ),
+    },
+    "ny_first": {
+        "walls": ["f_ny"],
+        "verdict": "wall_statuses",
+        "why": (
+            "-y as the first wall on the full free edge: the zero-corner negative control "
+            "from the 2026-10-30 probes, expected to build"
+        ),
+    },
+    "px_then_ny": {
+        "walls": ["f_px", "f_ny"],
+        "verdict": "wall_statuses",
+        "why": (
+            "f_ny after f_px: exactly one edge end adjacent to an existing bend, the "
+            "condition the 2026-10-30 probes proved sufficient to fail the wall"
+        ),
+    },
+    "px_nx_then_ny": {
+        "walls": ["f_px", "f_nx", "f_ny"],
+        "verdict": "wall_statuses",
+        "why": (
+            "the round-six shape: f_ny with both ends adjacent to existing bends "
+            "(span shortened at both ends)"
+        ),
+    },
+}
+
+
+def wall_outcome(record: dict) -> str:
+    """Faithful per-wall status for one live wall record.
+
+    A failed wall is never 'succeeded'. A wall whose terminal status or required
+    measurements are missing stays 'unknown' instead of passing: unknown
+    measurements never count as a pass.
+    """
+    status = record.get("terminal_status")
+    if status not in ("succeeded", "failed"):
+        return "unknown"
+    if any(record.get(key) is None for key in REQUIRED_WALL_MEASUREMENTS):
+        return "unknown"
+    return status
+
+
+def probe_group_verdict(group: str, outcomes: dict) -> dict:
+    """Map one live wall group's per-wall outcomes to a diagnostic verdict.
+
+    Locks the live run must keep: missing or unknown wall outcomes leave the
+    group incomplete; a failing wall keeps the status 'failed' and is listed in
+    failed_walls instead of being absorbed into a pass; and
+    four_walls_complete is False in every branch, because the proven trigger
+    condition (an edge end adjacent to an existing bend fails) keeps the full
+    box unreachable until N06 changes the mechanism on evidence.
+    """
+    if group not in LIVE_PROBE_GROUPS:
+        raise ValueError(f"unknown probe group {group!r}")
+    if LIVE_PROBE_GROUPS[group]["verdict"] != "wall_statuses":
+        raise ValueError(f"group {group!r} is judged by {LIVE_PROBE_GROUPS[group]['verdict']}")
+    labels = LIVE_PROBE_GROUPS[group]["walls"]
+    missing = [label for label in labels if outcomes.get(label) not in ("succeeded", "failed")]
+    failed_walls = [label for label in labels if outcomes.get(label) == "failed"]
+    if missing:
+        return {
+            "group": group,
+            "outcome": "incomplete_unknown_measurements",
+            "passed": False,
+            "missing": missing,
+            "failed_walls": failed_walls,
+            "four_walls_complete": False,
+        }
+    last = labels[-1]
+    if group == "ny_first":
+        return {
+            "group": group,
+            "outcome": "free_wall_built" if outcomes[last] == "succeeded" else "free_wall_failed",
+            "passed": outcomes[last] == "succeeded",
+            "failed_walls": failed_walls,
+            "four_walls_complete": False,
+        }
+    return {
+        "group": group,
+        "third_wall_status": outcomes[last],
+        "outcome": (
+            "trigger_reproduced"
+            if outcomes[last] == "failed"
+            else "third_wall_built_not_reproduced"
+        ),
+        # Either terminal observation is a valid diagnostic result: the run's
+        # job is to observe, and the per-wall statuses above stay faithful.
+        "passed": True,
+        "failed_walls": failed_walls,
+        "four_walls_complete": False,
+    }
+
+
+def trim_probe_verdict(full: dict, trimmed: dict) -> dict:
+    """Classify the end_trim_mm semantics from two measured free first walls.
+
+    ``full``/``trimmed`` carry the measured added_mm3 and the full-edge span of
+    the same +x wall on two fresh models. Missing measurements stay unresolved
+    and never pass; the classification is evidence only - without the setback
+    reading the trim says nothing about corner clearance, so nothing here feeds
+    a corner attribution.
+    """
+    full_added = full.get("added_mm3")
+    trimmed_added = trimmed.get("added_mm3")
+    span = (
+        full.get("edge_span_mm")
+        if full.get("edge_span_mm") is not None
+        else trimmed.get("edge_span_mm")
+    )
+    if full_added is None or trimmed_added is None or span is None:
+        return {
+            "semantics": "unresolved",
+            "reason": "missing measured increment or span",
+            "passed": False,
+            "setback_confirmed": False,
+            "four_walls_complete": False,
+        }
+    baseline = relief.bent_wall_increment_mm3(span)
+    classification = classify_trim_semantics(trimmed_added, span)
+    baseline_consistent = abs(full_added - baseline) <= max(0.2, abs(baseline) * 1e-3)
+    semantics = classification["semantics"]
+    return {
+        "semantics": semantics,
+        "candidates": classification.get("candidates", {}),
+        "baseline_expected_mm3": baseline,
+        "baseline_consistent": baseline_consistent,
+        "setback_confirmed": semantics == "setback_from_ends" and baseline_consistent,
+        "passed": bool(semantics not in ("unresolved", "ambiguous") and baseline_consistent),
+        "corner_use": (
+            "evidence only: the classification records what the blind offset measured; "
+            "corner attribution needs the setback reading and is never drawn from an "
+            "unconfirmed trim"
+        ),
+        "four_walls_complete": False,
+    }
+
+
+LIVE_GATE = (
+    "The formal N05 live entry runs only with --live --confirm-session-usable after the "
+    "human session checks (BUG-001 conditions, auto_start_creo=false in config.json), on "
+    "the single shared dev service MCP_CREO_MechDog_dev, with a unique --output path. "
+    "One job per wall, no resubmission, no retry, no queueing; an unknown terminal state "
+    "or a job that is not terminal within 180 s stops every further submission and "
+    "preserves the scene."
+)
 
 
 def _function_body(source: str, signature: str) -> str:
@@ -529,14 +696,34 @@ def native_source() -> dict:
         "no_to_ref_depth": "PRO_WALL_LEN_TYPE_TO_REF" not in flange,
         "no_blind_sym_depth": "PRO_WALL_LEN_TYPE_BLIND_SYM" not in flange,
     }
+    # DEV-052 N05 failure forensics: the failing paths must record the measured
+    # facts N06 needs, bounded, with unknowns left null.
+    forensics = {
+        "edge_forensics_present": "flange_edge_forensics" in source,
+        "edge_length_measured": "ProEdgeLengthEval" in source,
+        "endpoints_measured": "ProEdgeXyzdataEval(edge, 0.0" in source
+        and "ProEdgeXyzdataEval(edge, 1.0" in source,
+        "adjacent_faces_and_edges_recorded": "ProEdgeNeighborsGet" in source,
+        "created_feature_status_checked": "ProFeatureStatusGet" in source,
+        "geometry_count_after_regenerate": "flange_created_feature_evidence" in source,
+        "staged_on_unhealthy_only": 'evidence["stage"] = "after_regenerate"' in source,
+        "evidence_in_native_log": "FLANGE_FAILURE_EVIDENCE" in source,
+        "bounded_surface_visit": "FLANGE_EVIDENCE_MAX_SURFACES" in source,
+        "null_on_query_failure": "flange_point_json" in source,
+        "forensics_never_replaces_the_error": "FLANGE_EDGE_FORENSICS_FAILED" in source,
+    }
     missing = [name for name, present in checks.items() if not present]
     assert not missing, f"native source guard missing: {missing}"
+    forensics_missing = [name for name, present in forensics.items() if not present]
+    assert not forensics_missing, f"native forensics guard missing: {forensics_missing}"
     return {
         "static_source_assertions": checks,
+        "failure_forensics_assertions": forensics,
         "statement": (
             "end_trim_mm switches both flange depth sides from TO_END to blind with the "
             "requested offset and touches nothing else; the stock tree is unchanged for "
-            "calls without the field"
+            "calls without the field; the failing paths record bounded edge, feature and "
+            "tree forensics with unknowns null"
         ),
         "live_uncertainty": (
             "ProSmtFlangeWall.h documents DEPTH_OFFSET only as a double; whether it is a "
@@ -565,15 +752,6 @@ def contract_source() -> dict:
             "SheetmetalFlangeOp and the optional parameter on creo_sheetmetal_flange"
         ),
     }
-
-
-LIVE_REFUSAL = (
-    "T05 four-wall live acceptance is a separate integration step on the single shared "
-    "dev service (MCP_CREO_MechDog_dev, E:/Projects/MCP_CREO_MechDog). This driver runs "
-    "offline checks only: it never instantiates an MCP client, never connects to Creo and "
-    "never retries a job. Use --live --confirm-session-usable only inside that assigned "
-    "integration step."
-)
 
 
 # --- unit tests --------------------------------------------------------------
@@ -810,6 +988,216 @@ class CornerDecisionTest(unittest.TestCase):
         self.assertEqual(partial["conclusion"], "undetermined_incomplete")
 
 
+class LiveProbePlanTest(unittest.TestCase):
+    def test_groups_carry_the_proven_trigger_gradient(self):
+        self.assertEqual(LIVE_PROBE_GROUPS["ny_first"]["walls"], ["f_ny"])
+        self.assertEqual(LIVE_PROBE_GROUPS["px_then_ny"]["walls"], ["f_px", "f_ny"])
+        self.assertEqual(LIVE_PROBE_GROUPS["px_nx_then_ny"]["walls"], ["f_px", "f_nx", "f_ny"])
+        self.assertEqual(LIVE_PROBE_GROUPS["trim_probe"]["verdict"], "volume_classification")
+
+    def test_unknown_group_is_rejected(self):
+        with self.assertRaises(ValueError):
+            probe_group_verdict("full_length", {})
+
+    def test_trim_probe_is_not_judged_by_wall_statuses(self):
+        with self.assertRaises(ValueError):
+            probe_group_verdict("trim_probe", {"f_px_full": "succeeded"})
+
+
+class WallOutcomeTest(unittest.TestCase):
+    def test_failed_wall_is_never_succeeded(self):
+        record = {
+            "terminal_status": "failed",
+            "edge_span_mm": 177.92,
+            "revision_after": 3,
+            "volume_after_mm3": 80_040.0,
+        }
+        self.assertEqual(wall_outcome(record), "failed")
+
+    def test_succeeded_wall_with_measurements_is_succeeded(self):
+        record = {
+            "terminal_status": "succeeded",
+            "edge_span_mm": 232.0,
+            "revision_after": 2,
+            "volume_after_mm3": 60_945.29,
+        }
+        self.assertEqual(wall_outcome(record), "succeeded")
+
+    def test_unknown_measurements_never_pass(self):
+        for missing in REQUIRED_WALL_MEASUREMENTS:
+            record = {
+                "terminal_status": "succeeded",
+                "edge_span_mm": 232.0,
+                "revision_after": 2,
+                "volume_after_mm3": 60_945.29,
+            }
+            record[missing] = None
+            with self.subTest(missing=missing):
+                self.assertEqual(wall_outcome(record), "unknown")
+
+    def test_missing_terminal_status_is_unknown(self):
+        self.assertEqual(wall_outcome({"edge_span_mm": 1.0}), "unknown")
+        self.assertEqual(wall_outcome({"terminal_status": "running"}), "unknown")
+
+
+class ProbeGroupVerdictTest(unittest.TestCase):
+    def test_free_wall_group_needs_the_wall_built(self):
+        built = probe_group_verdict("ny_first", {"f_ny": "succeeded"})
+        self.assertTrue(built["passed"])
+        self.assertEqual(built["outcome"], "free_wall_built")
+        failed = probe_group_verdict("ny_first", {"f_ny": "failed"})
+        self.assertFalse(failed["passed"])
+        self.assertEqual(failed["outcome"], "free_wall_failed")
+        self.assertEqual(failed["failed_walls"], ["f_ny"])
+
+    def test_trigger_groups_record_the_observation_without_claiming_capability(self):
+        for group in ("px_then_ny", "px_nx_then_ny"):
+            with self.subTest(group=group):
+                reproduced = probe_group_verdict(
+                    group, {"f_px": "succeeded", "f_nx": "succeeded", "f_ny": "failed"}
+                )
+                self.assertTrue(reproduced["passed"])
+                self.assertEqual(reproduced["outcome"], "trigger_reproduced")
+                self.assertEqual(reproduced["third_wall_status"], "failed")
+                self.assertEqual(reproduced["failed_walls"], ["f_ny"])
+                self.assertFalse(reproduced["four_walls_complete"])
+                built = probe_group_verdict(
+                    group, {"f_px": "succeeded", "f_nx": "succeeded", "f_ny": "succeeded"}
+                )
+                self.assertEqual(built["outcome"], "third_wall_built_not_reproduced")
+                self.assertEqual(built["third_wall_status"], "succeeded")
+                self.assertFalse(built["four_walls_complete"])
+
+    def test_incomplete_group_stays_incomplete_and_never_passes(self):
+        for group in ("ny_first", "px_then_ny", "px_nx_then_ny"):
+            with self.subTest(group=group):
+                verdict = probe_group_verdict(group, {})
+                self.assertEqual(verdict["outcome"], "incomplete_unknown_measurements")
+                self.assertFalse(verdict["passed"])
+                self.assertFalse(verdict["four_walls_complete"])
+
+    def test_four_walls_complete_is_false_in_every_branch(self):
+        outcomes = {
+            "ny_first": {"f_ny": "succeeded"},
+            "px_then_ny": {"f_px": "succeeded", "f_ny": "failed"},
+            "px_nx_then_ny": {"f_px": "succeeded", "f_nx": "succeeded", "f_ny": "failed"},
+        }
+        verdicts = [probe_group_verdict(group, wall) for group, wall in outcomes.items()]
+        self.assertTrue(all(v["passed"] is not None for v in verdicts))
+        self.assertFalse(any(v["four_walls_complete"] for v in verdicts))
+
+
+class TrimProbeVerdictTest(unittest.TestCase):
+    SPAN = 232.0
+
+    def _full(self, added=None):
+        return {
+            "added_mm3": added or relief.bent_wall_increment_mm3(self.SPAN),
+            "edge_span_mm": self.SPAN,
+        }
+
+    def test_setback_measurement_confirms_and_passes(self):
+        trimmed = {
+            "added_mm3": trim_interpretations(self.SPAN)["setback_from_ends"],
+            "edge_span_mm": self.SPAN,
+        }
+        verdict = trim_probe_verdict(self._full(), trimmed)
+        self.assertEqual(verdict["semantics"], "setback_from_ends")
+        self.assertTrue(verdict["setback_confirmed"])
+        self.assertTrue(verdict["passed"])
+        self.assertFalse(verdict["four_walls_complete"])
+
+    def test_missing_measurements_stay_unresolved_and_never_pass(self):
+        verdict = trim_probe_verdict({"added_mm3": None, "edge_span_mm": self.SPAN}, {})
+        self.assertEqual(verdict["semantics"], "unresolved")
+        self.assertFalse(verdict["passed"])
+        self.assertFalse(verdict["setback_confirmed"])
+
+    def test_unclassifiable_increment_stays_unresolved(self):
+        middle = sum(trim_interpretations(self.SPAN).values()) / 4.0
+        verdict = trim_probe_verdict(self._full(), {"added_mm3": middle, "edge_span_mm": self.SPAN})
+        self.assertEqual(verdict["semantics"], "unresolved")
+        self.assertFalse(verdict["passed"])
+
+    def test_baseline_mismatch_blocks_the_classification(self):
+        trimmed = {
+            "added_mm3": trim_interpretations(self.SPAN)["setback_from_ends"],
+            "edge_span_mm": self.SPAN,
+        }
+        verdict = trim_probe_verdict({"added_mm3": 1.0, "edge_span_mm": self.SPAN}, trimmed)
+        self.assertFalse(verdict["baseline_consistent"])
+        self.assertFalse(verdict["passed"])
+        self.assertFalse(verdict["setback_confirmed"])
+
+
+class LiveEntryGuardTest(unittest.TestCase):
+    """The formal live entry is guarded before any MCP client can exist."""
+
+    def test_missing_switch_refuses_without_a_client(self):
+        import tools.test_sheetmetal_box_live as driver
+
+        self.assertEqual(driver.main(["--live"]), 2)
+        self.assertEqual(driver.main(["--live", "--output", "x/report.json"]), 2)
+
+    def test_output_overwrite_is_refused_before_anything_runs(self):
+        import tempfile
+
+        import tools.test_sheetmetal_box_live as driver
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "report.json"
+            path.write_text("{}", encoding="utf-8")
+            self.assertEqual(driver.main(["--output", str(path)]), 2)
+            self.assertEqual(
+                driver.main(["--live", "--confirm-session-usable", "--output", str(path)]), 2
+            )
+            self.assertEqual(path.read_text(encoding="utf-8"), "{}")
+
+    def test_default_output_is_the_new_unique_layout(self):
+        import tempfile
+
+        import tools.test_sheetmetal_box_live as driver
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = driver.resolve_output(Path(tmp) / "report.json", "run-1")
+            self.assertEqual(path, Path(tmp) / "report.json")
+            path = driver.resolve_output(None, "20261030T000000_abcd1234")
+            self.assertIn("post090_n05", str(path))
+
+    def test_manual_start_guard_requires_auto_start_creo_false(self):
+        import tempfile
+
+        from tools.sheetmetal_live import require_manual_start
+
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.json"
+            config.write_text(json.dumps({"auto_start_creo": True}), encoding="utf-8")
+            with self.assertRaises(ValueError):
+                require_manual_start(config)
+            config.write_text(json.dumps({"auto_start_creo": False}), encoding="utf-8")
+            self.assertIsNone(require_manual_start(config))
+
+    def test_native_failure_evidence_is_read_from_the_failed_operation(self):
+        import tools.test_sheetmetal_box_live as driver
+
+        self.assertIsNone(driver.native_failure_evidence({}))
+        self.assertIsNone(
+            driver.native_failure_evidence({"result": {"operations": [{"label": "f_ny"}]}})
+        )
+        terminal = {
+            "result": {
+                "operations": [{"label": "f_ny", "flange_failure_evidence": {"feature_status": 6}}]
+            }
+        }
+        self.assertEqual(driver.native_failure_evidence(terminal), {"feature_status": 6})
+
+    def test_native_log_tail_is_none_without_a_job_or_file(self):
+        import tools.test_sheetmetal_box_live as driver
+
+        self.assertIsNone(driver.read_native_log(None))
+        self.assertIsNone(driver.read_native_log("no-such-job-id"))
+
+
 class NativeSourceGuardTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -818,6 +1206,10 @@ class NativeSourceGuardTest(unittest.TestCase):
 
     def test_native_guards_hold(self):
         for name, present in self.native["static_source_assertions"].items():
+            self.assertTrue(present, name)
+
+    def test_failure_forensics_guards_hold(self):
+        for name, present in self.native["failure_forensics_assertions"].items():
             self.assertTrue(present, name)
 
     def test_contract_guards_hold(self):
@@ -833,9 +1225,11 @@ class RoundSixEvidenceTest(unittest.TestCase):
         self.assertEqual(ROUND_SIX["third_wall"], "f_ny")
         self.assertEqual(ROUND_SIX["corner_interference_status"], "candidate_only_no_contrast_run")
 
-    def test_live_refusal_points_at_the_single_dev_service(self):
-        self.assertIn("MCP_CREO_MechDog_dev", LIVE_REFUSAL)
-        self.assertIn("--confirm-session-usable", LIVE_REFUSAL)
+    def test_live_gate_points_at_the_single_dev_service_and_the_dual_switch(self):
+        self.assertIn("MCP_CREO_MechDog_dev", LIVE_GATE)
+        self.assertIn("--confirm-session-usable", LIVE_GATE)
+        self.assertIn("--live", LIVE_GATE)
+        self.assertIn("unique --output", LIVE_GATE)
 
 
 if __name__ == "__main__":

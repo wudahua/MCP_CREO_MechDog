@@ -140,3 +140,11 @@ T05 可交付可复现/未复现结论与根因证据，但只有四壁原生特
 - **`end_trim_mm` 贯通**：`sheetmetal_flange` 可选正数字段，两侧深度 `TO_END`→`BLIND`+offset（`advanced.cpp`），schema/server 同步；缺省时元素树逐字节不变（静态守卫断言）。语义（链端 setback 还是壁长）离线不可定，由自由首壁探针按实测体积分类，仅 setback 确认后才允许修剪第三壁提交。
 - **驱动**：`tests/unit/test_sheetmetal_box_live.py`（27 用例）与 `tools/test_sheetmetal_box_live.py`（默认离线、`--live` 拒绝）；单测 27/27、全量 discover 通过、`bridge.py build` 成功。报告 `build/sheetmetal_box/20261030T082547_09fb8658/report.json`。
 - **未测（实机）**：trim 语义探针、四组对照创建/失败/回滚、`f_ny` 是否再现 status=6、`end_trim_mm` 真实几何、角部干涉成立或反驳；四壁能力继续开放。
+
+## 2026-10-30：N05 离线阶段——正式探针入口、trim 量测与原生失败取证（实机未验）
+
+分支 `codex/dev051-feedback070`，基线 `b10b9f7`。0.9.0 后接续（DEV-052 N05，详见 [T05 验收卡](../development/DEV051-T05-ACCEPTANCE.md) 同日 N05 节）：
+
+- **正式 live 探针入口**取代 box 驱动原来的"双开关仍拒绝"：三组探针（`ny_first` / `px_then_ny` / `px_nx_then_ny`）固化 10/30 一次性实机对照，加 trim 量测（无 trim vs `end_trim_mm=20` 各一 fresh 自由首壁，按实测增量分类语义）。判定锁：未知测量不判通过、失败墙永不记为成功、`four_walls_complete` 恒 False。
+- **原生失败取证**（`native/advanced.cpp`，失败路径专用）：依附边长度/两端点/相邻面与边、regenerate 后特征 status 与 geometry 计数（status 6 = unregenerated 即第六轮形态）、元素树与回滚证据有界保存，未知留 null；字段语义已写入 T05 卡供 N06 消费。未写任何 corner 规则、未实现 corner relief。
+- **状态**：离线交付（49 单元、dev_check、`bridge.py build` 通过）；trim 语义、三组探针与取证字段全部待实机；四壁与释放能力仍开放。

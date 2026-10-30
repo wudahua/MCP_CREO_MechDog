@@ -297,3 +297,42 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；pydantic 
 - 四壁 4/4 未达成（3/4 是上限，且第 3 壁已证明会失败）。
 - 角部处理（corner relief / miter）**未实现**，不加限定地说“支持四壁”是错的。
 - 本项保持开放，下一步是原生诊断而不是直接写规则：先证明失败机理，再决定是实现角部释放还是明确拒绝“端部相邻折弯”的组合。
+
+## 2026-10-30：DEV-052 N05 离线阶段——正式探针入口、trim 量测契约与原生失败取证（实机未验）
+
+分支 `codex/dev051-feedback070`，基线 `b10b9f7`（N00—N04/N11/预检已交付，含 N01 的 `79b02ed` 统一 `part_thickness_read`）。本窗口只做离线：未连接 Creo、未创建 MCP 客户端、未运行任何 `--live`、未改 `version.py`、未合 main、未 push。工作区其他窗口未提交改动（`docs/validation/RELEASE-0.8.5.md`、本机产物）未触碰。
+
+### 已交付
+
+1. **正式 live 探针入口**（`tools/test_sheetmetal_box_live.py`）：原“双开关仍 exit 2”的拒绝守卫被真实 live 实现取代（本卡此前各节记录的拒绝行为属于实现完成前的历史）。三组探针固化 10/30 一次性实机探针：`ny_first`（−Y 独立、整条自由边 185 mm）、`px_then_ny`（+X→−Y、一端相邻既有折弯）、`px_nx_then_ny`（+X→−X→−Y、两端相邻，第六轮形态）；加 trim 量测（同一 +x 自由首壁，无 trim 与 `end_trim_mm=20` 各一 fresh 模型，按实测增量分类语义）。每组新件、一墙一 job、每墙从最新 inspect 几何选边（显式 `face="top"`、允许缩短边）、180 s 挂起预算、不重提不重试、首个 unknown 即停（`tools/sheetmetal_live.py` 的 `LiveRunner`，未改动）。
+2. **判定口径（纯函数，单元锁定）**：`wall_outcome` 忠实记录每墙 succeeded/failed/unknown（终态缺失或任一必需量测 `edge_span_mm`/`revision_after`/`volume_after_mm3` 缺失即 unknown，绝不判通过）；`probe_group_verdict` 对触发组两个终态都是有效诊断（`trigger_reproduced` / `third_wall_built_not_reproduced`），失败墙始终列在 `failed_walls` 且 **`four_walls_complete` 在一切分支为 False**；`trim_probe_verdict` 只按实测增量分类（setback_from_ends / length_from_section / length_both_sides / trim_ignored / unresolved），基线增量与独立 oracle 不符或测量缺失一律不通过、不喂角部归因。
+3. **原生失败取证**（`native/advanced.cpp`，只走失败路径，成功路径行为不变）：`flange_edge_forensics` 记录依附边实测长度（`ProEdgeLengthEval`）、两端点（`ProEdgeXyzdataEval` 参数 0/1）、相邻两面（`ProEdgeNeighborsGet` + `ProSmtSurfaceTypeGet`）与相邻两条边，查询失败一律 null；`flange_created_feature_evidence` 在 regenerate 后立即查 `ProFeatureStatusGet`，非 `PRO_FEAT_ACTIVE`（第六轮即 `PRO_FEAT_UNREGENERATED=6`、geometry 0）时记录特征 id/status/geometry 计数 + 上述边取证 + 截面腿请求回显，经 `stage_operation_result` 进入失败操作记录并整块写 `FLANGE_FAILURE_EVIDENCE=<json>` 日志；表面类型访问封顶 `FLANGE_EVIDENCE_MAX_SURFACES=64`（全量仍在逐面日志）。`flange_tree_evidence`（create 失败路径）同样补入边取证。**给 N06 的字段语义**：`feature_status=6` = created but unregenerated；`geometry_item_count=0` 且 status 6 = 第六轮形态；`end0_mm/end1_mm` 是依附边两端实测坐标；`adjacent_faces[].smt_type` 是 Creo 钣金面型（1 SIDE / 2 FACE-green / 3 OFFSET-white）；`section_leg_sketch` 是请求回显，实测壁位置以驱动 inspect 为准。回滚证据仍由 job 结果（`rollback_succeeded`、revision/体积）与驱动 `third_wall_stage_record` 五段记录承担，原生不重复记录。
+4. **回归锁定**（`tests/unit/test_sheetmetal_box_live.py`，49 用例）：缺一个开关 → exit 2 且不创建任何客户端；输出不覆盖（离线与 live 双路径、唯一 `--output`）；默认输出迁到 `build/post090_n05/<run_id>/report.json`；未知测量不判通过；第三壁失败永不记为成功、`four_walls_complete` 恒 False；`require_manual_start` 拒绝 `auto_start_creo≠false`；原生取证静态守卫 11 项 + trim 分支守卫保留。
+
+### 命令与真实结果（本窗口，离线）
+
+| # | 命令 | 真实结果 |
+| --- | --- | --- |
+| 1 | `.\.venv\Scripts\python.exe -m unittest tests.unit.test_sheetmetal_box_live` | exit 0，Ran 49 tests，OK |
+| 2 | `.\.venv\Scripts\python.exe tools\test_sheetmetal_box_live.py --output build\post090_n05_20261030T231033\report.json` | exit 0；报告 SHA256 `aca0026717895f02187feb45e9105cc89ba7ac57e940f56f7dfc9451399bb387`；内置复跑 49/49 OK；`status=not_run_offline / undetermined` |
+| 3 | `.\.venv\Scripts\python.exe tools\test_sheetmetal_box_live.py --live`（缺开关） | exit 2，未创建客户端 |
+| 4 | `.\.venv\Scripts\python.exe tools\dev_check.py --work-item FEAT-014` | exit 0；`success=true`、单元 `passed`；style `lint_findings=30`、`unformatted_files=16`（与基线一致，本批无新增）；`source.commit=b10b9f7`、`dirty=true`、`checked_source_sha256=938f861531863b66c71d42b0de4e1991aedcd1da52a8bb97ec884024e31f274a` |
+| 5 | `.\.venv\Scripts\python.exe bridge.py build` | exit 0 ×2（诊断代码与 clang-format 后各一次）；`build/source.sha256=47a6591d17b8ef6b81530963ea2096e2b424892be3e4b1dba378c64cd93a1d8b` |
+| 6 | `ruff format` / `ruff check`（两个 Python 文件）、`clang-format -i native/advanced.cpp` | 全部通过 |
+
+### 实机命令与判定口径（给实机负责人，本任务未执行）
+
+前置：人工核对 BUG-001 会话条件可操作、`config.json` `auto_start_creo=false`、唯一 dev 服务 `MCP_CREO_MechDog_dev`、受测源码为含本批提交的执行器（`build/source.sha256=47a6591d…`）。命令（输出路径必须唯一新路径）：
+
+```text
+.\.venv\Scripts\python.exe tools\test_sheetmetal_box_live.py --live --confirm-session-usable --output build\post090_n05_live_<run_id>\report.json
+```
+
+判定口径：驱动先跑 trim 量测（无 trim 基线增量须贴合 `bent_wall_increment_mm3(span)`，再按 trimmed 增量给出语义分类；仅 `setback_from_ends` 确认后，离线设计里的 trimmed_20 对照才允许提交）；随后三组探针。每墙状态按记录忠实判读：`ny_first` 的 `f_ny` 期望建成且为真实折弯（bbox Z 增长 ≥72 mm）+ 保存重载 true；`px_then_ny` / `px_nx_then_ny` 的第三墙**失败是已证触发条件的复现**（记录 `trigger_reproduced` 与失败取证），成功则记 `third_wall_built_not_reproduced`——两者都不是四壁能力完成，报告 `four_walls_complete` 恒为 false。失败墙取 `native_failure_evidence`（边端点/相邻面/特征 status/geometry 计数）与 `stage_record` 五段，作为 N06 机理证据；180 s 未终态、busy、unknown 一律停止并保留现场，不重提、不清保护。
+
+### 未测范围
+
+- 全部实机项：trim 量测与语义分类、三组探针的真实创建/失败/取证、`f_ny` 是否再现 status=6、原生取证字段的实测值、失败回滚后继续合法操作。
+- 离线设计中的 trimmed_20 / order 组仍冻结，等 trim 语义实测；corner relief / miter 未实现（N06 范围）。
+- 本机产物（`build/post090_n05_20261030T231033/`）不入库；Creo 9/10、WorkBuddy 黑盒均未验。
+

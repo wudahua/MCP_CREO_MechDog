@@ -814,18 +814,27 @@ static J flange_relief_record(const J &op, const FlangeReliefRequest &request) {
             {"depth_covers_corner_run", enabled ? J(request.depth >= corner_run) : J()}};
 }
 
+// DEV-052 N05: forward declaration - the failing create path records the same
+// edge forensics as the unhealthy-feature path below.
+static J flange_edge_forensics(const J &op);
+
 // DEV-051 T05/T11: a flange wall can only attach to an edge that borders a
 // sheetmetal face, so record Creo's own sheetmetal typing of the body's surfaces and
 // the attachment edge's sheetmetal contour code next to the element trees.
+// DEV-052 N05: staged forensics must stay bounded. Every surface is still logged
+// above; the staged record carries at most this many rows.
+static const int FLANGE_EVIDENCE_MAX_SURFACES = 64;
 static ProError smt_surface_type_cb(ProSurface s, ProError status, ProAppData data) {
     if (status)
         return PRO_TK_NO_ERROR;
+    J *out = (J *)data;
     int id = -1;
     ProSurfaceIdGet(s, &id);
     ProSmtSurfType type = PRO_SMT_SURF_NON_SMT;
     ProError code = ProSmtSurfaceTypeGet((ProPart)board, s, &type);
     log("FLANGE_BODY_SURFACE id=%d smt_type=%d code=%d\n", id, (int)type, code);
-    ((J *)data)->push_back({{"id", id}, {"smt_type", (int)type}, {"code", code}});
+    if (out->size() < FLANGE_EVIDENCE_MAX_SURFACES)
+        out->push_back({{"id", id}, {"smt_type", (int)type}, {"code", code}});
     return PRO_TK_NO_ERROR;
 }
 static void flange_attachment_evidence(const J &op, J *evidence) {
@@ -876,6 +885,12 @@ static void flange_attachment_evidence(const J &op, J *evidence) {
 static void flange_tree_evidence(ProElement attempted, const J &op) {
     J evidence = J::object();
     flange_attachment_evidence(op, &evidence);
+    try {
+        evidence["edge_forensics"] = flange_edge_forensics(op);
+    } catch (...) {
+        log("FLANGE_EDGE_FORENSICS_FAILED=exception\n");
+        evidence["edge_forensics"] = J();
+    }
     auto dump = [&](ProElement root, const std::wstring &name, const std::string &key) {
         ProPath output;
         path(output, generic_job + L"\\output\\" + name);
@@ -928,6 +943,118 @@ static void flange_tree_evidence(ProElement attempted, const J &op) {
         if (probe)
             ProElementFree(&probe);
     }
+    stage_operation_result(evidence);
+}
+
+// DEV-052 N05 (2026-10-30): third-wall failure forensics. The 2026-10-30 live
+// contrast proved the trigger - an attachment-edge end adjacent to an existing
+// bend fails even alone - but not the mechanism: whether the section lands out of
+// the bendable area or the wall material overlaps a neighbour is not decidable
+// from a bare -1 or a status=6 result. These helpers record, on the failing path
+// only and with every query failure left null, the measured facts N06 needs:
+//   - the attachment edge's length and both end points (normalized params 0/1);
+//   - the two faces sharing that edge with Creo's sheetmetal typing, and the
+//     two contour-neighbour edges;
+//   - the created feature's status and geometry item count right after the
+//     regenerate (round six: PRO_FEAT_UNREGENERATED = 6, no geometry items);
+//   - the sketch-frame section leg this implementation wrote (request echo; the
+//     measured wall placement comes from the driver's inspection, not here).
+// Nothing here changes create/regenerate behaviour, the health check verdict or
+// the rollback; a forensics failure is logged and never replaces the original
+// error.
+static J flange_point_json(const ProVector &point, ProError code) {
+    if (code)
+        return J();
+    return {{"x_mm", point[0]}, {"y_mm", point[1]}, {"z_mm", point[2]}};
+}
+
+static J flange_edge_forensics(const J &op) {
+    J evidence = J::object();
+    ProSelection sel = resolve(op["edge"]);
+    ProModelitem item;
+    CK(ProSelectionModelitemGet(sel, &item));
+    ProSelectionFree(&sel);
+    ProEdge edge;
+    CK(ProEdgeInit((ProSolid)board, item.id, &edge));
+    evidence["id"] = item.id;
+    double length = 0;
+    ProError length_code = ProEdgeLengthEval(edge, &length);
+    log("FLANGE_EDGE_FORENSICS id=%d length_code=%d\n", item.id, length_code);
+    evidence["length_mm"] = length_code ? J() : J(length);
+    ProVector start = {0, 0, 0}, start_d1, start_d2, start_dir;
+    ProVector end = {0, 0, 0}, end_d1, end_d2, end_dir;
+    ProError start_code = ProEdgeXyzdataEval(edge, 0.0, start, start_d1, start_d2, start_dir);
+    ProError end_code = ProEdgeXyzdataEval(edge, 1.0, end, end_d1, end_d2, end_dir);
+    log("FLANGE_EDGE_FORENSICS end_code=%d,%d\n", start_code, end_code);
+    evidence["end0_mm"] = flange_point_json(start, start_code);
+    evidence["end1_mm"] = flange_point_json(end, end_code);
+    ProEdge neighbour1 = nullptr, neighbour2 = nullptr;
+    ProSurface face1 = nullptr, face2 = nullptr;
+    ProError neighbours_code = ProEdgeNeighborsGet(edge, &neighbour1, &neighbour2, &face1, &face2);
+    evidence["neighbors_code"] = neighbours_code;
+    if (neighbours_code) {
+        log("FLANGE_EDGE_FORENSICS neighbors_code=%d\n", neighbours_code);
+        evidence["adjacent_faces"] = J();
+        evidence["adjacent_edges"] = J();
+        return evidence;
+    }
+    J faces = J::array();
+    for (ProSurface face : {face1, face2}) {
+        int id = -1;
+        ProSmtSurfType type = PRO_SMT_SURF_NON_SMT;
+        ProError id_code = ProSurfaceIdGet(face, &id);
+        ProError type_code = ProSmtSurfaceTypeGet((ProPart)board, face, &type);
+        faces.push_back({{"id", id_code ? J() : J(id)},
+                         {"smt_type", type_code ? J() : J((int)type)},
+                         {"type_code", type_code}});
+    }
+    J edges = J::array();
+    for (ProEdge neighbour : {neighbour1, neighbour2}) {
+        int id = -1;
+        ProError id_code = ProEdgeIdGet(neighbour, &id);
+        edges.push_back({{"id", id_code ? J() : J(id)}, {"id_code", id_code}});
+    }
+    evidence["adjacent_faces"] = faces;
+    evidence["adjacent_edges"] = edges;
+    return evidence;
+}
+
+static void flange_created_feature_evidence(const J &op, const ProFeature &created) {
+    ProFeature feature = created;
+    ProFeatStatus status = PRO_FEAT_INACTIVE;
+    ProError status_code = ProFeatureStatusGet(&feature, &status);
+    if (status_code)
+        log("FLANGE_CREATED_STATUS_QUERY code=%d\n", status_code);
+    if (status_code || status == PRO_FEAT_ACTIVE)
+        return; // healthy or unqueryable: the shared health check stays the judge
+    J evidence = J::object();
+    evidence["stage"] = "after_regenerate";
+    evidence["feature_status"] = (int)status;
+    evidence["feature_status_name"] = status == PRO_FEAT_UNREGENERATED ? "unregenerated" : "other";
+    evidence["feature_id"] = feature.id;
+    J geometry = J::array();
+    ProError geometry_code =
+        ProFeatureGeomitemVisit(&feature, PRO_TYPE_UNUSED, collect_geom_ids, nullptr, &geometry);
+    evidence["geometry_visit_code"] = geometry_code;
+    evidence["geometry_item_count"] = geometry.size();
+    log("FLANGE_CREATED_UNHEALTHY id=%d status=%d geometry=%d geom_code=%d\n", feature.id,
+        (int)status, (int)geometry.size(), geometry_code);
+    try {
+        evidence["edge_forensics"] = flange_edge_forensics(op);
+        double a = op["angle"].get<double>() * acos(-1.0) / 180;
+        double h = op["height"].get<double>();
+        evidence["section_leg_sketch"] = {
+            {"leg_dx", h * sin(a)},
+            {"leg_dy", h * cos(a)},
+            {"angle_deg", op["angle"]},
+            {"height_mm", h},
+            {"note", "request echo of the sketch-frame leg; measured wall placement comes "
+                     "from the driver's inspection, not from here"}};
+    } catch (...) {
+        log("FLANGE_EDGE_FORENSICS_FAILED=exception\n");
+        evidence["edge_forensics"] = J();
+    }
+    log("FLANGE_FAILURE_EVIDENCE=%s\n", evidence.dump().c_str());
     stage_operation_result(evidence);
 }
 
@@ -1085,6 +1212,12 @@ static void generic_sheetmetal_flange(const J &op) {
         throw;
     }
     CK(ProSolidRegenerate((ProSolid)board, PRO_REGEN_NO_FLAGS));
+    // DEV-052 N05: round six left the third wall created but PRO_FEAT_UNREGENERATED
+    // (status 6, no geometry) and only the shared health check saw it. Snapshot the
+    // created feature right here so the failing record carries the forensics while
+    // the feature still exists, before the health check fails the job and the
+    // rollback removes it. Healthy features return without staging anything.
+    flange_created_feature_evidence(op, f);
     CK(ProElementFree(&root));
     // DEV-051 T11 2026-10-30: read the relief section back out of the created feature
     // tree. A silent Creo-side reset to the part defaults would otherwise leave a plain
