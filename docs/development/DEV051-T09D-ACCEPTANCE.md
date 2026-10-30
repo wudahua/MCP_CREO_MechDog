@@ -173,8 +173,9 @@ live 运行写入唯一时间戳目录 `build/t09d_performance/<run_id>/report.j
 ```python
 from tools.test_plan_performance import merge_reports
 import json
+
 reports = [json.load(open(p, encoding="utf-8")) for p in (small_report_path, large_report_path)]
-merged = merge_reports(reports)   # source_fingerprint 不同会直接抛 ValueError
+merged = merge_reports(reports)  # source_fingerprint 不同会直接抛 ValueError
 ```
 
 中断处理：报告的 `progress.stage` 与 `completed_cases` 标明已完成到哪一例，`error` 字段保留原始错误；**保留中断和未满样本，不自动重放已受理作业**。
