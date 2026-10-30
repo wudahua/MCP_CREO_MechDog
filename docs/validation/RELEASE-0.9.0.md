@@ -30,8 +30,27 @@ GitHub Release 链接与发布状态：见下。
 源码包（由标签 `v0.9.0` 指向的主干提交源码构建；本记录随该提交入库，附件哈希在打包后回填进 Release body 与本文件的发布后小节，回填提交不属于标签内容）：
 
 ```text
-（发布后回填）
+MCP_CREO_MechDog-0.9.0-source.zip        890e256c1604a1f0ec426d8f7c647d07a49a47d2458cd01db9c4e64442176ab4
+MCP_CREO_MechDog-0.9.0-seed-library.zip  5933e0adeb250f2a80b74e6e48c66a0c6d8ab90cc335921849bd35caaca2a07e
 ```
+
+构建说明：打包在工作树位于 `7280982` 时进行；本机专用的 `docs/validation/RELEASE-0.8.5.md` 发布后核验段（该文件设计上不进 main）在打包期间临时移出，其余内容与标签提交的树一致。
+
+## 发布后远端核验
+
+2026-10-30 经 REST API 核对：远端 `main=7280982dbe2b1b2ef6cad8b2d9e1abd77d62d20c`；附注标签 `v0.9.0` 对象 `b2bb5a5a…`（重建后）指向同一提交 `7280982`，其 `version.py` 为 `0.9.0`。正式 Release（`draft=false`、`prerelease=false`）：https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.9.0 。四附件逐件从远端下载，字节数、SHA256 与 Release body 及本地文件一致。
+
+| 附件 | 远端字节 | 核验 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.9.0-source.zip` | 6 205 865 | 通过（SHA256 与 body 一致） |
+| `MCP_CREO_MechDog-0.9.0-source.zip.sha256` | 101 | 通过 |
+| `MCP_CREO_MechDog-0.9.0-seed-library.zip` | 493 394 | 通过（SHA256 与 body 一致） |
+| `MCP_CREO_MechDog-0.9.0-seed-library.zip.sha256` | 107 | 通过 |
+
+合入 main 的提交、版本标签及指向：main = `7280982`（快进，无合并提交）；标签 `v0.9.0` 附注对象指向该提交。
+GitHub Release 链接与发布状态：https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.9.0 （正式发布）。
+远端附件与 SHA256 核对结果：见上表，逐项一致。
+备注：标签首次推送时误指向 `51d5dbf`（Release 创建后的几分钟内发现），随即删除远端标签并重建指向 `7280982`；Release 页面随标签名解析到新对象。该时段没有第三方下载，不属于“覆盖已发布附件”。
 
 逐 ID 状态核对（候选态）：
 
