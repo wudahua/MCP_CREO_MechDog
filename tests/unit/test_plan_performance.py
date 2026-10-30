@@ -43,10 +43,7 @@ class FixtureLayoutTests(unittest.TestCase):
                 driver.validate_expectation(spec)
                 pocket = spec["pocket"]
                 removed = (
-                    driver.pocket_count(spec)
-                    * pocket["width"]
-                    * pocket["height"]
-                    * pocket["depth"]
+                    driver.pocket_count(spec) * pocket["width"] * pocket["height"] * pocket["depth"]
                 )
                 self.assertAlmostEqual(
                     driver.expected_final_volume_mm3(spec),

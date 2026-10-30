@@ -400,8 +400,11 @@ def summarize(seconds: list[float]) -> dict:
     }
 
 
-def case_summary(jobs: list[dict], first_submit_monotonic: float, last_terminal_monotonic: float,
-                 ) -> dict:
+def case_summary(
+    jobs: list[dict],
+    first_submit_monotonic: float,
+    last_terminal_monotonic: float,
+) -> dict:
     windows = [job["timing"]["server_accept_to_terminal_s"] for job in jobs]
     totals = [job["timing"]["client_total_s"] for job in jobs]
     reloaded = [job for job in jobs if job.get("saved_file_reloaded_and_verified") is True]
@@ -753,13 +756,16 @@ class PlanPerformanceRun:
             "synthetic_data": False,
             "volume_both_match_expectation": left["volume_match"] and right["volume_match"],
             "volumes_equal_mm3": (
-                abs(left["final_volume_mm3"] - right["final_volume_mm3"])
-                <= VOLUME_TOLERANCE_MM3
+                abs(left["final_volume_mm3"] - right["final_volume_mm3"]) <= VOLUME_TOLERANCE_MM3
                 if isinstance(left["final_volume_mm3"], (int, float))
                 and isinstance(right["final_volume_mm3"], (int, float))
                 else False
             ),
-            "edges": {"single": edges_left, "batch": edges_right, "equal": edges_left == edges_right},
+            "edges": {
+                "single": edges_left,
+                "batch": edges_right,
+                "equal": edges_left == edges_right,
+            },
             "job_count": {"single": len(single["jobs"]), "batch": len(batch["jobs"])},
             "save_reload_events": {
                 "single": single["summary"]["save_reload_events"],
@@ -799,10 +805,7 @@ class PlanPerformanceRun:
                     {case["summary"]["save_reload_events"] for case in cases}
                 ),
                 "cold_jobs": sum(
-                    1
-                    for case in cases
-                    for job in case["jobs"]
-                    if job["warm_cold"] == "cold"
+                    1 for case in cases for job in case["jobs"] if job["warm_cold"] == "cold"
                 ),
                 "passed_cases": sum(1 for case in cases if case["passed"]),
                 "case_count": len(cases),
