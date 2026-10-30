@@ -567,3 +567,24 @@ SHA256 `d2de17487469f10fba9859a0459cfeb64e593537105c8d5a6df5be9bf829d58f`，驱�
 材料场景需要一个“弯边靠材料”的第三道折边；第三道折边在本轮实机上 `Regeneration produced a failed, suppressed or incomplete feature`（`failed_stage=execute_sheetmetal_flange`，`rollback_succeeded=true`）。因此 none / 1×1 / 4×4 的释放对比**没有跑起来**，`material_scenario_passed=false`，不能据此判断释放是否生效。
 
 根因已由 T05 的对照探针定位到“边端相邻折弯”这一类，见 `DEV051-T05-ACCEPTANCE.md` 同日节。T11 与 T05 须一起解，不能只改释放参数。
+
+## 2026-10-31：N01 relief 定性与驱动修复（离线，未实机；追加不改写上节）
+
+对七段实机 run（`20261030T234952`，`build/post090_live_20261030T234952/n01/relief.json`）
+的 relief 证据做回归定性，结论与修复全文见 [BUG-090 卡](../work-items/BUG-090.md)
+同日节，本节只记 T11 侧要点：
+
+- **第三折边 f_ny 再次命中 T05 已证边界**（span 177.92、shortfall 7.08=2×(R+t)、
+  `shared_corners=2`，再签名 `-1`），且 relief_none / relief_rect_1x1 两案一致：
+  **已知边界命中，非 N01 回归，也不是 T11 释放实现的失败**——释放几何在被挡的
+  f_ny/f_py 上无法观测，显式记 `relief_geometry_unverified`，不冒充已验。
+- **材料矩阵的 mat_baseline 底件失败是驱动夹具缺陷**：一次性 plan 把离线合成夹具的
+  边 ID 253 烘进实机请求，Creo 以 `PRO_TK_NOT_EXIST(-23)` 拒绝附着。已修——底件
+  只建墙，f_px/f_ny 各自成 job 并从新快照重选边（顺带修掉折边后 bbox 误用作
+  plate bounds 的隐患）。因此上节“材料场景没有跑起来”的旧因已除；**释放对比能否
+  真正跑起来仍取决于 f_ny 在 T05 边界下能否建成（带释放是否豁免未证）**，只能实机
+  观察，不预设。
+- 驱动判定新增 `classify_flange_failure`（双侧正证据才归 `known_t05_boundary`，
+  任一缺失保持 `failed`，回归不藏进边界标签）；案卷按 N05 `trigger_reproduced`
+  同约定：边界命中是有效诊断、`passed=true`，`relief_geometry_verified` 另记。
+  单元锁定 9 例；命令与退出码见 BUG-090 卡。实机重跑命令同卡（预期判定在卡内）。

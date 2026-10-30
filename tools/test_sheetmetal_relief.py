@@ -7,11 +7,14 @@ ProFeatureWithoptionsCreate=-1) and the T03 contract for the thin wall.
 The 2026-10-29 round six proved only a negative: both measured flanges ended at
 free plate corners, where no notch is expected either way. The 2026-10-30 stage
 adds the valid-material scenario - f_px on +x (both bend ends at free corners)
-followed by f_ny on -y, whose +x chain end runs into f_px's bend while the wall
-itself stays buildable - with a differential oracle: the none baseline vs
-rectangular 1x1 / 4x4 / single ends on the same geometry, removal expectations
-derived from the actual intersecting material, and a verdict that rejects
-"parameters written but no material removed".
+followed by f_ny on -y, whose +x chain end runs into f_px's bend - with a
+differential oracle: the none baseline vs rectangular 1x1 / 4x4 / single ends on
+the same geometry, removal expectations derived from the actual intersecting
+material, and a verdict that rejects "parameters written but no material
+removed". The DEV-051 T05 contrast (2026-10-30) proved that such an attach-edge
+end adjacent to an existing bend fails flange regeneration, so a failing f_ny
+with that evidence is classified known_t05_boundary instead of a failure, and
+the relief geometry it blocks is reported unverified.
 
 The driver is offline only. It records:
 
@@ -504,9 +507,12 @@ def material_scenario() -> dict:
             "first_flange_edge_span_mm": span,
             "why": (
                 "f_px (+x) keeps both bend ends at free plate corners; f_ny (-y) submitted "
-                "afterwards has its +x chain end run into f_px's bend - one material end - "
-                "while the wall itself stays buildable. The failing third wall of the "
-                "four-wall run is not the only relief entrance any more"
+                "afterwards has its +x chain end run into f_px's bend - one material end. "
+                "The DEV-051 T05 contrast (2026-10-30) proved that such an attach-edge end "
+                "adjacent to an existing bend fails flange regeneration, so whether f_ny "
+                "builds at all (and whether its relief changes that) is the live "
+                "observation; a failing f_ny with the proven signature and adjacency "
+                "evidence is classified known_t05_boundary, not judged a failure"
             ),
             "chain_trim_per_material_end_mm": relief.CHAIN_TRIM_MM,
             "predicted_increment_full_span_mm3": relief.bent_wall_increment_mm3(span),
@@ -532,8 +538,9 @@ def material_scenario() -> dict:
             "removal and notch faces are observable"
         ),
         "not_verified": (
-            "no live run in this stage: whether f_ny builds after f_px, where the material end "
-            "sits among side1/side2, the notch position and the volume delta are live items"
+            "whether f_ny with relief builds after f_px (the relief-less shape hits the "
+            "proven T05 boundary), where the material end sits among side1/side2, the "
+            "notch position and the volume delta are live items"
         ),
     }
 
@@ -798,6 +805,13 @@ async def run_profile(runner: LiveRunner, profile: str, relief_value: dict | Non
                 ),
                 passed=False,
             )
+            classification = relief.classify_flange_failure(
+                row["shared_corners"],
+                row["edge"].get("shortfall_mm"),
+                row["failure"],
+            )
+            row["verdict"] = classification["verdict"]
+            row["failure_classification"] = classification
             entry["flanges"].append(row)
             break
         after = await runner.snapshot(model_id)
@@ -831,13 +845,35 @@ async def run_profile(runner: LiveRunner, profile: str, relief_value: dict | Non
                 and saved is True
             ),
         )
+        row["verdict"] = "passed" if row["passed"] else "failed"
         entry["flanges"].append(row)
 
     entry["flange_count"] = sum(1 for row in entry["flanges"] if row.get("passed"))
     entry["expected_added_total_mm3"] = sum(
         row.get("expected_added_mm3") or 0.0 for row in entry["flanges"]
     )
-    entry["passed"] = entry["flange_count"] == len(fx.FLANGE_SEQUENCE)
+    boundary = [
+        row["label"] for row in entry["flanges"] if row.get("verdict") == "known_t05_boundary"
+    ]
+    selection_errors = [row["label"] for row in entry["flanges"] if row.get("selected") is False]
+    unexpected = [row["label"] for row in entry["flanges"] if row.get("verdict") == "failed"]
+    reached = [row["label"] for row in entry["flanges"]]
+    not_submitted = [label for _, label in fx.FLANGE_SEQUENCE if label not in reached]
+    entry["known_t05_boundary"] = boundary
+    entry["relief_geometry_unverified"] = sorted(set(boundary) | set(not_submitted))
+    if selection_errors or unexpected or not entry["flange_count"]:
+        entry["verdict"] = "failed"
+        entry["passed"] = False
+    elif boundary:
+        # DEV-051 T05 proven boundary: an attach-edge end adjacent to an
+        # existing bend cannot build. That outcome is the expected diagnostic
+        # (same convention as the N05 trigger groups), not a failed case; the
+        # relief geometry on the blocked flanges stays explicitly unverified.
+        entry["verdict"] = "known_t05_boundary"
+        entry["passed"] = True
+    else:
+        entry["verdict"] = "verified"
+        entry["passed"] = entry["flange_count"] == len(fx.FLANGE_SEQUENCE)
     return runner.case(entry)
 
 
@@ -899,23 +935,32 @@ def relief_comparison(cases: list[dict]) -> dict:
 async def run_material_case(
     runner: LiveRunner, name: str, target: str, relief_value: dict | None
 ) -> dict:
-    """One fresh model: base wall + f_px plan, then f_ny as its own job.
+    """One fresh model: the base wall plan, then f_px and (target "second") f_ny.
+
+    Every flange is its own job and re-selects its edge from a fresh snapshot
+    taken against the frozen post-wall plate bounds. The 2026-10-30/31 live run
+    submitted the offline fixture plan (wall + f_px carrying the synthetic box
+    edge id 253) as one job and Creo refused the attachment
+    (PRO_MODELITEM_INIT = PRO_TK_NOT_EXIST, -23): a driver fixture defect,
+    never a modelling failure.
 
     f_px carries the relief only for the free-end control (target "first"); the
-    material cases put the relief on f_ny, whose +x chain end abuts f_px's bend.
+    material cases put the relief on f_ny, whose +x chain end abuts f_px's
+    bend -- the DEV-051 T05 proven boundary condition. A failing f_ny with the
+    proven regeneration signature and adjacency evidence is classified
+    known_t05_boundary and is not judged a failure.
     """
     key = f"mat_{name}"
     model_name = unique_name(f"t11_{name}")
-    plan_operations, _ = relief.material_scenario_plan()
-    if target == "first":
-        plan_operations[2]["relief"] = dict(relief_value)
+    first = relief.MATERIAL_SCENARIO["first"]
+    second = relief.MATERIAL_SCENARIO["second"]
     created = await runner.submit(
         f"{key}:base",
         "creo_execute_plan",
         {
             "model_name": model_name,
             "model_type": "sheetmetal",
-            "operations": plan_operations,
+            "operations": relief.material_wall_plan(),
         },
     )
     model_id = created["model_id"]
@@ -933,24 +978,17 @@ async def run_material_case(
         entry.update(
             failure=failure_text(terminal),
             passed=False,
-            blocked="the base plan (wall + f_px) failed; nothing further was submitted",
+            blocked="the base wall plan failed; nothing further was submitted",
         )
         return runner.case(entry)
 
-    after_plan = await runner.snapshot(model_id)
-    bounds = fx.active_bbox(runner.inspection(after_plan))
-    base_record = runner.record(after_plan, "base_wall") or {}
+    base = await runner.snapshot(model_id)
+    bounds = fx.active_bbox(runner.inspection(base))
+    base_record = runner.record(base, "base_wall") or {}
     contract = base_record.get("wall_contract") or {}
-    px_record = runner.record(after_plan, relief.MATERIAL_SCENARIO["first"]["label"]) or {}
     entry.update(
-        plan_revision=after_plan.get("revision"),
-        plan_volume_mm3=runner.volume(after_plan),
-        f_px_added_mm3=(
-            None
-            if runner.volume(after_plan) is None
-            else runner.volume(after_plan) - fx.PLATE_VOLUME_MM3
-        ),
-        f_px_relief_echo=px_record.get("relief_element_echo"),
+        plan_revision=base.get("revision"),
+        plan_volume_mm3=runner.volume(base),
         wall_contract=contract,
         plate_bounds_mm=[list(bounds[0]), list(bounds[1])],
     )
@@ -958,40 +996,103 @@ async def run_material_case(
     if relief_value is not None:
         notch_limit = 1.5 + max(float(relief_value["width"]), float(relief_value["depth"]))
 
+    try:
+        reference = fx.select_wall_edge(runner.inspection(base), bounds, first["side"], face="top")
+    except fx.EdgeSelectionError as error:
+        entry.update(f_px={"selected": False, "error": str(error)}, passed=False)
+        return runner.case(entry)
+    px_before_volume = runner.volume(base)
+    px_before_revision = base.get("revision")
+    px_submitted = await runner.submit(
+        f"{key}:f_px",
+        "creo_sheetmetal_flange",
+        flange_payload(
+            model_id,
+            px_before_revision,
+            first["label"],
+            reference,
+            relief_value if target == "first" else None,
+        ),
+    )
+    px_terminal = await runner.wait_job(px_submitted["job_id"], budget=HANG_BUDGET_SECONDS)
+    px_row: dict = {
+        "job_id": px_submitted["job_id"],
+        "status": px_terminal.get("status"),
+        "revision_before": px_before_revision,
+        "volume_before_mm3": px_before_volume,
+        "edge": reference["geometry"],
+        "shared_corners": fx.shared_corners([], first["side"]),
+    }
+    entry["f_px"] = px_row
+    if px_terminal.get("status") != "succeeded":
+        after = await runner.snapshot(model_id)
+        px_row.update(
+            failure=failure_text(px_terminal),
+            revision_after=after.get("revision"),
+            volume_after_mm3=runner.volume(after),
+            rolled_back=(
+                after.get("revision") == px_before_revision
+                and runner.volume(after) == px_before_volume
+            ),
+            passed=False,
+        )
+        classification = relief.classify_flange_failure(
+            px_row["shared_corners"],
+            px_row["edge"].get("shortfall_mm"),
+            px_row["failure"],
+        )
+        px_row["verdict"] = classification["verdict"]
+        px_row["failure_classification"] = classification
+        entry.update(passed=False, blocked="f_px failed; material scenario not reproducible")
+        return runner.case(entry)
+
+    after_px = await runner.snapshot(model_id)
+    px_added = None
+    if runner.volume(after_px) is not None and px_before_volume is not None:
+        px_added = runner.volume(after_px) - px_before_volume
+    px_record = runner.record(after_px, first["label"]) or {}
+    px_row.update(
+        revision_after=after_px.get("revision"),
+        volume_after_mm3=runner.volume(after_px),
+        added_mm3=px_added,
+        relief_echo=px_record.get("relief"),
+        relief_element_echo=px_record.get("relief_element_echo"),
+        saved_file_reloaded_and_verified=(px_terminal.get("result") or {}).get(
+            "saved_file_reloaded_and_verified"
+        ),
+    )
+    entry.update(
+        f_px_added_mm3=px_added,
+        f_px_relief_echo=px_record.get("relief_element_echo"),
+    )
+
     if target == "first":
         # Free-end control: f_px itself carries the relief over free plate corners.
         # The verdict is differential (vs the baseline model's f_px increment) and
         # is assembled in material_summary once every case has run.
         entry.update(
-            notch_faces=notch_faces(runner.inspection(after_plan), notch_limit),
+            notch_faces=notch_faces(runner.inspection(after_px), notch_limit),
             passed=True,
         )
         return runner.case(entry)
 
-    snapshot = after_plan
     try:
         reference = fx.select_wall_edge(
-            runner.inspection(snapshot),
+            runner.inspection(after_px),
             bounds,
-            relief.MATERIAL_SCENARIO["second"]["side"],
+            second["side"],
             face="top",
             allow_shortened=True,
         )
     except fx.EdgeSelectionError as error:
         entry.update(f_ny={"selected": False, "error": str(error)}, passed=False)
         return runner.case(entry)
-    before_volume = runner.volume(snapshot)
-    before_revision = snapshot.get("revision")
+    before_volume = runner.volume(after_px)
+    before_revision = after_px.get("revision")
     submitted = await runner.submit(
         f"{key}:f_ny",
         "creo_sheetmetal_flange",
-        flange_payload(
-            model_id,
-            before_revision,
-            relief.MATERIAL_SCENARIO["second"]["label"],
-            reference,
-            relief_value,
-        ),
+        flange_payload(model_id, before_revision, second["label"], reference, relief_value),
     )
     ny_terminal = await runner.wait_job(submitted["job_id"], budget=HANG_BUDGET_SECONDS)
     row: dict = {
@@ -1000,6 +1101,7 @@ async def run_material_case(
         "revision_before": before_revision,
         "volume_before_mm3": before_volume,
         "edge": reference["geometry"],
+        "shared_corners": fx.shared_corners([first["side"]], second["side"]),
     }
     entry["f_ny"] = row
     if ny_terminal.get("status") != "succeeded":
@@ -1012,7 +1114,29 @@ async def run_material_case(
                 after.get("revision") == before_revision and runner.volume(after) == before_volume
             ),
         )
-        entry.update(passed=False, blocked="f_ny failed; baseline scenario not reproducible")
+        classification = relief.classify_flange_failure(
+            row["shared_corners"],
+            row["edge"].get("shortfall_mm"),
+            row["failure"],
+        )
+        row["verdict"] = classification["verdict"]
+        row["failure_classification"] = classification
+        if classification["verdict"] == "known_t05_boundary":
+            # DEV-051 T05 proven boundary: one attach-edge end adjacent to
+            # f_px's bend. Expected under that boundary, not a relief defect;
+            # the relief geometry stays explicitly unverified here.
+            entry.update(
+                known_t05_boundary=[second["label"]],
+                relief_geometry_unverified=[second["label"]],
+                passed=True,
+                blocked=(
+                    "f_ny is blocked by the proven T05 boundary (attach-edge end "
+                    "adjacent to f_px's bend); relief geometry is not observable "
+                    "in this scenario"
+                ),
+            )
+        else:
+            entry.update(passed=False, blocked="f_ny failed; baseline scenario not reproducible")
         return runner.case(entry)
     after = await runner.snapshot(model_id)
     added = None
@@ -1030,6 +1154,7 @@ async def run_material_case(
             "saved_file_reloaded_and_verified"
         ),
     )
+    row["verdict"] = "passed"
     entry["passed"] = True
     return runner.case(entry)
 
@@ -1044,6 +1169,30 @@ def material_summary(cases: list[dict]) -> dict:
     for name, target, relief_value in material_case_specs():
         case = by_name.get(name) or {}
         row: dict = {"case": name, "target": target, "relief": relief_value}
+        if case.get("known_t05_boundary"):
+            # The target flange is blocked by the proven T05 boundary (its
+            # attach-edge end is adjacent to an existing bend). That is the
+            # expected outcome under the boundary, not a relief defect: report
+            # the known boundary and keep the relief geometry explicitly
+            # unverified instead of judging the case failed.
+            row.update(
+                measured_delta_vs_baseline_mm3=None,
+                expected_delta_mm3=relief.scenario_expected_delta_mm3(relief_value, target),
+                verdict={
+                    "status": "known_t05_boundary",
+                    "passed": True,
+                    "evidence_class": "none",
+                    "relief_geometry_verified": False,
+                    "reasons": [
+                        "the target flange is blocked by the proven T05 boundary "
+                        "(attach-edge end adjacent to an existing bend); relief "
+                        "geometry is not observable in this scenario"
+                    ],
+                },
+                passed=True,
+            )
+            rows.append(row)
+            continue
         if target == "first":
             echo = case.get("f_px_relief_echo")
             measured = (
@@ -1068,6 +1217,25 @@ def material_summary(cases: list[dict]) -> dict:
                 else ny["added_mm3"] - baseline_ny
             )
             expected = relief.scenario_expected_delta_mm3(relief_value, target)
+            if measured is None and ny.get("added_mm3") is not None and baseline_ny is None:
+                row.update(
+                    measured_delta_vs_baseline_mm3=None,
+                    expected_delta_mm3=expected,
+                    verdict={
+                        "status": "unverified_no_baseline",
+                        "passed": False,
+                        "evidence_class": "none",
+                        "relief_geometry_verified": False,
+                        "reasons": [
+                            "f_ny built but the none-baseline f_ny increment is "
+                            "unavailable, so the differential oracle cannot run; "
+                            "relief geometry stays unverified"
+                        ],
+                    },
+                    passed=False,
+                )
+                rows.append(row)
+                continue
             verdict = relief.relief_geometry_verdict(
                 "material",
                 relief_value,
@@ -1100,6 +1268,16 @@ def material_summary(cases: list[dict]) -> dict:
         "baseline_f_px_added_mm3": baseline_px,
         "rows": rows,
         "single_end_pair": pair,
+        "known_t05_boundary": [
+            row["case"]
+            for row in rows
+            if (row.get("verdict") or {}).get("status") == "known_t05_boundary"
+        ],
+        "relief_geometry_verified": any(
+            row.get("passed")
+            and (row.get("verdict") or {}).get("evidence_class") == "relief_geometry"
+            for row in rows
+        ),
         "passed": bool(rows)
         and all(row["passed"] for row in rows)
         and (pair is None or pair["passed"]),

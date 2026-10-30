@@ -135,8 +135,11 @@ def corner_overlap_run_mm() -> float:
 # both measured flanges terminated at plate corners, so "no notch" was the
 # expected outcome there and says nothing about whether a relief cuts material.
 # This scenario gives every relief variant a bend end that abuts existing
-# material while the wall itself stays buildable - without using the failing
-# third wall as the only entrance.
+# material -- without using the failing third wall as the only entrance. The
+# 2026-10-30 T05 contrast later proved that an attach-edge end adjacent to an
+# existing bend fails flange regeneration, so whether f_ny after f_px builds at
+# all (and whether its relief changes that) is exactly what the live run must
+# observe; it is not guaranteed to stay buildable.
 #
 # Geometry: base wall 185x232x1, then f_px on +x (both bend ends at free plate
 # corners), then f_ny on -y. f_ny's chain end at the +x corner runs into f_px's
@@ -328,6 +331,84 @@ def single_end_pair_verdict(
         "removed_mm3": removed,
         "passed": not reasons,
         "reasons": reasons,
+    }
+
+
+# --- DEV-051 T05 proven boundary classification ---------------------------
+#
+# The 2026-10-30 contrast probes proved the trigger: a flange whose
+# attach-edge END is adjacent to an existing bend / bend fillet fails feature
+# regeneration -- one adjacent end is enough and the full edge length is
+# irrelevant. The 2026-10-29 round six and the 2026-10-30/31 relief run hit it
+# on f_ny with exactly the signature below (span 177.92 = 185 - 2x3.54).
+
+T05_REGEN_FAILURE_MESSAGE = "Regeneration produced a failed, suppressed or incomplete feature"
+T05_FAILURE_STAGE = "execute_sheetmetal_flange"
+T05_FAILURE_TOOLKIT_CODE = -1  # PRO_TK_GENERAL_ERROR (ProToolkitErrors.h)
+
+
+def classify_flange_failure(shared_corners: object, shortfall_mm: object, failure: object) -> dict:
+    """Classify one failed live flange against the proven T05 boundary.
+
+    ``known_t05_boundary`` requires positive evidence on BOTH sides; anything
+    missing, non-numeric or contradictory stays a plain ``failed`` so an
+    unexplained failure -- a possible regression -- can never hide behind the
+    boundary label:
+
+    * geometry: ``shared_corners >= 1`` (an attach-edge end abuts the bend of a
+      previously built flange) and the measured shortfall shows bend-end
+      consumption without going beyond two ends:
+      ``0 < shortfall_mm <= 2 * (R + t) + tol``;
+    * failure signature: ``Regeneration produced a failed, suppressed or
+      incomplete feature`` at ``execute_sheetmetal_flange`` with
+      ``toolkit_code == -1``.
+    """
+    evidence = {
+        "shared_corners": shared_corners,
+        "shortfall_mm": shortfall_mm,
+        "message": (failure or {}).get("message") if isinstance(failure, dict) else None,
+        "toolkit_code": (failure or {}).get("toolkit_code") if isinstance(failure, dict) else None,
+        "failed_stage": (failure or {}).get("failed_stage") if isinstance(failure, dict) else None,
+    }
+    reasons: list[str] = []
+    corners_ok = (
+        isinstance(shared_corners, int)
+        and not isinstance(shared_corners, bool)
+        and shared_corners >= 1
+    )
+    if not corners_ok:
+        reasons.append(
+            "no attach-edge end abutting an existing bend: shared_corners must be a "
+            f"positive int, got {shared_corners!r}"
+        )
+    max_shortfall = 2.0 * CHAIN_TRIM_MM
+    shortfall_ok = (
+        isinstance(shortfall_mm, (int, float))
+        and not isinstance(shortfall_mm, bool)
+        and math.isfinite(shortfall_mm)
+        and 0.0 < shortfall_mm <= max_shortfall + fx.SPAN_TOL_MM
+    )
+    if not shortfall_ok:
+        reasons.append(
+            "measured shortfall does not show bend-end consumption: expected "
+            f"0 < shortfall_mm <= {max_shortfall + fx.SPAN_TOL_MM:.3f}, got {shortfall_mm!r}"
+        )
+    signature_ok = (
+        evidence["message"] is not None
+        and T05_REGEN_FAILURE_MESSAGE in evidence["message"]
+        and evidence["toolkit_code"] == T05_FAILURE_TOOLKIT_CODE
+        and evidence["failed_stage"] == T05_FAILURE_STAGE
+    )
+    if not signature_ok:
+        reasons.append(
+            "failure signature is not the proven regeneration failure "
+            f"({T05_REGEN_FAILURE_MESSAGE!r} at {T05_FAILURE_STAGE} with "
+            f"toolkit_code {T05_FAILURE_TOOLKIT_CODE})"
+        )
+    return {
+        "verdict": "known_t05_boundary" if not reasons else "failed",
+        "reasons": reasons,
+        "evidence": evidence,
     }
 
 
@@ -666,11 +747,29 @@ def material_first_flange_reference() -> dict:
     )
 
 
+def material_wall_plan() -> list[dict]:
+    """The live base plan for one material-scenario model: the first wall only.
+
+    Live flanges are always submitted as their own jobs with edges re-selected
+    from a fresh snapshot. The 2026-10-30/31 live run submitted
+    :func:`material_scenario_plan` as one wall+flange plan; its baked flange
+    edge id came from the offline fixture box and Creo refused the attachment
+    (PRO_TK_NOT_EXIST, -23) -- a driver fixture defect, never a modelling
+    failure.
+    """
+    return [fx.wall_sketch(), fx.wall_base_op()]
+
+
 def material_scenario_plan() -> tuple:
-    """One material-scenario model: base wall plus f_px (+x, free bend ends).
+    """Offline request shape for one material-scenario model: wall plus f_px.
 
     f_ny (-y) is submitted as its own job after f_px exists so its edge is
     re-selected from a fresh snapshot; see :func:`material_second_flange_op`.
+
+    The baked f_px reference comes from the synthetic box_inspection fixture,
+    so its edge id only exists offline. Never submit this plan live: use
+    :func:`material_wall_plan` for the base wall and let the live driver
+    re-select every flange edge from a fresh snapshot.
     """
     reference = material_first_flange_reference()
     operations = [
@@ -1008,6 +1107,99 @@ class EditPathTest(unittest.TestCase):
     def test_tool_description_states_the_supported_subset(self):
         for token in ("'none'|'rectangular'", "Rip/stretch/obround/param", "miter cuts"):
             self.assertIn(token, self.server)
+
+
+class FlangeFailureClassificationTest(unittest.TestCase):
+    """known_t05_boundary needs positive evidence on both sides (DEV-051 T05)."""
+
+    @staticmethod
+    def failure(**overrides) -> dict:
+        record = {
+            "job_status": "failed",
+            "message": T05_REGEN_FAILURE_MESSAGE,
+            "toolkit_code": T05_FAILURE_TOOLKIT_CODE,
+            "failed_stage": T05_FAILURE_STAGE,
+            "rollback_succeeded": True,
+        }
+        record.update(overrides)
+        return record
+
+    def test_round_six_shape_is_the_known_boundary(self):
+        # 2026-10-29/31 f_ny: both ends consumed (2 x 3.54 mm), regen failure -1.
+        verdict = classify_flange_failure(2, 7.08, self.failure())
+        self.assertEqual(verdict["verdict"], "known_t05_boundary")
+        self.assertEqual(verdict["reasons"], [])
+
+    def test_single_adjacent_end_is_the_known_boundary(self):
+        # The 2026-10-30 contrast: one consumed end (3.54 mm) already fails.
+        verdict = classify_flange_failure(1, 3.54, self.failure())
+        self.assertEqual(verdict["verdict"], "known_t05_boundary")
+
+    def test_free_edge_regeneration_failure_stays_a_plain_failure(self):
+        # Without adjacency evidence a regeneration failure is unexplained and
+        # must never be absorbed into the boundary label (N01 regression guard).
+        verdict = classify_flange_failure(0, 0.0, self.failure())
+        self.assertEqual(verdict["verdict"], "failed")
+        self.assertTrue(any("shared_corners" in reason for reason in verdict["reasons"]))
+
+    def test_missing_or_contradictory_geometry_never_classifies(self):
+        for corners, shortfall in (
+            (None, 7.08),
+            (2, None),
+            (2, 0.0),
+            (2, float("nan")),
+            (2, 20.0),
+            ("2", 7.08),
+            (True, 7.08),
+        ):
+            with self.subTest(corners=corners, shortfall=shortfall):
+                verdict = classify_flange_failure(corners, shortfall, self.failure())
+                self.assertEqual(verdict["verdict"], "failed")
+
+    def test_other_failure_signatures_never_classify(self):
+        for overrides in (
+            {"message": "Toolkit call ProModelitemInit(board, id, t, &mi) failed with code -23"},
+            {"toolkit_code": -23},
+            {"toolkit_code": None},
+            {"failed_stage": "admission"},
+            {"failed_stage": None},
+            {"message": None},
+        ):
+            with self.subTest(**overrides):
+                verdict = classify_flange_failure(2, 7.08, self.failure(**overrides))
+                self.assertEqual(verdict["verdict"], "failed")
+                self.assertTrue(
+                    any("signature" in reason for reason in verdict["reasons"]), verdict
+                )
+
+    def test_missing_failure_record_never_classifies(self):
+        for failure in (None, {}, "failed"):
+            with self.subTest(failure=failure):
+                self.assertEqual(classify_flange_failure(2, 7.08, failure)["verdict"], "failed")
+
+
+class MaterialLivePlanTest(unittest.TestCase):
+    """Live submissions never carry the offline fixture's synthetic edge ids."""
+
+    def test_wall_plan_is_the_wall_only(self):
+        operations = material_wall_plan()
+        self.assertEqual([item["op"] for item in operations], ["sketch", "sheetmetal_wall"])
+        validate_operations(operations)
+
+    def test_fixture_plan_edge_ids_come_from_the_synthetic_box(self):
+        _, reference = material_scenario_plan()
+        self.assertIn(reference["edge"]["id"], fx.EDGE_IDS)
+
+    def test_live_material_case_never_submits_the_baked_fixture_plan(self):
+        source = (
+            Path(__file__).resolve().parents[2] / "tools" / "test_sheetmetal_relief.py"
+        ).read_text(encoding="utf-8")
+        start = source.index("async def run_material_case")
+        end = source.find("\ndef ", start)
+        body = source[start : end if end > 0 else len(source)]
+        self.assertNotIn("material_scenario_plan", body)
+        self.assertIn("material_wall_plan", body)
+        self.assertIn("select_wall_edge", body)
 
 
 if __name__ == "__main__":
