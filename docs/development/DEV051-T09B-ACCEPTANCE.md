@@ -180,3 +180,42 @@ SDK 语义（本机 Creo 12.4.0.0 匹配 SDK `ProSection.h`）：`ProSectionEnti
 ### 给集成人的冲突面
 
 本批只改 `native/generic.cpp`（`revolve_axis_report` 内部回退分支 + 两段注释，约 21 行）、`tools/test_revolve_axis_live.py`、`tests/unit/test_revolve_axis_report.py` 与本卡；未触碰 `native/advanced.cpp`、`server.py`、`schema.py`、`operation_results.py`、钣金/弧方向驱动及任何台账。接口形态不变：`revolve_axis.resolution.section_centerline_count` 语义修正为"仅用户中心线"，无字段增删、无版本影响。
+
+## 2026-10-30：N08 实机复测的离线预检
+
+阶段：**离线预检完成；实机未执行**。分支 `codex/dev051-feedback070`，接手时基线 `79b02ed`，本节提交前 HEAD `a6d4a3d`（并行 N03 窗口提交，非本节改动）。本节**未连接 MCP/Toolkit、未启动 Creo、未创建 MCP 客户端、未运行任何 `--live`、未运行 `bridge.py build`、未运行 `tools\dev_check.py`、未跑全量单测、未改 `native/`**（`native/generic.cpp` 的投影过滤属已交付实现，本节只补驱动与单元）。工作区 `dirty=true`（含并行窗口未提交文件，未暂存未改写）。
+
+### 单元结果
+
+| 命令 | 结果 |
+| --- | --- |
+| `.\.venv\Scripts\python.exe -m unittest tests.unit.test_revolve_axis tests.unit.test_revolve_axis_report -v` | exit 0，Ran 31，OK |
+| `.\.venv\Scripts\python.exe -m unittest tests.unit.test_revolve_axis_live`（本节新增模块） | exit 0，Ran 21，OK |
+
+### 驱动覆盖缺口与是否已补
+
+| 缺口 | 是否已补 | 说明 |
+| --- | --- | --- |
+| **id 来源判定可空过**：旧代码 `if block.get("id") != source_id`，当原生 `id` 为 `None` **且** sketch `entity_ids` 取不到时 `None != None` 为假，判定**静默通过** | **已补** | 抽出 `axis_id_source()`：源缺失 → `cannot be verified`；`id` 为 null → `was not reported`；不一致 → `does not match`；datum 轴未在 inspection 列出 → `cannot be verified`。四条路径各自单测 |
+| `reload_flag(terminal)` 在 `terminal=None` 时抛 `AttributeError`，会中断整轮判定而不是记录"无证据" | **已补** | 改为先判 `isinstance(terminal, dict)`，返回 `None` |
+| 驱动无任何单元模块：live 判定逻辑（计数、id 来源、重载证据来源）无离线回归 | **已补** | 新增 `tests/unit/test_revolve_axis_live.py`（21 例），覆盖计数契约、id 来源四条失败路径、重载证据只从 `result` 读、块提取与 live 用例清单 |
+| 契约未声明"真多中心线在本服务不可构造" | **已补** | `check_contract()` 新增 `id_source_rule` 与 `multiple_user_centerlines`，明写"准入拒绝不是几何通过" |
+
+核实结果（驱动本身**原本已覆盖**）：单用户线计 1（`section_centerline_count == 1`，旧缺陷会得 3）；原生 ID 来源（`revolve_axis.id == entity_ids['spin_centerline']`，显式轴 `id == datum_axes[0].id`）；未知不猜第一条（`normalize_revolve_axis` 侧三项既有回归）；轴帧（`frame` ∈ {model, sketch_local}，origin/direction 按各帧独立几何期望校验）；保存重载（真实 `creo_save_model` + `saved_file_reloaded_and_verified=true` + 重载后体积不变，显式轴另要求同 id 同几何 1e-6，内部中心线用例记 `axis_relocation_after_reload="not_observable_via_inspection"` 不猜通过）。
+
+### 实机命令与预期判定（待指定）
+
+```powershell
+.\.venv\Scripts\python.exe tools\test_revolve_axis_live.py --live --confirm-session-usable --output build\post090_live_<runid>\n08_revolve_axis\report.json
+```
+
+预期：`internal_centerline` 计数 =1、`id == entity_ids['spin_centerline']`、origin 落在 x=0 线且 direction ∥Y、保存重载 true 且体积不变；`explicit_datum_axis` `id == datum_axes[0].id`、体积对上 785.398163 mm³；`no_centerline` 失败且无 `revolve_axis` 块、原文含 "must contain a centerline, or an explicit axis must be supplied"、`toolkit_code=-1`、`failed_stage=execute_revolve`。原生日志应出现 `SECTION_CENTERLINE_PROBE`，2 条系统参考 `is_projection=1` 被剔除。
+
+### 未测范围与风险
+
+- **真多中心线场景：未验（外部夹具不存在）**。本服务 sketch 准入限一条中心线（`schema.py` "One revolve centerline is supported per sketch"），**无法经本服务 MCP 构造**，需外部手工原生草绘夹具。**服务准入拒绝不得记为该几何场景通过**（已写入驱动契约）。
+- 投影过滤在实机的实际返回、`ProAxisSurfaceGet` 非 `E_NOT_FOUND` 分支、`surface` 解析轴样例、显式轴解析失败的 unknown 分支均未实测。
+- `frame` 口径以实机为准：10-29 实测在能取到回转特征自身轴时**优先给 `model`**（卡面文字差异已在卡中记录，未改写）。
+- 修复前 10-29 实机三例的通过结论保留其历史时点，**不代表修复后状态**。
+
+离线产物：`build/post090_live_precheck_20261030T212525_b09a058e/n08_revolve_axis/report.json`（含 `id_source_rule`、`multiple_user_centerlines`）。合并预检小结：同目录 `precheck.md`。

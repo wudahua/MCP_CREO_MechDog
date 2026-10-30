@@ -134,3 +134,63 @@ live 运行写入唯一时间戳目录 `build/t09d_performance/<run_id>/report.j
 - large 批量 138.7 s / 8 个切槽 ≈ 17 s/切槽，其中提交往返 0.1 s 量级，**时间几乎全在接受作业到终态之间**；该段在 MCP 层不可分段（`queue_wait`、`native_solve`、`native_checks`、`save_reload` 一律 `null`/`unobservable`）。
 - 另一次 `--reps 3` 运行在 10 分钟工具上限处被截断，留下了 small 三联（3 次单操作、3 次批量）与 large 单操作 1 次的数据；**large 类未达到 3 次独立重复**，本卡不把它写成满足协议最小样本量。
 - 本轮没有优化任何生产逻辑，也没有承诺提速比例；`1408 边≈50–60 s` 的外部观测未被本夹具复现或否定。
+
+## 2026-10-30：N12 性能补测的离线预检
+
+阶段：**离线预检完成；实机未执行**。分支 `codex/dev051-feedback070`，接手时基线 `79b02ed`，本节提交前 HEAD `a6d4a3d`（并行 N03 窗口提交，非本节改动）。本节**未连接 MCP/Toolkit、未启动 Creo、未创建 MCP 客户端、未运行任何 `--live`、未运行 `bridge.py build`、未运行 `tools\dev_check.py`、未跑全量单测、未改生产逻辑**。工作区 `dirty=true`（含并行窗口未提交文件，未暂存未改写）。
+
+**本节不改写上文已有的 138.7 s / 261.0 s 与 small 三联事实**，它们保留原时点与原口径。
+
+### 单元结果
+
+`.\.venv\Scripts\python.exe -m unittest tests.unit.test_plan_performance -v` → exit 0，Ran 42，OK（原 30 → 新增 12）。
+
+### 驱动覆盖缺口与是否已补
+
+| 缺口 | 是否已补 | 说明 |
+| --- | --- | --- |
+| **失败用例仍计入计时统计**：旧 `build_summary()` 对分组内**所有** case 求中位数/范围，含 `passed=false` 的失败重复 —— 失败样本的耗时被当作有效统计 | **已补** | 抽出 `summarize_cases()`：统计只用 `passed` 的重复；失败 case 列入新增 `failed_cases` 字段并附 `sample_rule` 说明；`client_total_s.n` 因此只计有效样本 |
+| **失败作业的原始错误被丢弃**：旧 `run_case()` 用 `assert job["status"] == "succeeded"` 直接抛异常，作业记录**未进报告**，`raw_error` 丢失 | **已补** | 改为收集 `failed_jobs`，写入 `case["failure"]`（`failed_job_count` + 逐条 `raw_error`），该重复 `passed=false` 且**不产生任何计时样本**；不再用 assert 提前中断整轮 |
+| **无法跨工具超时保留分阶段报告**：旧驱动无进度字段、无分段选择器，中断后报告缺"跑到哪" | **已补** | 报告新增 `progress`（`completed_cases`/`last_completed_case`/`stage`：`starting`→`case_completed`→`completed`/`interrupted`）；新增 `--classes`/`--modes` 选择器把 4 类基准拆成可分段执行的多次运行；新增 `merge_reports()` **只合并 source_fingerprint 相同的报告**，不同指纹直接拒绝 |
+| 选择器无输入校验 | **已补** | 未知/重复的 class 或 mode 在连接前以退出码 2 拒绝（`resolve_selection`）；离线报告 `protocol` 记录实际选择的 classes/modes 与 `sample_rule` |
+
+核实结果（**原本已具备**）：等价几何（single 与 batch 各建全新独立模型；终态体积等于解析期望 small 17 500 mm³ / large 419 328 mm³，容差 0.01 mm³、cut 增量相同 2 或 8、`counts.edges` 相同；`compare_modes` 记录 `comparable` 与 `save_reload_events`）；重载证据（每个 job 必须 `saved_file_reloaded_and_verified=true`，`case_summary.save_reload_complete` 记录完整性，`save_reload_events` 逐例记录 single 为 N 次 / batch 为 1 次，不做隐藏也不做抵扣）；阶段未知规则（`queue_wait`/`executor_startup`/`native_solve`/`native_checks`/`save_reload`/`result_registration` 一律 `value=null` + `status="unobservable"` + 原因，不估算、不插值、不填空；可观测项为 `submit_round_trip_s`/`poll_count`/`poll_call_total_s`/`server_accept_to_terminal_s`/`client_total_s`）。
+
+### 实机命令与可跨工具超时的分段运行方式（待指定）
+
+```powershell
+# 完整协议（3 次重复 × {small,large} × {single,batch}），可能超出单次工具超时
+.\.venv\Scripts\python.exe tools\test_plan_performance.py --live --confirm-session-usable --reps 3 --output build\post090_live_<runid>\n12_performance\report.json
+
+# 段 1：small（3 次）
+.\.venv\Scripts\python.exe tools\test_plan_performance.py --live --confirm-session-usable --reps 3 --classes small --output build\post090_live_<runid>\n12_performance\small\report.json
+# 段 2：large（3 次）
+.\.venv\Scripts\python.exe tools\test_plan_performance.py --live --confirm-session-usable --reps 3 --classes large --output build\post090_live_<runid>\n12_performance\large\report.json
+```
+
+分段后按相同 `source_fingerprint` 合并（不同指纹的报告**不得**合并成同一统计）：
+
+```python
+from tools.test_plan_performance import merge_reports
+import json
+reports = [json.load(open(p, encoding="utf-8")) for p in (small_report_path, large_report_path)]
+merged = merge_reports(reports)   # source_fingerprint 不同会直接抛 ValueError
+```
+
+中断处理：报告的 `progress.stage` 与 `completed_cases` 标明已完成到哪一例，`error` 字段保留原始错误；**保留中断和未满样本，不自动重放已受理作业**。
+
+### 预期判定
+
+每类（small/large × single/batch）**至少 3 次独立运行**（独立新模型）；报告自动给出中位数与范围（`client_total_s` 与 `server_window_sum_s` 两套口径），逐 job 记 warm/cold、边规模（`counts.edges` 实测）、`submit_round_trip_s`、`server_accept_to_terminal_s`、`client_total_s`。每类样本须 `passed=true`（等价通过 + 保存重载完整）；`failed_cases` 非空即该类未达协议样本量。首次 unknown/busy/挂起立即停止新提交，保留现场，按 BUG-001 约定交接，不重提作业。
+
+### 未测范围与风险
+
+- **一切实机耗时未测**：四类基准、3 次重复、warm/cold 差异、中位数与范围全部未执行。50–60 s 仍是唯一外部数据点且无分段。
+- **原生求解、检查、保存重载的单独成本结构性不可观测**：MCP 接口与 native 日志不提供分段时间戳，报告写 `unobservable`。**没有分段证据时不能声称定位原生瓶颈。**
+- large 夹具的实际边数是否落在 1408 同数量级待第一次实机校准；若远离，该夹具对外部观测的代表性有限，需校准后结论才可引用。
+- 本轮**无任何新数据**，不得与既有 138.7/261.0 s 与 small 三联拼成同一统计（除非 source_fingerprint 相同）。
+- `warm_cold` 只按本驱动会话内第几个 job 分类，不控制服务冷启动/Creo 会话历史；跨会话对比要结合 provenance 与会话状态记录。
+- 驱动轮询间隔 1 s，`client_total_s` 含最多 1 s 粒度误差；`server_accept_to_terminal_s` 不受影响。
+- 本窗口**未优化任何生产逻辑**，未承诺提速百分比；不涉及队列/重试（边界仍归 BUG-009）。
+
+离线产物：`build/post090_live_precheck_20261030T212525_b09a058e/n12_performance/report.json`（含 `protocol.classes/modes/sample_rule`、`observability`）。合并预检小结：同目录 `precheck.md`。

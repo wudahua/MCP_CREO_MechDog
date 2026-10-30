@@ -146,6 +146,57 @@ EXPECTED = {
 # --- checks ---------------------------------------------------------------
 
 
+def axis_id_source(
+    block: dict, entity_ids: dict, expected_entity: str | None, datum_axes: list
+) -> tuple[list[str], dict]:
+    """Where the reported ``id`` must come from, and whether it does.
+
+    The section_centerline id is the sketch section entity id of the drawn
+    centerline (same id space as the sketch result's entity_ids); an explicit
+    datum axis id is the id the inspection lists for that axis. Both sources
+    must be present: a missing source is not a match, and a missing id is
+    never quietly accepted as "unknown but fine". Multiple user centerlines
+    keep id=null and are never assigned the first line.
+    """
+    problems: list[str] = []
+    evidence: dict = {}
+    if expected_entity is not None:
+        source_id = entity_ids.get(expected_entity)
+        evidence = {"entity": expected_entity, "sketch_entity_id": source_id}
+        if source_id is None:
+            problems.append(
+                f"sketch entity_ids has no {expected_entity!r}; the id source cannot be verified"
+            )
+        elif block.get("id") is None:
+            problems.append(
+                f"revolve_axis.id is null; the id of {expected_entity!r} "
+                f"(sketch entity id {source_id}) was not reported"
+            )
+        elif block.get("id") != source_id:
+            problems.append(
+                f"id={block.get('id')!r} does not match sketch "
+                f"entity_ids[{expected_entity!r}]={source_id!r}"
+            )
+    elif block.get("kind") == "datum_axis":
+        if len(datum_axes) != 1:
+            problems.append(
+                f"the inspection lists {len(datum_axes)} datum axes; the resolved axis id "
+                "source cannot be verified"
+            )
+        else:
+            axis_id = datum_axes[0].get("id")
+            evidence = {"axis": "datum_axes[0]", "axis_id": axis_id}
+            if block.get("id") is None:
+                problems.append(
+                    "revolve_axis.id is null; the resolved datum axis id was not reported"
+                )
+            elif block.get("id") != axis_id:
+                problems.append(
+                    f"id={block.get('id')!r} does not match inspection datum_axes[0].id={axis_id!r}"
+                )
+    return problems, evidence
+
+
 def check_contract() -> dict:
     block_keys = set(FIELD_KEYS)
     return {
@@ -163,6 +214,16 @@ def check_contract() -> dict:
                 "regression, while truly multiple user centerlines keep id=null (never guessed)"
             ),
         },
+        "id_source_rule": (
+            "revolve_axis.id must equal the sketch section entity id of the drawn centerline "
+            "(entity_ids['spin_centerline']) or the inspection datum_axes[0].id for an explicit "
+            "datum axis; a missing source or a null id is a failure, never a silent pass"
+        ),
+        "multiple_user_centerlines": (
+            "not constructible through this service: the sketch admission accepts one centerline "
+            "per sketch, so a truly multi-centerline scene needs an external native fixture and "
+            "is reported as unverified until then; an admission refusal is not a geometry pass"
+        ),
         "note": (
             "revolve_axis comes from the resolved axis/centerline; the driver compares it with "
             "these request-derived volumes, with the direction/origin it can predict, with the "
@@ -190,9 +251,15 @@ def sketch_entity_ids(terminal: dict) -> dict:
     return {}
 
 
-def reload_flag(terminal: dict) -> object:
-    result = terminal.get("result") if isinstance(terminal.get("result"), dict) else {}
-    return result.get("saved_file_reloaded_and_verified")
+def reload_flag(terminal: dict | None) -> object:
+    """Reload evidence from the job result block only.
+
+    A missing terminal or a missing result block means "no evidence", never
+    a crash: the verdict must record the gap, not abort the whole run.
+    """
+    result = terminal.get("result") if isinstance(terminal, dict) else None
+    block = result if isinstance(result, dict) else {}
+    return block.get("saved_file_reloaded_and_verified")
 
 
 def axes_of(snapshot: dict) -> list:
@@ -320,20 +387,10 @@ async def run_case(runner: LiveRunner, case: str) -> dict:
     if entity_ids:
         entry["sketch_entity_ids"] = entity_ids
     expected_entity = EXPECTED[case].get("sketch_entity")
-    if expected_entity is not None:
-        source_id = entity_ids.get(expected_entity)
-        entry["id_source"] = {"entity": expected_entity, "sketch_entity_id": source_id}
-        if block.get("id") != source_id:
-            problems.append(
-                f"id={block.get('id')!r} does not match sketch "
-                f"entity_ids[{expected_entity!r}]={source_id!r}"
-            )
-    if EXPECTED[case].get("kind") == "datum_axis" and len(axes) == 1:
-        if block.get("id") != axes[0].get("id"):
-            problems.append(
-                f"id={block.get('id')!r} does not match inspection datum_axes[0].id="
-                f"{axes[0].get('id')!r}"
-            )
+    id_problems, id_evidence = axis_id_source(block, entity_ids, expected_entity, axes)
+    problems.extend(id_problems)
+    if id_evidence:
+        entry["id_source"] = id_evidence
 
     # Save + reload: the axis must stay resolvable at the same identity and
     # geometry after the save erased and reloaded the file. Model inspection

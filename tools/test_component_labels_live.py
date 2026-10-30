@@ -86,6 +86,78 @@ def assemble(label: str, source_model_id: str) -> dict:
 # --- checks ---------------------------------------------------------------
 
 
+def scenario_expectations() -> dict:
+    """The three T09A scenarios this driver must cover, and what each proves.
+
+    The first two are live scenes; the third is a native-verified reload
+    property whose live form is a refused save, so it is stated as such
+    instead of being claimed as a passed geometry scene.
+    """
+    return {
+        "reload_association": {
+            "live_case": "cross_job",
+            "input": "a save job (native erase + reload from disk) on the assembly",
+            "expect": (
+                "saved_file_reloaded_and_verified is true and every component keeps the same "
+                "identity (model_id + feature_id) and the same source_model_id/source_revision "
+                "mirror; the label set is unchanged"
+            ),
+            "fails_when": (
+                "the reload evidence is missing, the label set changed, or any identity/source "
+                "mirror moved"
+            ),
+        },
+        "delete_then_unique_label_reinsert": {
+            "live_case": "rename_reinsert",
+            "input": "remove the part_beta component, then re-assemble the same source as the "
+            "new unique label part_gamma",
+            "expect": (
+                "exactly one component carries part_gamma with its new feature_id; the removed "
+                "label part_beta appears on no current component; the old label's observable "
+                "landing is recorded (absent, or deleted_identities if a stale binding survived)"
+            ),
+            "fails_when": (
+                "part_beta is still attached to any component, part_gamma is missing or "
+                "duplicated, or a stale part_beta binding lands on the new feature_id"
+            ),
+        },
+        "id_renumbering_never_rebinds": {
+            "live_case": "cross_job (native verify_saved refuses the save)",
+            "input": (
+                "a reloaded inspection whose component feature_ids differ from the recorded "
+                "ones - the native save path compares feature_id and model_name across the "
+                "erase+reload and refuses such a save"
+            ),
+            "expect": (
+                "offline: the projection keeps every current record unlabeled and puts the old "
+                "ids into deleted_identities, so an id change can never adopt an old label; "
+                "live: a renumbered save is refused natively and never commits a wrong binding"
+            ),
+            "fails_when": (
+                "a current record inherits a label whose feature_id is no longer present, or an "
+                "old binding is merged onto a current record"
+            ),
+            "live_verifiability": (
+                "partially covered live: the native refusal is observable, a renumbered but "
+                "committed model is not constructible through this service, so the projection "
+                "half is proven offline and the native half is observed live as a refusal"
+            ),
+        },
+    }
+
+
+def contract_failures(projection: dict, reload_guard: dict) -> list[str]:
+    """Which contract statements did not hold; an empty list means all hold."""
+    failures = []
+    for key, value in projection.items():
+        if isinstance(value, bool) and not value:
+            failures.append(f"projection.{key}")
+    for key, value in reload_guard.items():
+        if isinstance(value, bool) and not value:
+            failures.append(f"reload_guard.{key}")
+    return failures
+
+
 def check_projection_contract() -> dict:
     model = {
         "model_id": "a" * 32,
@@ -107,14 +179,23 @@ def check_projection_contract() -> dict:
     assert by_id[40]["labels"] == ["part_alpha", "two_labels_one"], by_id[40]["labels"]
     assert by_id[40]["label_state"] == "multi", by_id[40]["label_state"]
     assert by_id[40]["label"] is None and by_id[40]["source_model_id"] is None
+    assert by_id[40]["bindings"] == [
+        {"label": "part_alpha", "source_model_id": None, "source_revision": None},
+        {"label": "two_labels_one", "source_model_id": None, "source_revision": None},
+    ], by_id[40]["bindings"]
     assert by_id[43]["label"] == "part_beta" and by_id[43]["label_state"] == "single"
+    assert by_id[43]["bindings"] == [
+        {"label": "part_beta", "source_model_id": None, "source_revision": None}
+    ], by_id[43]["bindings"]
     deleted = {item["identity"]["feature_id"]: item for item in projection["deleted_identities"]}
     assert 99 in deleted, deleted
     assert deleted[99]["reason"] == "feature_id_not_in_verified_components"
+    assert deleted[99]["labels"] == ["old_removed"], deleted[99]
     assert projection["identity_key"]["key"] == "model_identity+feature_id"
     return {
         "multi_label_kept": True,
         "single_label_mirrors_source": True,
+        "bindings_kept_per_record": True,
         "deleted_identity_kept_separately": True,
         "identity_key": projection["identity_key"],
     }
@@ -524,8 +605,11 @@ def main(argv: list[str] | None = None) -> int:
         "native_acceptance": "not_run",
         "projection": check_projection_contract(),
         "reload_guard": check_reload_guard_contract(),
+        "scenarios": scenario_expectations(),
         "provenance": provenance(),
     }
+    failures = contract_failures(report["projection"], report["reload_guard"])
+    report["contract_failures"] = failures
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     digest = hashlib.sha256(output.read_bytes()).hexdigest()
@@ -536,10 +620,14 @@ def main(argv: list[str] | None = None) -> int:
                 "report": str(output),
                 "projection": report["projection"],
                 "reload_guard": report["reload_guard"],
+                "contract_failures": failures,
             },
             ensure_ascii=False,
         )
     )
+    if failures:
+        print(f"CONTRACT FAILED: {', '.join(failures)}", file=sys.stderr)
+        return 1
     return 0
 
 

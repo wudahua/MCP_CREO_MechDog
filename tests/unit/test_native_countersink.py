@@ -371,5 +371,92 @@ class NativeCountersinkTest(unittest.TestCase):
         self.assertEqual(body.count("ProFeature f = create(root)"), 1)
 
 
+class CaseSelectionTests(unittest.TestCase):
+    """The default live run must cover exactly the six remainder cases.
+
+    The three cases accepted on 2026-10-29 must not be selectable through the
+    remainder selector, so a rerun can never be mistaken for the new
+    acceptance set.
+    """
+
+    def test_the_default_selection_is_the_six_remainder_cases(self):
+        from tools.test_native_countersink import REMAINDER_CASES, resolve_case_selection
+
+        selection = resolve_case_selection(None)
+        self.assertEqual(len(selection), 6)
+        self.assertEqual(selection, list(REMAINDER_CASES))
+        self.assertEqual(
+            selection,
+            [
+                "blind_straight",
+                "blind_counterbore",
+                "blind_countersink",
+                "direction_side_normal",
+                "direction_flip_guard",
+                "edit_dimension_values",
+            ],
+        )
+
+    def test_the_accepted_cases_are_not_selectable(self):
+        from tools.test_native_countersink import resolve_case_selection
+
+        for name in ("cbore_flat_seat", "csink_90", "countersink_180_contract"):
+            with self.subTest(case=name):
+                with self.assertRaises(ValueError):
+                    resolve_case_selection([name])
+
+    def test_an_unknown_case_is_refused(self):
+        from tools.test_native_countersink import resolve_case_selection
+
+        with self.assertRaises(ValueError):
+            resolve_case_selection(["not_a_case"])
+
+    def test_a_repeated_case_is_refused(self):
+        from tools.test_native_countersink import resolve_case_selection
+
+        with self.assertRaises(ValueError):
+            resolve_case_selection(["blind_straight", "blind_straight"])
+
+    def test_a_narrowed_selection_keeps_the_run_order(self):
+        from tools.test_native_countersink import resolve_case_selection
+
+        selection = resolve_case_selection(["edit_dimension_values", "blind_straight"])
+        self.assertEqual(selection, ["blind_straight", "edit_dimension_values"])
+
+
+class RemainderExpectationTests(unittest.TestCase):
+    """The six remainder cases keep their frozen oracles and expectations."""
+
+    def test_the_blind_depth_is_overall_from_the_placement_face(self):
+        # depth is the overall drill depth measured from the placement face;
+        # the flat-bottom oracle uses it as such.
+        blind = oracle_removed(6, 7, {})
+        self.assertAlmostEqual(blind, math.pi * 36 * 7 / 4, places=9)
+
+    def test_the_three_blind_variants_keep_their_expected_volumes(self):
+        self.assertAlmostEqual(oracle_removed(6, 7, {}), 197.92033717615698, places=6)
+        self.assertAlmostEqual(
+            oracle_removed(6, 8, {"counterbore": {"diameter": 10, "depth": 2}}),
+            326.7256359733385,
+            places=6,
+        )
+        self.assertAlmostEqual(
+            oracle_removed(6, 8, {"countersink": {"diameter": 10, "angle": 90}}),
+            272.2713633111154,
+            places=6,
+        )
+
+    def test_the_face_deltas_match_the_three_blind_variants(self):
+        self.assertEqual(oracle_faces({}, blind=True), 2)
+        self.assertEqual(oracle_faces({"counterbore": {"diameter": 10, "depth": 2}}, blind=True), 4)
+        self.assertEqual(
+            oracle_faces({"countersink": {"diameter": 10, "angle": 90}}, blind=True), 3
+        )
+
+    def test_the_edit_case_keeps_its_post_edit_oracle(self):
+        edited = oracle_removed(7, 8, {"counterbore": {"diameter": 10, "depth": 3}})
+        self.assertAlmostEqual(edited, 428.0419990516093, places=6)
+
+
 if __name__ == "__main__":
     unittest.main()

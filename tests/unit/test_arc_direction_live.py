@@ -8,9 +8,11 @@ never passes"), and the reload flag is evidence only inside ``result`` —
 a flag at the terminal top level is not evidence and must not pass.
 """
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 from tools import test_arc_direction_live as driver
 
@@ -420,6 +422,101 @@ class ReportPathTests(unittest.TestCase):
                 driver.resolve_output(existing, "run")
             fresh = Path(tmp) / "fresh" / "report.json"
             self.assertEqual(driver.resolve_output(fresh, "run"), fresh)
+
+
+class LiveCoverageInventoryTests(unittest.TestCase):
+    """The live matrix must cover every aspect the T02 remainder asks for.
+
+    The inventory is what the offline report publishes, so an aspect that
+    loses its case would otherwise disappear silently from the evidence.
+    """
+
+    def test_every_required_aspect_names_at_least_one_live_case(self):
+        inventory = driver.coverage_inventory()
+        for aspect in (
+            "direction_in_place_edit",
+            "cross_zero",
+            "tilted_frame",
+            "downstream_regeneration",
+            "illegal_edit",
+            "save_reload",
+            "create_geometry",
+        ):
+            with self.subTest(aspect=aspect):
+                self.assertTrue(inventory[aspect], aspect)
+
+    def test_the_named_cases_exist_in_the_live_tables(self):
+        known = {
+            case["case"]
+            for case in [
+                *driver.CASES,
+                *driver.FRAME_CASES,
+                *driver.EDIT_CASES,
+                *driver.ILLEGAL_EDIT_CASES,
+            ]
+        }
+        for aspect, names in driver.coverage_inventory().items():
+            for name in names:
+                with self.subTest(aspect=aspect, case=name):
+                    self.assertIn(name, known)
+
+    def test_cross_zero_and_tilted_frame_have_their_own_case(self):
+        inventory = driver.coverage_inventory()
+        self.assertIn("edit_switch_dir_cross_zero", inventory["cross_zero"])
+        self.assertIn("edit_switch_dir_tilted_xz", inventory["tilted_frame"])
+
+    def test_illegal_edits_cover_rejection_and_native_failure(self):
+        kinds = {case["kind"] for case in driver.ILLEGAL_EDIT_CASES}
+        self.assertEqual(kinds, {"schema", "native"})
+        self.assertEqual(
+            sorted(case["case"] for case in driver.ILLEGAL_EDIT_CASES),
+            [
+                "illegal_dir_float",
+                "illegal_dir_zero",
+                "illegal_full_circle",
+                "illegal_open_profile",
+                "illegal_zero_sweep",
+            ],
+        )
+
+
+class OfflineReportTests(unittest.TestCase):
+    """The offline stage must leave an auditable report on the given path."""
+
+    def test_offline_writes_a_report_and_never_overwrites_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "run" / "report.json"
+            code = driver.main(["--output", str(target)])
+            self.assertEqual(code, 0)
+            report = json.loads(target.read_text(encoding="utf-8"))
+            self.assertEqual(report["mode"], "offline")
+            self.assertEqual(report["native_acceptance"], "not_run")
+            self.assertIn("coverage", report)
+            self.assertTrue(report["provenance"]["source_fingerprint"])
+            self.assertTrue(target.with_name("report.sha256").is_file())
+            # A second run must refuse the existing report instead of
+            # overwriting the history.
+            self.assertEqual(driver.main(["--output", str(target)]), 2)
+
+    def test_offline_never_creates_an_mcp_client(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "report.json"
+            client = Mock(side_effect=AssertionError("MCP client must not be created"))
+            with patch.dict("sys.modules", {"mcp": Mock(Client=client)}):
+                code = driver.main(["--output", str(target)])
+            self.assertEqual(code, 0)
+            client.assert_not_called()
+
+    def test_a_single_live_flag_never_connects(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "report.json"
+            client = Mock(side_effect=AssertionError("MCP client must not be created"))
+            with patch.dict("sys.modules", {"mcp": Mock(Client=client)}):
+                code = driver.main(["--live", "--output", str(target)])
+            self.assertEqual(code, 0)
+            client.assert_not_called()
+            report = json.loads(target.read_text(encoding="utf-8"))
+            self.assertEqual(report["native_acceptance"], "not_run")
 
 
 if __name__ == "__main__":

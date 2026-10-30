@@ -777,7 +777,32 @@ async def live(output: Path) -> None:
     output.with_name("report.sha256").write_text(f"{digest}  {output.name}\n", encoding="utf-8")
 
 
-def offline() -> int:
+def coverage_inventory() -> dict:
+    """Which live case covers which required acceptance aspect.
+
+    The offline report states this mapping so the coverage claim is
+    auditable without running the live matrix: every aspect the T02
+    remainder asks for must name at least one real case.
+    """
+    return {
+        "direction_in_place_edit": [case["case"] for case in EDIT_CASES],
+        "cross_zero": [case["case"] for case in EDIT_CASES if case["start"] > case["end"]],
+        "tilted_frame": [
+            case["case"] for case in [*FRAME_CASES, *EDIT_CASES] if case.get("plane", "XY") != "XY"
+        ],
+        "downstream_regeneration": [case["case"] for case in EDIT_CASES],
+        "illegal_edit": [case["case"] for case in ILLEGAL_EDIT_CASES],
+        "save_reload": [case["case"] for case in [*CASES, *FRAME_CASES, *EDIT_CASES]],
+        "create_geometry": [case["case"] for case in [*CASES, *FRAME_CASES]],
+    }
+
+
+def offline_report(output: Path) -> dict:
+    """The offline report: oracle tables and the live coverage inventory.
+
+    Written to the requested unique path so the offline stage leaves an
+    auditable artifact; an existing file is never overwritten.
+    """
     rows = []
     for case in [*CASES, *FRAME_CASES]:
         direction = 1 if case["dir"] is None else case["dir"]
@@ -801,13 +826,43 @@ def offline() -> int:
                 "volume_to_mm3": oracle_volume_mm3(case["start"], case["end"], case["to_dir"]),
             }
         )
+    from tools.test_arc_direction import local_provenance
+
+    report = {
+        "task": "DEV-051 T02",
+        "scope": ("FEAT-034 explicit arc dir: creation, direction edit, illegal edit, save/reload"),
+        "mode": "offline",
+        "native_acceptance": "not_run",
+        "run_id": output.parent.name,
+        "oracle": rows,
+        "edit_oracle": edits,
+        "illegal_edits": [case["case"] for case in ILLEGAL_EDIT_CASES],
+        "coverage": coverage_inventory(),
+        "strict_judgement": (
+            "a live case passes only with the job succeeded, the measured volume on the "
+            "independent oracle, a native arc_geometry echo reporting the declared dir and "
+            "sweep, and result.saved_file_reloaded_and_verified is exactly true"
+        ),
+        "provenance": local_provenance(),
+    }
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    digest = hashlib.sha256(output.read_bytes()).hexdigest()
+    output.with_name("report.sha256").write_text(f"{digest}  {output.name}\n", encoding="utf-8")
+    return report
+
+
+def offline(output: Path) -> int:
+    report = offline_report(output)
     print(
         json.dumps(
             {
                 "mode": "offline",
-                "oracle": rows,
-                "edit_oracle": edits,
-                "illegal_edits": [case["case"] for case in ILLEGAL_EDIT_CASES],
+                "report": str(output),
+                "oracle": report["oracle"],
+                "edit_oracle": report["edit_oracle"],
+                "illegal_edits": report["illegal_edits"],
+                "coverage": report["coverage"],
             },
             ensure_ascii=False,
             indent=2,
@@ -823,10 +878,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--confirm-session-usable", action="store_true")
     parser.add_argument("--output", type=Path, default=None)
     args = parser.parse_args(argv)
-    if not (args.live and args.confirm_session_usable):
-        return offline()
     run_id = new_run_id()
-    output = resolve_output(args.output, run_id)
+    try:
+        output = resolve_output(args.output, run_id)
+    except ValueError as error:
+        print(f"REFUSED BEFORE CONNECTION: {error}")
+        return 2
+    if not (args.live and args.confirm_session_usable):
+        return offline(output)
     asyncio.run(live(output))
     return 0
 

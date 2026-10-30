@@ -413,5 +413,163 @@ class ModeComparisonTests(unittest.TestCase):
         self.assertEqual(entry["passed_cases"], 2)
 
 
+class SampleRuleTests(unittest.TestCase):
+    """A failed or unverified repetition must not become a timing sample."""
+
+    def make_case(self, name, passed, client_total=10.0):
+        return {
+            "case": name,
+            "model_class": "small",
+            "plan_mode": "single",
+            "rep": 1,
+            "passed": passed,
+            "jobs": [{"warm_cold": "warm"}],
+            "summary": {
+                "measured_client_total_s": client_total,
+                "measured_server_window_sum_s": client_total - 1.0,
+                "save_reload_events": 1,
+            },
+        }
+
+    def test_a_failed_case_contributes_no_timing_sample(self):
+        summary = driver.summarize_cases(
+            [self.make_case("ok", True, 10.0), self.make_case("bad", False, 999.0)]
+        )
+        (entry,) = summary
+        self.assertEqual(entry["client_total_s"]["n"], 1)
+        self.assertEqual(entry["client_total_s"]["median_s"], 10.0)
+        self.assertEqual(entry["server_window_sum_s"]["n"], 1)
+        self.assertEqual(entry["passed_cases"], 1)
+        self.assertEqual(entry["case_count"], 2)
+
+    def test_a_failed_case_is_still_listed(self):
+        summary = driver.summarize_cases([self.make_case("bad", False, 999.0)])
+        (entry,) = summary
+        self.assertEqual(entry["failed_cases"], ["bad"])
+        self.assertEqual(entry["client_total_s"]["n"], 0)
+        self.assertIsNone(entry["client_total_s"]["median_s"])
+
+    def test_the_sample_rule_is_stated_in_the_report(self):
+        summary = driver.summarize_cases([self.make_case("ok", True)])
+        (entry,) = summary
+        self.assertIn("passed repetitions only", entry["sample_rule"])
+
+
+class SelectionTests(unittest.TestCase):
+    """The split-run selectors are refused before any connection."""
+
+    def test_the_default_covers_both_classes_and_modes(self):
+        classes, modes = driver.resolve_selection(None, None)
+        self.assertEqual(classes, ("small", "large"))
+        self.assertEqual(modes, ("single", "batch"))
+
+    def test_a_narrowed_selection_is_accepted(self):
+        classes, modes = driver.resolve_selection(["large"], ["single"])
+        self.assertEqual(classes, ("large",))
+        self.assertEqual(modes, ("single",))
+
+    def test_an_unknown_class_or_mode_is_refused(self):
+        with self.assertRaises(ValueError):
+            driver.resolve_selection(["huge"], None)
+        with self.assertRaises(ValueError):
+            driver.resolve_selection(None, ["parallel"])
+
+    def test_a_repeated_class_or_mode_is_refused(self):
+        with self.assertRaises(ValueError):
+            driver.resolve_selection(["small", "small"], None)
+        with self.assertRaises(ValueError):
+            driver.resolve_selection(None, ["single", "single"])
+
+
+class MergeTests(unittest.TestCase):
+    """Only reports of the same tested source may be merged."""
+
+    def report(self, run_id, fingerprint, case_name, passed=True):
+        return {
+            "run_id": run_id,
+            "provenance": {"source_fingerprint": fingerprint},
+            "cases": [
+                {
+                    "case": case_name,
+                    "model_class": "small",
+                    "plan_mode": "single",
+                    "passed": passed,
+                    "jobs": [{"warm_cold": "warm"}],
+                    "summary": {
+                        "measured_client_total_s": 5.0,
+                        "measured_server_window_sum_s": 4.0,
+                        "save_reload_events": 1,
+                    },
+                }
+            ],
+            "equivalence": [],
+        }
+
+    def test_reports_of_the_same_source_merge(self):
+        merged = driver.merge_reports(
+            [
+                self.report("run1", "fp1", "small_single_rep1"),
+                self.report("run2", "fp1", "small_single_rep2"),
+            ]
+        )
+        self.assertTrue(merged["merged"])
+        self.assertEqual(len(merged["cases"]), 2)
+        self.assertEqual(merged["runs"], ["run1", "run2"])
+        (entry,) = merged["summary"]
+        self.assertEqual(entry["client_total_s"]["n"], 2)
+        self.assertEqual(entry["client_total_s"]["median_s"], 5.0)
+
+    def test_reports_of_different_sources_are_refused(self):
+        with self.assertRaises(ValueError):
+            driver.merge_reports(
+                [
+                    self.report("run1", "fp1", "small_single_rep1"),
+                    self.report("run2", "fp2", "small_single_rep2"),
+                ]
+            )
+
+    def test_a_failed_case_does_not_raise_the_merged_median(self):
+        merged = driver.merge_reports(
+            [
+                self.report("run1", "fp1", "small_single_rep1", passed=True),
+                self.report("run2", "fp1", "small_single_rep2", passed=False),
+            ]
+        )
+        (entry,) = merged["summary"]
+        self.assertEqual(entry["client_total_s"]["n"], 1)
+        self.assertEqual(entry["failed_cases"], ["small_single_rep2"])
+
+
+class ProgressReportingTests(unittest.TestCase):
+    """An interrupted run must leave a staged report behind."""
+
+    def runner(self):
+        with patch.object(driver, "local_provenance", return_value={}):
+            directory = tempfile.TemporaryDirectory()
+            self.addCleanup(directory.cleanup)
+            return driver.PlanPerformanceRun(
+                None, Path(directory.name) / "report.json", "testrun", reps=1
+            )
+
+    def test_the_report_tracks_the_completed_cases(self):
+        runner = self.runner()
+        self.assertEqual(runner.report["progress"]["completed_cases"], [])
+        self.assertEqual(runner.report["progress"]["stage"], "starting")
+        # The same shape run_case writes after every completed case.
+        runner.report["progress"]["completed_cases"].append("small_single_rep1")
+        runner.report["progress"]["last_completed_case"] = "small_single_rep1"
+        runner.report["progress"]["stage"] = "case_completed"
+        self.assertEqual(runner.report["progress"]["last_completed_case"], "small_single_rep1")
+        self.assertEqual(runner.report["progress"]["completed_cases"], ["small_single_rep1"])
+
+    def test_the_report_is_written_before_the_run_starts(self):
+        runner = self.runner()
+        runner.save()
+        self.assertTrue(runner.output.is_file())
+        payload = json.loads(runner.output.read_text(encoding="utf-8"))
+        self.assertEqual(payload["mode"], "live")
+        self.assertEqual(payload["native_acceptance"], "running")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -440,6 +440,111 @@ def resolve_output(output: Path | None, run_id: str) -> Path:
     return path
 
 
+def resolve_selection(
+    classes: list[str] | None, modes: list[str] | None
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Resolve the --classes/--modes selectors against the known sets.
+
+    Unknown or repeated names are refused before any connection, so a typo
+    never silently reduces the measured scope.
+    """
+    known_classes = tuple(SPECS)
+    known_modes = ("single", "batch")
+    chosen_classes = tuple(classes) if classes else known_classes
+    chosen_modes = tuple(modes) if modes else known_modes
+    for name in chosen_classes:
+        if name not in known_classes:
+            raise ValueError(f"unknown class {name!r}; known classes are {list(known_classes)}")
+    for name in chosen_modes:
+        if name not in known_modes:
+            raise ValueError(f"unknown mode {name!r}; known modes are {list(known_modes)}")
+    for label, values in (("class", chosen_classes), ("mode", chosen_modes)):
+        repeated = sorted({name for name in values if list(values).count(name) > 1})
+        if repeated:
+            raise ValueError(f"repeated {label}(s) {repeated}")
+    return chosen_classes, chosen_modes
+
+
+def summarize_cases(cases: list[dict]) -> list[dict]:
+    """Per class and mode statistics over the PASSED repetitions only.
+
+    A failed or unverified repetition contributes no timing sample: its
+    measured time would describe a run that did not meet the contract.
+    The failed cases stay listed so an incomplete sample is visible.
+    """
+    groups: dict[tuple[str, str], list[dict]] = {}
+    for case in cases:
+        groups.setdefault((case["model_class"], case["plan_mode"]), []).append(case)
+    summary = []
+    for (model_class, mode), group in sorted(groups.items()):
+        passed = [case for case in group if case.get("passed")]
+        failed = [case for case in group if not case.get("passed")]
+        entry = {
+            "model_class": model_class,
+            "plan_mode": mode,
+            "client_total_s": summarize(
+                [case["summary"]["measured_client_total_s"] for case in passed]
+            ),
+            "server_window_sum_s": summarize(
+                [
+                    case["summary"]["measured_server_window_sum_s"]
+                    for case in passed
+                    if case["summary"]["measured_server_window_sum_s"] is not None
+                ]
+            ),
+            "save_reload_events_per_case": sorted(
+                {case["summary"]["save_reload_events"] for case in group}
+            ),
+            "cold_jobs": sum(
+                1 for case in group for job in case["jobs"] if job["warm_cold"] == "cold"
+            ),
+            "passed_cases": len(passed),
+            "case_count": len(group),
+            "failed_cases": [case["case"] for case in failed],
+            "sample_rule": (
+                "timing statistics use the passed repetitions only; a failed "
+                "repetition is listed under failed_cases and contributes no sample"
+            ),
+        }
+        summary.append(entry)
+    return summary
+
+
+def merge_reports(reports: list[dict]) -> dict:
+    """Merge the case/equivalence data of several reports of the SAME source.
+
+    Only reports with an identical ``source_fingerprint`` may be merged: the
+    measurements must describe the same tested source. The merged report keeps
+    every case, recomputes the summary over the pooled cases and records the
+    contributing runs.
+    """
+    fingerprints = {
+        (report.get("provenance") or {}).get("source_fingerprint") for report in reports
+    }
+    if len(fingerprints) > 1:
+        raise ValueError(
+            "refusing to merge reports with different source fingerprints: "
+            f"{sorted(map(str, fingerprints))}"
+        )
+    merged: dict = {
+        "task": "DEV-051 T09D",
+        "scope": "performance baseline, merged over several runs of the same source",
+        "mode": "live",
+        "live_run": True,
+        "merged": True,
+        "source_fingerprint": next(iter(fingerprints)),
+        "runs": [report.get("run_id") for report in reports],
+        "cases": [],
+        "equivalence": [],
+        "summary": [],
+    }
+    for report in reports:
+        merged["cases"].extend(report.get("cases") or [])
+        merged["equivalence"].extend(report.get("equivalence") or [])
+    merged["summary"] = summarize_cases(merged["cases"])
+    return merged
+
+
 def local_provenance() -> dict:
     from version import VERSION
 
@@ -492,11 +597,19 @@ def local_provenance() -> dict:
 class PlanPerformanceRun:
     """Serial live runner; one Toolkit job at a time, never resubmits."""
 
-    def __init__(self, client: Any, output: Path, run_id: str, reps: int) -> None:
+    def __init__(
+        self,
+        client: Any,
+        output: Path,
+        run_id: str,
+        reps: int,
+        classes: tuple[str, ...] = ("small", "large"),
+    ) -> None:
         self.client = client
         self.output = output
         self.run_id = run_id
         self.reps = reps
+        self.classes = tuple(classes)
         self.session_job_index = 0
         self.report: dict = {
             "task": "DEV-051 T09D",
@@ -512,7 +625,7 @@ class PlanPerformanceRun:
             },
             "protocol": {
                 "reps_per_class": reps,
-                "classes": ["small", "large"],
+                "classes": list(self.classes),
                 "modes": ["single", "batch"],
                 "warm_cold_rule": (
                     "session_job_index 0 is 'cold' (first Toolkit job of this driver "
@@ -525,12 +638,22 @@ class PlanPerformanceRun:
                     "match the analytic expectation across modes, and every job must "
                     "save and reload verified, otherwise the case is judged failed."
                 ),
+                "sample_rule": (
+                    "only a case that passed contributes to the timing statistics; a "
+                    "failed equivalence voids its group's timing and is recorded as a "
+                    "failed sample with its raw error"
+                ),
             },
             "fixtures": geometry_basis(),
             "cases": [],
             "equivalence": [],
             "summary": [],
             "calls": [],
+            "progress": {
+                "completed_cases": [],
+                "last_completed_case": None,
+                "stage": "starting",
+            },
             "provenance": local_provenance(),
         }
 
@@ -694,10 +817,15 @@ class PlanPerformanceRun:
             after = await self.compact_snapshot(model_id)
             measured[-1]["post_inspection_latency_s"] = after["latency_s"]
 
-        for job in measured:
-            assert job["status"] == "succeeded", job
-            assert job["saved_file_reloaded_and_verified"] is True, job
-
+        # A failed or unverified job is recorded as a failed sample with its
+        # raw error; it never contributes to the timing statistics and never
+        # counts as a repetition.
+        failed_jobs = [
+            job
+            for job in measured
+            if job["status"] != "succeeded"
+            or job.get("saved_file_reloaded_and_verified") is not True
+        ]
         final = await self.compact_snapshot(model_id)
         case = {
             "case": f"{model_class}_{mode}_rep{rep}",
@@ -735,12 +863,26 @@ class PlanPerformanceRun:
             "summary": case_summary(measured, measured_started, time.monotonic()),
         }
         passed = (
-            case["result"]["volume_match"]
+            not failed_jobs
+            and case["result"]["volume_match"]
             and case["summary"]["save_reload_complete"]
             and all(job["status"] == "succeeded" for job in measured)
         )
         case["passed"] = passed
+        if failed_jobs:
+            case["failure"] = {
+                "failed_job_count": len(failed_jobs),
+                "raw_error": [job.get("raw_error") for job in failed_jobs],
+                "note": (
+                    "a failed or unverified job voids this repetition: it is recorded with "
+                    "its raw error and contributes no timing sample"
+                ),
+            }
         self.report["cases"].append(case)
+        progress = self.report["progress"]
+        progress["completed_cases"].append(case["case"])
+        progress["last_completed_case"] = case["case"]
+        progress["stage"] = "case_completed"
         self.save()
         return case
 
@@ -783,35 +925,8 @@ class PlanPerformanceRun:
         return row
 
     def build_summary(self) -> list[dict]:
-        groups: dict[tuple[str, str], list[dict]] = {}
-        for case in self.report["cases"]:
-            groups.setdefault((case["model_class"], case["plan_mode"]), []).append(case)
-        summary = []
-        for (model_class, mode), cases in sorted(groups.items()):
-            entry = {
-                "model_class": model_class,
-                "plan_mode": mode,
-                "client_total_s": summarize(
-                    [case["summary"]["measured_client_total_s"] for case in cases]
-                ),
-                "server_window_sum_s": summarize(
-                    [
-                        case["summary"]["measured_server_window_sum_s"]
-                        for case in cases
-                        if case["summary"]["measured_server_window_sum_s"] is not None
-                    ]
-                ),
-                "save_reload_events_per_case": sorted(
-                    {case["summary"]["save_reload_events"] for case in cases}
-                ),
-                "cold_jobs": sum(
-                    1 for case in cases for job in case["jobs"] if job["warm_cold"] == "cold"
-                ),
-                "passed_cases": sum(1 for case in cases if case["passed"]),
-                "case_count": len(cases),
-            }
-            summary.append(entry)
-        return summary
+        """Per class and mode statistics; see summarize_cases for the rule."""
+        return summarize_cases(self.report["cases"])
 
     async def run_all(self) -> None:
         from tools.mcp_readiness import wait_for_startup
@@ -824,7 +939,7 @@ class PlanPerformanceRun:
         assert status["connected"] is True, status
         model_tag = hashlib.sha256(self.run_id.encode("utf-8")).hexdigest()[:8]
         try:
-            for model_class in ("small", "large"):
+            for model_class in self.classes:
                 for rep in range(1, self.reps + 1):
                     single = await self.run_case(model_class, "single", rep, model_tag)
                     batch = await self.run_case(model_class, "batch", rep, model_tag)
@@ -832,15 +947,17 @@ class PlanPerformanceRun:
                     self.save()
             self.report["summary"] = self.build_summary()
             self.report["native_acceptance"] = "recorded"
+            self.report["progress"]["stage"] = "completed"
         except Exception as error:
             self.report["error"] = f"{type(error).__name__}: {error}"
             self.report["summary"] = self.build_summary()
+            self.report["progress"]["stage"] = "interrupted"
             raise
         finally:
             self.save()
 
 
-async def live(output: Path, run_id: str, reps: int) -> None:
+async def live(output: Path, run_id: str, reps: int, classes: tuple[str, ...]) -> None:
     from tools.test_t05_native import require_manual_start
 
     require_manual_start(ROOT / "config.json")
@@ -851,7 +968,7 @@ async def live(output: Path, run_id: str, reps: int) -> None:
         StdioServerParameters(command=sys.executable, args=[str(ROOT / "server.py")], cwd=ROOT),
         read_timeout_seconds=60,
     ) as client:
-        runner = PlanPerformanceRun(client, output, run_id, reps)
+        runner = PlanPerformanceRun(client, output, run_id, reps, classes=classes)
         runner.save()
         await runner.run_all()
 
@@ -930,7 +1047,9 @@ def offline_checks() -> dict:
     }
 
 
-def write_offline_report(output: Path, run_id: str, results: dict) -> dict:
+def write_offline_report(
+    output: Path, run_id: str, results: dict, classes: tuple[str, ...], modes: tuple[str, ...]
+) -> dict:
     report = {
         "task": "DEV-051 T09D",
         "scope": "performance baseline driver, offline preparation stage",
@@ -962,8 +1081,14 @@ def write_offline_report(output: Path, run_id: str, results: dict) -> dict:
         "fixtures": geometry_basis(),
         "protocol": {
             "reps_per_class": DEFAULT_REPS,
+            "classes": list(classes),
+            "modes": list(modes),
             "warm_cold_rule": (
                 "session_job_index 0 is 'cold'; every later job is 'warm'; recorded per job."
+            ),
+            "sample_rule": (
+                "only a passed repetition contributes to the timing statistics; a failed "
+                "repetition is recorded with its raw error and contributes no sample"
             ),
         },
         "checks": results,
@@ -980,12 +1105,38 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--confirm-session-usable", action="store_true")
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--reps", type=int, default=DEFAULT_REPS)
+    parser.add_argument(
+        "--classes",
+        action="append",
+        dest="classes",
+        default=None,
+        metavar="NAME",
+        help=(
+            "measure only these model classes (repeatable, small|large); the default "
+            "measures both. Splitting the run keeps each part inside a bounded tool "
+            "timeout; the parts are merged afterwards only when their source "
+            "fingerprints are identical"
+        ),
+    )
+    parser.add_argument(
+        "--modes",
+        action="append",
+        dest="modes",
+        default=None,
+        metavar="NAME",
+        help="measure only these delivery modes (repeatable, single|batch)",
+    )
     args = parser.parse_args(argv)
 
     if args.reps < 1:
         parser.error("--reps must be at least 1")
     if args.reps != DEFAULT_REPS:
         print(f"NOTE: --reps {args.reps} deviates from the protocol minimum {DEFAULT_REPS}")
+    try:
+        classes, modes = resolve_selection(args.classes, args.modes)
+    except ValueError as error:
+        print(f"REFUSED BEFORE CONNECTION: {error}")
+        return 2
 
     run_id = new_run_id()
     try:
@@ -1002,7 +1153,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"OFFLINE ONLY ({reason}): no MCP client, no Toolkit call, no Creo connection.")
         results = offline_checks()
         results["run_id"] = run_id
-        write_offline_report(output, run_id, results)
+        write_offline_report(output, run_id, results, classes, modes)
         fixtures = results["fixtures"]
         print(f"offline_classes={len(fixtures['layout'])} validated")
         print("synthetic_data=true not_a_benchmark=true (timing recorder check only)")
@@ -1010,7 +1161,7 @@ def main(argv: list[str] | None = None) -> int:
         print("LIVE NOT RUN: no performance measurement was produced or claimed.")
         return 0
 
-    asyncio.run(live(output, run_id, args.reps))
+    asyncio.run(live(output, run_id, args.reps, classes))
     return 0
 
 

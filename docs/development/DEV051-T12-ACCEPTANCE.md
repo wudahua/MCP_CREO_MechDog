@@ -118,3 +118,45 @@ oracle 假设与风险：平底孔、深度自放置面 overall 量取、完整�
 ```
 
 （默认只跑 6 例余项；需要连同三例重跑时加 `--include-passed-cases`。）记录每例 job/model/revision、去料实测 vs oracle 误差、`matched_variant`、面数增量、尺寸回读、圆柱轴/bbox、`saved_file_reloaded_and_verified`；`direction_flip_guard` 另记原始失败信息、`rollback_succeeded` 与恢复孔；`edit_dimension_values` 记录 dimension ID、编辑前后 revision 与 oracle。任一 `matched_variant` 非 `contract_flat_overall`、或 bbox/角度单位与假设不符时，保留报告并在本卡回写口径修订，不静默改判。首次 unknown/挂起即停止新提交并交接。
+
+## 2026-10-30：N10 实机余项的离线预检
+
+阶段：**离线预检完成；实机未执行**。分支 `codex/dev051-feedback070`，接手时基线 `79b02ed`，本节提交前 HEAD `a6d4a3d`（并行 N03 窗口提交，非本节改动）。本节**未连接 MCP/Toolkit、未启动 Creo、未创建 MCP 客户端、未运行任何 `--live`、未运行 `bridge.py build`、未运行 `tools\dev_check.py`、未跑全量单测、未改 `schema.py`、未改 `native/`**。工作区 `dirty=true`（含并行窗口未提交文件，未暂存未改写）。
+
+### 单元结果
+
+`.\.venv\Scripts\python.exe -m unittest tests.unit.test_native_countersink -v` → exit 0，Ran 18，OK（原 9 → 新增 9）。
+
+### 驱动覆盖缺口与是否已补
+
+| 缺口 | 是否已补 | 说明 |
+| --- | --- | --- |
+| **无 `--case` 选择器**：本计划要求"先核当前 `--case` 选择器，避免误把旧3例当新增验收"，但驱动**根本没有该参数**——只有 `--include-passed-cases` 布尔开关，无法只跑 6 例中的指定子集，实机负责人无法分段复测 | **已补** | 新增 `--case NAME`（可重复）：只接受 6 个余项用例名，**2026-10-29 的三例不可选中**；未知名与重复名在连接前以退出码 2 拒绝 |
+| 6 例余项集合未在离线产物中显式列出 | **已补** | 离线报告新增 `remainder_cases`/`selected_cases`/`accepted_2026_10_29_cases`/`case_selection_rule` 四字段，把"哪些是新增验收"写进产物；单测 `test_the_default_selection_is_the_six_remainder_cases` 钉死默认恰 6 例且顺序固定 |
+| 余项 oracle 无独立单测 | **已补** | 新增 `RemainderExpectationTests`：盲孔 overall 口径、三种盲孔体积（197.920337 / 326.725636 / 272.271363 mm³）、面数增量（2/4/3）、编辑后 oracle（428.041999 mm³） |
+
+核实结果（**原本已具备**）：
+
+- **待测 6 例**：`blind_straight`、`blind_counterbore`、`blind_countersink`、`direction_side_normal`、`direction_flip_guard`、`edit_dimension_values`（默认 live 恰跑这 6 例；三例旧项仅 `--include-passed-cases`）
+- **`matched_variant` 备选公式不判通过**：`judge_geometry` 要求 `matched == "contract_flat_overall"`；命中备选（118° 钻尖 / 座面起量 shoulder）→ `problems.append("removal matches ... not the contract flat-bottom oracle")`。`oracle_variants` 把备选值**并列报告**但不用于判定
+- **盲孔 depth 为 overall**：`depth` 为自放置面起的总钻深，`oracle_removed` 按平底 + overall 推导；沉孔/锥深须 < 孔深（schema 强制）
+- **三种盲孔的体积/新增面/尺寸/圆柱轴与 bbox 预期**：`oracle_removed`/`oracle_faces`/期望尺寸集/`BLIND_CYLINDERS`（r=3、r=5 面的轴向与 bbox 区间）
+- **翻向守卫失败后的恢复孔**：`direction_flip_guard` 要求首孔任务级失败 + `rollback_succeeded=true` + 体积/面数不变，随后同模型打**恢复孔**（Ø6 深 7 → 197.920337 mm³）
+
+### 实机命令与预期判定（待指定）
+
+```powershell
+# 默认：6 例余项全跑
+.\.venv\Scripts\python.exe tools\test_native_countersink.py --live --confirm-session-usable --output build\post090_live_<runid>\n10_countersink\report.json
+
+# 分段（可选，例：先只跑翻向守卫一例）
+.\.venv\Scripts\python.exe tools\test_native_countersink.py --live --confirm-session-usable --case direction_flip_guard --output build\post090_live_<runid>\n10_countersink\flip_guard\report.json
+```
+
+每例统一硬性检查：去料与契约 oracle 误差 ≤1 mm³、`hole +1` feature 增量、面数增量符合预期、孔特征尺寸值覆盖（直径/深度/沉孔径/深/沉头径/角）、**`saved_file_reloaded_and_verified=true`** 且重载后快照体积与尺寸与 oracle 一致。`matched_variant` 必须为 `contract_flat_overall`，非此值须保留报告并在本卡回写口径修订，**不静默改判**。`direction_flip_guard` 另记原始失败信息、`rollback_succeeded` 与恢复孔；`edit_dimension_values` 记录真实 dimension ID、编辑前后 revision 与 oracle。
+
+### 未测范围与风险
+
+全部 6 例余项未实机（元素树/几何/尺寸/回滚/重载均未观察）。2026-10-29 三例证据保留其历史时点，**不并入本次**。角度尺寸按度回读（90）待实机确认；bbox 语义（`ProGeomitemdata` 修剪面范围 vs 未修剪范围）待实机确认，实机若为未修剪范围须按报告调整判定口径并记录。盲深方案 `PRO_HLE_DEP_SHOULDER_DIM_SCHEME` 的运行语义仍未验（仅读 SDK 头文件）。不承诺孔型/放置/`flip` 重定义的编辑；螺纹、标准孔系列、出口沉头、双端沉孔、非线性放置不在范围；Creo 9/10 未测。
+
+离线产物：`build/post090_live_precheck_20261030T212525_b09a058e/n10_countersink/report.json`（含 `remainder_cases`、`selected_cases`、`accepted_2026_10_29_cases`）。合并预检小结：同目录 `precheck.md`。

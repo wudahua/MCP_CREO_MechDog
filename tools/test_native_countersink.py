@@ -148,12 +148,53 @@ CASES = {
     "csink_90": {"countersink": {"diameter": 10, "angle": 90}},
 }
 
+# The 2026-10-29 rejection case, part of the same accepted set.
+PASSED_REJECTION_CASE = "countersink_180_contract"
+
 # Remaining contract scope: blind depth on the plate top face.
 BLIND_CASES = {
     "blind_straight": {"depth": 7.0},
     "blind_counterbore": {"depth": 8.0, "counterbore": {"diameter": 10, "depth": 2}},
     "blind_countersink": {"depth": 8.0, "countersink": {"diameter": 10, "angle": 90}},
 }
+
+# The remainder cases that are not one of the BLIND_CASES: each has its own
+# runner and its own expectations.
+DIRECTION_CASE = "direction_side_normal"
+FLIP_GUARD_CASE = "direction_flip_guard"
+EDIT_CASE = "edit_dimension_values"
+
+# The full default remainder set, in run order.
+REMAINDER_CASES = (
+    *BLIND_CASES,
+    DIRECTION_CASE,
+    FLIP_GUARD_CASE,
+    EDIT_CASE,
+)
+
+
+def resolve_case_selection(requested: list[str] | None) -> list[str]:
+    """Resolve a --case selection against the remainder cases.
+
+    Only the six remainder cases can be selected: the three cases accepted on
+    2026-10-29 are deliberately not selectable here, so a rerun can never be
+    mistaken for the new acceptance set. An unknown or repeated name is
+    refused before any connection.
+    """
+    if not requested:
+        return list(REMAINDER_CASES)
+    known = set(REMAINDER_CASES)
+    unknown = [name for name in requested if name not in known]
+    if unknown:
+        raise ValueError(
+            f"unknown case(s) {sorted(unknown)}; the remainder cases are "
+            f"{sorted(known)} (the 2026-10-29 cases are not selectable here)"
+        )
+    repeated = sorted({name for name in requested if requested.count(name) > 1})
+    if repeated:
+        raise ValueError(f"repeated case(s) {repeated}")
+    return [name for name in REMAINDER_CASES if name in set(requested)]
+
 
 # Independent cylinder-face expectations (radius, axis, trimmed bbox).
 BLIND_CYLINDERS = {
@@ -767,7 +808,9 @@ async def run_passed_cases(runner: LiveRunner) -> None:
     )
 
 
-async def run_live(output: Path | None, include_passed: bool) -> int:
+async def run_live(
+    output: Path | None, include_passed: bool, selection: list[str] | None = None
+) -> int:
     require_manual_start(ROOT / "config.json")
     from mcp import Client
     from mcp.client.stdio import StdioServerParameters
@@ -776,6 +819,7 @@ async def run_live(output: Path | None, include_passed: bool) -> int:
     target = output or ROOT / "build" / "native_countersink" / run_id / "report.json"
     if target.exists():
         raise SystemExit(f"refusing to overwrite {target}")
+    cases = resolve_case_selection(selection)
     params = StdioServerParameters(command=sys.executable, args=[str(ROOT / "server.py")], cwd=ROOT)
     async with Client(params, read_timeout_seconds=180) as client:
         runner = LiveRunner(
@@ -791,13 +835,19 @@ async def run_live(output: Path | None, include_passed: bool) -> int:
             await runner.start()
             runner.report["hang_budget_seconds"] = HANG_BUDGET_SECONDS
             runner.report["plate_volume_mm3"] = PLATE_VOLUME_MM3
+            runner.report["selected_cases"] = cases
+            runner.report["remainder_cases"] = list(REMAINDER_CASES)
             if include_passed:
                 await run_passed_cases(runner)
-            for case_key, option in BLIND_CASES.items():
-                await case_blind(runner, case_key, option)
-            await case_direction_side(runner)
-            await case_flip_guard(runner)
-            await case_edit_dimensions(runner)
+            for case_key in cases:
+                if case_key in BLIND_CASES:
+                    await case_blind(runner, case_key, BLIND_CASES[case_key])
+                elif case_key == DIRECTION_CASE:
+                    await case_direction_side(runner)
+                elif case_key == FLIP_GUARD_CASE:
+                    await case_flip_guard(runner)
+                elif case_key == EDIT_CASE:
+                    await case_edit_dimensions(runner)
         except BaseException as error:
             runner.report["stopped"] = f"{type(error).__name__}: {error}"
             runner.finish()
@@ -856,13 +906,29 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="also rerun the three cases accepted on 2026-10-29 (off by default)",
     )
+    parser.add_argument(
+        "--case",
+        action="append",
+        dest="cases",
+        default=None,
+        metavar="NAME",
+        help=(
+            "run only these remainder cases (repeatable); the 2026-10-29 cases are not "
+            "selectable here. Unknown or repeated names are refused before any connection."
+        ),
+    )
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
+    try:
+        selection = resolve_case_selection(args.cases)
+    except ValueError as error:
+        print(f"REFUSED BEFORE CONNECTION: {error}", file=sys.stderr)
+        return 2
     if args.live:
         if not args.confirm_session_usable:
             print("live runs require --confirm-session-usable", file=sys.stderr)
             return 2
-        return asyncio.run(run_live(args.output, args.include_passed_cases))
+        return asyncio.run(run_live(args.output, args.include_passed_cases, selection))
     suite = unittest.defaultTestLoader.loadTestsFromModule(fixture)
     result = unittest.TextTestRunner(verbosity=1).run(suite)
     report = {
@@ -874,6 +940,14 @@ def main(argv: list[str] | None = None) -> int:
             "failures": len(result.failures),
             "errors": len(result.errors),
         },
+        "remainder_cases": list(REMAINDER_CASES),
+        "selected_cases": selection,
+        "accepted_2026_10_29_cases": [*CASES, PASSED_REJECTION_CASE],
+        "case_selection_rule": (
+            "the default run covers exactly the six remainder cases; --case narrows that "
+            "set; the three cases accepted on 2026-10-29 are only reachable through "
+            "--include-passed-cases and are never part of the remainder acceptance set"
+        ),
         "oracle_mm3": {
             "counterbore_through": fixture.oracle_removed(
                 6, 10, {"counterbore": {"diameter": 10, "depth": 2}}

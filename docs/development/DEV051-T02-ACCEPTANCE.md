@@ -153,3 +153,38 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；pydantic 
 3. 预期：5 创建例逐例 create→inspect→save→inspect 全 passed；3 编辑例 create→update→save 全 passed（体积按 to_dir oracle、revision +1、identity 保持）；5 非法例 rejected 且体积/revision 不变（原生失败例须见回滚证据）；恢复编辑 + 保存重载 passed。
 4. 核对报告：`arc_echo.source="native"`、`result` 块 `saved_file_reloaded_and_verified=true`（不是顶层）、`identity`、`rollback`、`revision_before/after`、provenance（commit/branch/dirty/source_fingerprint）。
 5. 证据回填本卡实机节；FEAT-034 首页与工具描述的 `dir`/`arc_geometry` 说明归 T01 收口。
+
+## 2026-10-30：N07 实机复测的离线预检
+
+阶段：**离线预检完成；实机未执行**。分支 `codex/dev051-feedback070`，接手时基线 `79b02ed`（N00/N02/N11/N01 已交付），本节提交前 HEAD `a6d4a3d`（并行 N03 窗口提交，非本节改动）。本节**未连接 MCP/Toolkit、未启动 Creo、未创建 MCP 客户端、未运行任何 `--live`、未运行 `bridge.py build`、未运行 `tools\dev_check.py`、未跑全量单测、未改 `native/`**。工作区 `dirty=true`（含并行窗口未提交文件，未暂存未改写）。
+
+### 单元结果
+
+`.\.venv\Scripts\python.exe -m unittest tests.unit.test_arc_direction tests.unit.test_arc_direction_live -v` → exit 0，Ran 63，OK（原 56 → 新增 7）。新增 7 项只针对本节补的驱动/清单；既有判定断言**未放宽**（旧四例 oracle 与 0.01 容差仍由 `test_four_geometry_cases_are_not_loosened`、`test_oracle_volumes_keep_the_2026_10_29_values` 钉死）。
+
+### 驱动覆盖缺口与是否已补
+
+| 缺口 | 是否已补 | 说明 |
+| --- | --- | --- |
+| 离线驱动完全忽略 `--output`：旧 `offline()` 只 print 不落盘，预检无可审计产物 | **已补** | 新增 `offline_report()`：写唯一路径 + `report.sha256`，含 `provenance`（commit/branch/dirty/source_fingerprint）；已存在文件按 `resolve_output` 拒绝覆盖并返回退出码 2 |
+| live 用例覆盖无清单，离线无法证明五个方面各有用例 | **已补** | 新增 `coverage_inventory()` 随离线报告发布；`tests/unit/test_arc_direction_live.py` 新增 `LiveCoverageInventoryTests`，断言六个方面各至少有一个**真实存在**的用例名 |
+
+核实结果（live 矩阵**原本已覆盖**，本次只补清单与产物）：方向就地编辑 `edit_switch_dir_0_to_90`；跨零 `edit_switch_dir_cross_zero`（350→10）；倾斜帧 `edit_switch_dir_tilted_xz`（XZ）与 `tilted_xz_dir_minus1_0_to_90`；下游由 `judge_direction_edit` 要求体积变为 to_dir oracle 且不再等于 from_dir（否则 `geometry_did_not_change`）、revision 恰好 +1；非法编辑 5 例（4 例 schema 拒绝 + `illegal_open_profile` 原生失败走回滚）；保存重载在创建/编辑/恢复各阶段后显式 `creo_save_model`。
+
+### 严格判定（确认不变）
+
+只认三者齐：`job succeeded` ∧ 独立 oracle 体积对上 ∧ native `arc_geometry` 回显（`source="native"` 且 dir/扫角一致）∧ `result.saved_file_reloaded_and_verified` 恰为 `true`。重载标志**只**从 `result` 块读取（`reload_flag()`），terminal 顶层同名字段不算证据。缺任一项 → `passed=false`。
+
+### 实机命令与预期判定（待指定）
+
+```powershell
+.\.venv\Scripts\python.exe tools\test_arc_direction_live.py --live --confirm-session-usable --output build\post090_live_<runid>\n07_arc_direction\report.json
+```
+
+预期：5 创建例全 passed；3 编辑例全 passed（体积按 to_dir oracle、revision +1、identity 保持）；5 非法例 rejected 且体积/revision 不变（原生失败例须见 `rollback_succeeded`/`model_unchanged`，沉默不算证据）；恢复编辑 + 保存重载 passed。核对 `arc_echo.source="native"`、`result` 块 `saved_file_reloaded_and_verified=true`（**不是顶层**）、`identity`、`rollback`、`revision_before/after`、provenance。
+
+### 未测范围与风险
+
+全部实机行为未验（真实原生回显、方向编辑后下游再生体积、revision 递增语义、保存重载、非法编辑的原生拒绝/回滚字段形态、恢复编辑、busy/单通道）。`creo_update_sketch_geometry` 弧编辑服务端标注 experimental；XZ 倾斜帧弧编辑与开口 profile 原生失败是否恰带回滚字段未实测。并发未验证。本节未改任何生产代码；若实机发现原生缺回显/回滚字段，另按条目登记生产修复，**不得先放宽判定**。
+
+离线产物：`build/post090_live_precheck_20261030T212525_b09a058e/n07_arc_direction/report.json`（含 `coverage` 与 `provenance`）。合并预检小结：同目录 `precheck.md`。

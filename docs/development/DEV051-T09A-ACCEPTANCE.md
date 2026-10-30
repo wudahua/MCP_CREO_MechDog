@@ -161,3 +161,45 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；ruff 0.17
 2. **删除重插不误指**：`rename_reinsert` 用例复跑，记录 `old_label_observable`（预期 `absent`），确认旧标签既不挂新组件也不出现在 `deleted_identities` 指向新 id；`unknown_label` 复跑确认已移除标签的 placement 仍作业级拒绝。
 3. **会话丢失重载（可选，仅自然发生时）**：若会话中该装配自然不在（如 Creo 重启后），对同一 `model_id` 提交一次编辑作业——原生将从 checkpoint 重载并 verify_saved；随后 `creo_list_components` 断言标签与 feature_id 不变。**不做故障注入、不为造场景擦受管模型**（`creo_erase_session_models` 不接受受管模型）。
 4. 未测范围（如实记录）：以上实机全部未跑；多标签挂同一 feature_id 实机、被篡改 `aliases_ref` 实机、40 组件大清单分页实机、compact/full 一致性实机、Creo 9/10 均未测。离线阶段不等于整项验收通过。
+
+## 2026-10-30：N09 实机补验的离线预检
+
+阶段：**离线预检完成；实机未执行**。分支 `codex/dev051-feedback070`，接手时基线 `79b02ed`，本节提交前 HEAD `a6d4a3d`（并行 N03 窗口提交，非本节改动）。本节**未连接 MCP/Toolkit、未启动 Creo、未创建 MCP 客户端、未运行任何 `--live`、未运行 `bridge.py build`、未运行 `tools\dev_check.py`、未跑全量单测**。本节**未改生产逻辑**（生产实现已存在，原补强为零生产改动），未改 `c_<token>_<n>` 物理副本命名，未改 `src/creo_mechdog/`、`server.py`、`native/`。工作区 `dirty=true`（含并行窗口未提交文件，未暂存未改写）。
+
+### 单元结果
+
+| 命令 | 结果 |
+| --- | --- |
+| `.\.venv\Scripts\python.exe -m unittest tests.unit.test_component_identity tests.unit.test_component_changes tests.unit.test_model_queries` | exit 0，Ran 66，OK |
+| `.\.venv\Scripts\python.exe -m unittest tests.unit.test_component_labels_live`（本节新增模块） | exit 0，Ran 11，OK |
+
+### 驱动覆盖缺口与是否已补
+
+| 缺口 | 是否已补 | 说明 |
+| --- | --- | --- |
+| **`reload_guard` 契约违例不失败**：旧 `check_reload_guard_contract()` 只返回布尔字典，离线 `main()` 恒 `return 0` —— 三条守卫任一为假，报告里写着 `false`，**退出码仍是 0** | **已补** | 新增 `contract_failures()` 汇总违例项写入报告 `contract_failures` 字段；离线有违例 → 退出码 **1** 并在 stderr 打印 `CONTRACT FAILED: ...`。单测 `test_a_contract_violation_fails_the_offline_run` 钉死 |
+| `check_projection_contract()` 未核 `bindings` 内容（只核 labels/label_state/deleted） | **已补** | 补 `bindings` 逐条断言（多标签记录的 bindings 完整且字典序、单标签记录的单条 binding），新增 `bindings_kept_per_record` 结果项 |
+| 三场景无机器可读预期 | **已补** | 新增 `scenario_expectations()`：reload_association / delete_then_unique_label_reinsert / id_renumbering_never_rebinds，各带 `input`、`expect`、`fails_when`，随离线报告发布 |
+| 驱动无单元模块 | **已补** | 新增 `tests/unit/test_component_labels_live.py`（11 例） |
+
+核实结果（字段与重载强制判定**原本已具备**）：`identity`（model_id+feature_id）、`labels`、`label`、`label_state`（single/multi/unlabeled）、`source_model_id`/`source_revision`、`bindings[]`、顶层 `deleted_identities[]`（`reason="feature_id_not_in_verified_components"`）、`identity_key`；live `cross_job` 要求 save 作业 `saved_file_reloaded_and_verified is True` **且** identity+source 镜像逐项不变，缺一即失败。
+
+### 三场景与预期
+
+1. **重载后关联** — live `cross_job`：save 作业原生即擦除+磁盘重载；要求标签集合不变 + 两组件 identity/source 镜像逐项不变。
+2. **删除后新唯一 label 重插** — live `rename_reinsert`：remove `part_beta` → 以**新唯一 label** `part_gamma` 重插；要求 `part_gamma` 恰一条且带新 feature_id、`part_beta` 不在任何当前组件、旧标签可观测落点记 `absent`/`deleted_identities`。
+3. **ID 重排不误绑** — live `cross_job`（原生 `verify_saved` 拒绝该保存）：离线侧当前记录全部 unlabeled、旧 id 落 `deleted_identities`，绝不改绑新记录。
+
+### 实机命令与预期判定（待指定）
+
+```powershell
+.\.venv\Scripts\python.exe tools\test_component_labels_live.py --live --confirm-session-usable --output build\post090_live_<runid>\n09_component_labels\report.json
+```
+
+预期：`two_components` 两记录 `label_state=single`、label 与源件 `source_model_id`/`source_revision` 一致；`cross_job` **必须** `saved_file_reloaded_and_verified=true` ∧ 标签集合不变 ∧ identity/source 镜像不变；`rename_reinsert` remove 与 reinsert 均 succeeded、`part_gamma` 恰一条、`part_beta` 不在任何当前组件；`unknown_label` 作业级失败（原文含 "Unknown feature label: part_beta"、`toolkit_code=-1`、`failed_stage=execute_component_placement`、`rollback_succeeded=true`）、revision 不变。物理副本名 `c_<job>_<n>` 未参与身份判定。
+
+### 未测范围与风险
+
+全部实机未跑。多标签挂同一 feature_id 实机、被篡改 `aliases_ref` 实机、40 组件大清单分页实机、compact/full 一致性实机均未测。**`ID 重排不误绑` 仅部分实机可验**：原生 `verify_saved` 拒绝该保存（可观测为拒绝），但"重排后仍被提交的模型"无法经本服务构造 —— 投影侧由离线回归证明，原生侧只能观察拒绝，**该半场景不得整体记为实机通过**。离线阶段不等于整项验收通过。
+
+离线产物：`build/post090_live_precheck_20261030T212525_b09a058e/n09_component_labels/report.json`（含 `projection`、`reload_guard`、`scenarios`、`contract_failures`）。合并预检小结：同目录 `precheck.md`。
