@@ -342,3 +342,11 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；pydantic 
 
 GUI 控制接口不可用，无法确认菜单、视图和对话框可操作；另有两个既存 `unknown_outcome` 模型未处置。按 BUG-001 / BUG-091 停止，保留会话与保护，未做 Toolkit 连接、会话状态探测或 N05 live 提交。判定为**实机未验—会话不可用性未排除**，不把进程存在判为就绪。trim 四候选语义、三组折边、触发复现、原生失败字段、保存重载及 N06 内部机理均无本次实测结论；四壁能力仍未完成。完整原始错误、PID、未测字段与报告 SHA256 见 [本次预检记录](DEV052-N05-LIVE-PREFLIGHT-2026-10-30.md)。
 
+## 2026-10-30：DEV-052 N05 首次正式实机探针（追加）
+
+编排方 23:32 已截屏及 UI 自动化确认 Creo 12.4.0.0 GUI 可操作、无模态框；本轮 `tasklist` 核同一 `parametric`/`xtop` PID 25596/21968，`auto_start_creo=false`、dev 服务指向 E 盘。基线 `e094bf5`，`build/source.sha256=47a6591d17b8ef6b81530963ea2096e2b424892be3e4b1dba378c64cd93a1d8b`。两项历史 unknown 保护保持不动。
+
+正式驱动唯一 run `20261030T233639_cb833e2b`：trim 无/有 `end_trim_mm=20` 两件的折边增量同为 18025.291234051932 mm³，实测分类 **`trim_ignored`**；未确认 `setback_from_ends`，`trimmed_20` 对照继续冻结。`ny_first` 的 −Y 自由壁成功，Z 增长 80 mm、保存重载 true。`px_then_ny` 驱动标 `trigger_reproduced`，但所选 −Y 边仅 1 mm、为 rim 边，原生 `ProSmtedgeContourGet` 返回 `PRO_TK_BAD_CONTEXT (-8)`；revision/体积回滚，`native_failure_evidence=null`，无 `FLANGE_FAILURE_EVIDENCE`。故本次不能认定此前的特征创建失败机理已复现。`px_nx_then_ny` 在成功的 +X 后因 `side -x has no top boundary edge` 选边异常停止，−X/−Y 均未提交。驱动 exit 1，未重跑；`four_walls_complete=false`。
+
+完整 job/model ID、revision、几何、原始错误、停止范围、报告路径与 SHA256、N06 机理边界见 [N05 实机记录](DEV052-N05-LIVE-2026-10-30.md)。本次未改源码、未结束 Creo、未清保护；Creo 9/10 和 WorkBuddy 黑盒未测。
+
