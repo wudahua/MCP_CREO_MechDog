@@ -1185,6 +1185,12 @@ async def creo_round(
     radius is in mm and maps to the plan-operation field `size` (op="round"):
     the submitted job echoes it as operations[].size, and the finished job's
     result.operations[].size repeats the value the native feature applied.
+    Each executed operation also reports measured material evidence
+    (volume_before_mm3, volume_after_mm3, material_delta_mm3 = after - before
+    with material_measurement.status measured/unknown/not_applicable and raw
+    query codes; unestablished values are null, a zero delta is reported as 0)
+    and reference_application with requested_set_count beside the tree-proven
+    applied_set_count (null when the tree cannot prove it).
     """
     return await invoke(
         general.submit,
@@ -1213,6 +1219,12 @@ async def creo_chamfer(
     distance is in mm and maps to the plan-operation field `size` (op="chamfer"):
     the submitted job echoes it as operations[].size, and the finished job's
     result.operations[].size repeats the value the native feature applied.
+    Each executed operation also reports measured material evidence
+    (volume_before_mm3, volume_after_mm3, material_delta_mm3 = after - before
+    with material_measurement.status measured/unknown/not_applicable and raw
+    query codes; unestablished values are null, a zero delta is reported as 0)
+    and reference_application with requested_set_count beside the tree-proven
+    applied_set_count (null when the tree cannot prove it).
     """
     return await invoke(
         general.submit,
@@ -1453,6 +1465,15 @@ async def creo_draft(
     """Create a native constant-angle, unsplit draft using selected surfaces and a neutral plane.
 
     Pull direction defaults to the neutral plane normal; can use a datum plane or axis reference.
+    The result reports measured material evidence (volume_before_mm3,
+    volume_after_mm3, material_delta_mm3 = after - before with
+    material_measurement status/query codes; unestablished values are null), so
+    a flip that adds material is visible from the signed delta. draft_geometry
+    reads the created feature's own tree: actual neutral/pull references, flip,
+    angle and the reference's provable direction vector (plane normal or axis
+    direction; unreadable fields are null, no global taper verdict).
+    reference_application separates requested_set_count from the tree-proven
+    applied_set_count.
     """
     op = {
         "op": "draft",

@@ -2366,6 +2366,128 @@ static void curve_collection(ProElement element, const J &refs) {
     CK(ProElementCollectionSet(element, coll));
     CK(ProCollectionFree(&coll));
 }
+// FEAT-051: per-operation material evidence for round/chamfer/draft. The two
+// probes reuse the lightweight mass-property query the cut path already takes
+// around feature creation; no extra full inspection runs per operation. Values
+// are reported in mm^3 only when the model's length-unit scale to mm is known
+// (native volume * scale^3); everything unestablished stays null and the raw
+// query codes are preserved. Zero deltas are legal reported values.
+struct VolumeProbe {
+    bool ran = false;
+    ProError code = PRO_TK_NO_ERROR;
+    double native_volume = 0.0;
+    bool finite = false;
+};
+// The before-side probe of the round/chamfer/draft op being executed, kept for
+// the shared tail (success) and for the single failure record (T02).
+static VolumeProbe material_probe_before;
+static bool material_probe_active = false;
+static VolumeProbe probe_volume() {
+    VolumeProbe probe;
+    ProMassProperty property = {};
+    probe.code = ProSolidMassPropertyWithDensityGet((ProSolid)board, nullptr,
+                                                    PRO_MP_DENS_USE_ALWAYS, 1.0, &property);
+    probe.ran = true;
+    probe.native_volume = property.volume;
+    probe.finite = std::isfinite(property.volume);
+    log("VOLUME_PROBE code=%d native=%.12f\n", probe.code, probe.native_volume);
+    return probe;
+}
+// `no_solid_confirmed` marks a verified material-free model (has_solid=false):
+// the volume values then stay null with status not_applicable while the query
+// codes keep whatever the probes actually returned. A missing after-side probe
+// (failed operation) keeps its code null instead of inventing a result.
+static J material_observation_json(const VolumeProbe &before, bool after_ran,
+                                   const VolumeProbe &after, bool no_solid_confirmed) {
+    auto units = inspect_length_units(board);
+    MillimeterScale scale = length_scale_to_mm(board, units);
+    const double factor = scale.scale * scale.scale * scale.scale;
+    auto established = [&](const VolumeProbe &probe) {
+        return probe.ran && probe.code == PRO_TK_NO_ERROR && probe.finite && scale.known;
+    };
+    J before_mm3 = nullptr, after_mm3 = nullptr, delta = nullptr;
+    if (!no_solid_confirmed) {
+        if (established(before))
+            before_mm3 = before.native_volume * factor;
+        if (after_ran && established(after))
+            after_mm3 = after.native_volume * factor;
+        if (!before_mm3.is_null() && !after_mm3.is_null())
+            delta = after_mm3.get<double>() - before_mm3.get<double>();
+    }
+    const char *status =
+        no_solid_confirmed ? "not_applicable" : (!delta.is_null() ? "measured" : "unknown");
+    return {{"volume_before_mm3", before_mm3},
+            {"volume_after_mm3", after_mm3},
+            {"material_delta_mm3", delta},
+            {"material_measurement",
+             {{"status", status},
+              {"before_query_code", before.ran ? J((int)before.code) : J(nullptr)},
+              {"after_query_code", after_ran && after.ran ? J((int)after.code) : J(nullptr)}}}};
+}
+// Non-throwing tree navigation for readback: raw codes instead of exceptions,
+// so a missing element degrades one field to unknown instead of failing the
+// result of an already-created feature.
+static ProElement get_optional(ProElement root, std::initializer_list<int> ids, ProError *code) {
+    std::vector<ProElempathItem> items;
+    for (int id : ids) {
+        ProElempathItem item = {};
+        item.type = PRO_ELEM_PATH_ITEM_TYPE_ID;
+        item.path_item.elem_id = (ProElemId)id;
+        items.push_back(item);
+    }
+    ProElempath path = nullptr;
+    *code = ProElempathAlloc(&path);
+    if (!*code)
+        *code = ProElempathDataSet(path, items.data(), (int)items.size());
+    ProElement result = nullptr;
+    if (!*code)
+        *code = ProElemtreeElementGet(root, path, &result);
+    if (path)
+        ProElempathFree(&path);
+    return result;
+}
+// FEAT-051: applied_set_count is proven only by the created feature's own
+// element tree; the requested input count is reported separately and never
+// presented as evidence (no input echo, no full-model edge-count difference).
+static ProError count_tree_elements(ProElement tree, int target_id, int *count) {
+    struct CountState {
+        int id;
+        int total;
+    } state = {target_id, 0};
+    ProError code = ProElemtreeElementVisit(
+        tree, nullptr, nullptr,
+        [](ProElement, ProElement elem, ProElempath, ProAppData data) -> ProError {
+            auto *counter = (CountState *)data;
+            ProElemId id = (ProElemId)0;
+            if (!ProElementIdGet(elem, &id) && (int)id == counter->id)
+                counter->total++;
+            return PRO_TK_NO_ERROR;
+        },
+        &state);
+    *count = state.total;
+    return code;
+}
+static J reference_application_block(int requested, const J &applied, const char *source,
+                                     ProError code) {
+    return {{"requested_set_count", requested},
+            {"applied_set_count", applied},
+            {"source", source},
+            {"query_code", (int)code}};
+}
+// A zero count against a nonempty request is treated as unproven instead of
+// claiming "applied 0": a silently failing visitor must read as unknown.
+static J round_reference_application(ProFeature &f, int requested) {
+    ProElement tree = nullptr;
+    ProError code = ProFeatureElemtreeExtract(&f, nullptr, PRO_FEAT_EXTRACT_NO_OPTS, &tree);
+    if (code)
+        return reference_application_block(requested, nullptr, "unknown", code);
+    int applied = 0;
+    code = count_tree_elements(tree, PRO_E_RNDCH_SET, &applied);
+    ProFeatureElemtreeFree(&f, tree);
+    if (code || (applied == 0 && requested > 0))
+        return reference_application_block(requested, nullptr, "unknown", code);
+    return reference_application_block(requested, applied, "feature_tree", code);
+}
 static J generic_round(const J &op, bool chamfer) {
     ProElement root = node(nullptr, PRO_E_FEATURE_TREE);
     integer(root, PRO_E_FEATURE_TYPE, chamfer ? PRO_FEAT_CHAMFER : PRO_FEAT_ROUND);
@@ -2407,8 +2529,11 @@ static J generic_round(const J &op, bool chamfer) {
     ProFeature f = create(root);
     CK(ProElementFree(&root));
     remember(op, f);
-    // Echo the applied leg value so callers can compare it with their input.
-    return {{"size", op.at("size")}};
+    // Echo the applied leg value so callers can compare it with their input,
+    // and report the tree-proven set application beside the requested count.
+    J details = {{"size", op.at("size")}};
+    details["reference_application"] = round_reference_application(f, (int)op["references"].size());
+    return details;
 }
 static void generic_shell(const J &op) {
     ProElement root = node(nullptr, PRO_E_FEATURE_TREE);
@@ -2742,6 +2867,12 @@ static void execute_operation_body(const J &op) {
     J details = J::object();
     staged_operation_result = J::object();
     has_staged_operation_result = false;
+    // FEAT-051: round/chamfer/draft carry per-operation material evidence.
+    const bool material_op = kind == "round" || kind == "chamfer" || kind == "draft";
+    material_probe_active = material_op;
+    material_probe_before = VolumeProbe{};
+    if (material_op)
+        material_probe_before = probe_volume();
     log("PHASE=%s%s%s\n", kind.c_str(), op.contains("label") ? ":" : "",
         op.value("label", "").c_str());
     if (kind == "sketch" || kind == "airfoil_sketch")
@@ -2773,7 +2904,7 @@ static void execute_operation_body(const J &op) {
     else if (kind == "mirror")
         generic_mirror(op);
     else if (kind == "draft")
-        generic_draft(op);
+        details = generic_draft(op);
     else if (kind == "sweep")
         generic_sweep(op);
     else if (kind == "loft")
@@ -2951,13 +3082,16 @@ static void execute_operation_body(const J &op) {
         throw std::runtime_error("Operation is not implemented: " + kind);
     if (kind != "export" && kind != "dump_tree" && kind != "udf_inspect")
         CK(ProSolidRegenerate((ProSolid)board, PRO_REGEN_NO_FLAGS));
-    inspection();
+    J post_state = inspection();
     // One terminal record for this input. Branch details and the staged detail
     // are merged here; effect_status stays unknown until the job-level
     // finalizer knows whether the save committed or the rollback restored the
     // verified baseline (T02).
     J result = has_staged_operation_result ? staged_operation_result : J::object();
     result.update(details);
+    if (material_op)
+        result.update(material_observation_json(material_probe_before, true, probe_volume(),
+                                                !post_state["has_solid"].get<bool>()));
     result.update({{"op", kind},
                    {"index", operation_position},
                    {"label", op.value("label", "")},
@@ -2969,11 +3103,19 @@ static void execute_operation_body(const J &op) {
 // A failing operation still yields exactly one terminal record: execution is
 // failed and the job finalizer decides the effect from real rollback evidence.
 static void execute_operation(const J &op) {
+    material_probe_active = false;
+    material_probe_before = VolumeProbe{};
     try {
         execute_operation_body(op);
     } catch (...) {
         std::string kind = op.at("op");
         J failure = has_staged_operation_result ? staged_operation_result : J::object();
+        // FEAT-051: a failed round/chamfer/draft keeps its real before-side
+        // probe; the after-side never ran and must stay null (no fabricated
+        // readings).
+        if (material_probe_active)
+            failure.update(
+                material_observation_json(material_probe_before, false, VolumeProbe{}, false));
         failure.update({{"op", kind},
                         {"index", operation_position},
                         {"label", op.value("label", "")},

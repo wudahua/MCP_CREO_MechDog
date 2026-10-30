@@ -76,7 +76,152 @@ static void generic_mirror(const J &op) {
     ProElementFree(&root);
     remember(op, f);
 }
-static void generic_draft(const J &op) {
+// FEAT-051: read the created draft's own element tree. Only what the tree
+// contains is reported; unreadable fields stay null with their raw query
+// codes. No global taper conclusion is drawn here: the pull vector is the
+// reference geometry's own direction and the flip is read as stored, so a
+// multi-surface draft never pretends to have one 内收/外扩 answer.
+static J draft_reference_json(ProElement element, ProError code) {
+    J entry = {{"type", nullptr}, {"id", nullptr}, {"query_code", (int)code}};
+    if (code != PRO_TK_NO_ERROR || !element)
+        return entry;
+    ProReference reference = nullptr;
+    ProError local = ProElementReferenceGet(element, nullptr, &reference);
+    entry["query_code"] = (int)local;
+    if (local != PRO_TK_NO_ERROR || !reference)
+        return entry;
+    ProType type = PRO_TYPE_UNUSED;
+    int id = 0;
+    ProError type_code = ProReferenceTypeGet(reference, &type);
+    ProError id_code = ProReferenceIdGet(reference, &id);
+    entry["query_code"] = (int)(type_code ? type_code : id_code);
+    if (!type_code && !id_code) {
+        entry["type"] = (int)type;
+        entry["id"] = id;
+        entry["query_code"] = (int)PRO_TK_NO_ERROR;
+    }
+    return entry;
+}
+static J draft_pull_vector_json(ProElement element, ProError code) {
+    J block = {
+        {"frame", "model"}, {"vector", nullptr}, {"source", "unknown"}, {"query_code", nullptr}};
+    if (code != PRO_TK_NO_ERROR || !element) {
+        if (code != PRO_TK_NO_ERROR)
+            block["query_code"] = (int)code;
+        return block;
+    }
+    ProReference reference = nullptr;
+    ProError local = ProElementReferenceGet(element, nullptr, &reference);
+    if (local != PRO_TK_NO_ERROR || !reference) {
+        block["query_code"] = (int)local;
+        return block;
+    }
+    ProSelection selection = nullptr;
+    local = ProReferenceToSelection(reference, &selection);
+    if (local != PRO_TK_NO_ERROR || !selection) {
+        block["query_code"] = (int)local;
+        return block;
+    }
+    ProModelitem item = {};
+    local = ProSelectionModelitemGet(selection, &item);
+    ProSelectionFree(&selection);
+    block["query_code"] = (int)local;
+    if (local != PRO_TK_NO_ERROR)
+        return block;
+    if (item.type == PRO_SURFACE) {
+        ProSurface surface;
+        local = ProSurfaceInit((ProSolid)board, item.id, &surface);
+        if (local != PRO_TK_NO_ERROR) {
+            block["query_code"] = (int)local;
+            return block;
+        }
+        ProGeomitemdata *data = nullptr;
+        local = ProSurfaceDataGet(surface, &data);
+        block["query_code"] = (int)local;
+        if (local == PRO_TK_NO_ERROR && data && data->data.p_surface_data &&
+            data->data.p_surface_data->type == PRO_SRF_PLANE) {
+            block["source"] = "plane_normal";
+            block["vector"] = xyz(data->data.p_surface_data->srf_shape.plane.e3);
+        }
+        if (data)
+            ProGeomitemdataFree(&data);
+        return block;
+    }
+    if (item.type == PRO_AXIS) {
+        AxisGeometry geometry = inspect_axis_geometry((ProGeomitem *)&item);
+        block["query_code"] = (int)geometry.data_code;
+        if (geometry.known) {
+            block["source"] = "axis_direction";
+            block["vector"] = xyz(geometry.direction.data());
+        }
+    }
+    return block;
+}
+static J draft_geometry_json(ProFeature &f) {
+    J block = {{"source", "unknown"},       {"query_code", nullptr}, {"neutral_plane", nullptr},
+               {"pull_direction", nullptr}, {"flip", nullptr},       {"angle_deg", nullptr},
+               {"pull_vector", nullptr}};
+    ProElement tree = nullptr;
+    ProError code = ProFeatureElemtreeExtract(&f, nullptr, PRO_FEAT_EXTRACT_NO_OPTS, &tree);
+    block["query_code"] = (int)code;
+    if (code != PRO_TK_NO_ERROR)
+        return block;
+    block["source"] = "feature_tree";
+    ProError path_code = PRO_TK_NO_ERROR;
+    ProElement neutral =
+        get_optional(tree, {PRO_E_DRAFT_SIDE_1, PRO_E_DRAFT_NEUTRAL_PLANE_1}, &path_code);
+    block["neutral_plane"] = draft_reference_json(neutral, path_code);
+    ProElement pull =
+        get_optional(tree, {PRO_E_DIRECTION_COMPOUND, PRO_E_DIRECTION_REFERENCE}, &path_code);
+    block["pull_direction"] = draft_reference_json(pull, path_code);
+    block["pull_vector"] = draft_pull_vector_json(pull, path_code);
+    ProElement flip =
+        get_optional(tree, {PRO_E_DIRECTION_COMPOUND, PRO_E_DIRECTION_FLIP}, &path_code);
+    if (path_code == PRO_TK_NO_ERROR && flip) {
+        int value = 0;
+        if (!ProElementIntegerGet(flip, nullptr, &value))
+            block["flip"] = value != 0;
+    }
+    ProElement angle = get_optional(tree, {PRO_E_DRAFT_SIDE_1, PRO_E_DRAFT_ANGLE_1}, &path_code);
+    if (path_code == PRO_TK_NO_ERROR && angle) {
+        double value = 0;
+        if (!ProElementDoubleGet(angle, nullptr, &value))
+            block["angle_deg"] = value;
+    }
+    ProFeatureElemtreeFree(&f, tree);
+    return block;
+}
+static J draft_reference_application(ProFeature &f, int requested) {
+    ProElement tree = nullptr;
+    ProError code = ProFeatureElemtreeExtract(&f, nullptr, PRO_FEAT_EXTRACT_NO_OPTS, &tree);
+    if (code != PRO_TK_NO_ERROR)
+        return reference_application_block(requested, nullptr, "unknown", code);
+    J applied = nullptr;
+    const char *source = "unknown";
+    ProElement appl = get_optional(tree, {PRO_E_STD_SURF_COLLECTION_APPL}, &code);
+    if (code == PRO_TK_NO_ERROR && appl) {
+        ProCollection collection = nullptr;
+        code = ProElementCollectionGet(appl, nullptr, &collection);
+        if (code == PRO_TK_NO_ERROR && collection) {
+            ProSrfcollinstr *instructions = nullptr;
+            code = ProSrfcollectionInstructionsGet(collection, &instructions);
+            if (code == PRO_TK_NO_ERROR && instructions) {
+                int count = 0;
+                ProError size_code = ProArraySizeGet((ProArray)instructions, &count);
+                if (size_code == PRO_TK_NO_ERROR && !(count == 0 && requested > 0)) {
+                    applied = count;
+                    source = "feature_tree";
+                } else if (size_code != PRO_TK_NO_ERROR)
+                    code = size_code;
+                ProSrfcollinstrArrayFree(instructions);
+            }
+            ProCollectionFree(&collection);
+        }
+    }
+    ProFeatureElemtreeFree(&f, tree);
+    return reference_application_block(requested, applied, source, code);
+}
+static J generic_draft(const J &op) {
     ProElement root = node(nullptr, PRO_E_FEATURE_TREE);
     integer(root, PRO_E_FEATURE_TYPE, PRO_FEAT_DRAFT);
     text(root, PRO_E_STD_FEATURE_NAME, wide(op["label"]).c_str());
@@ -102,6 +247,12 @@ static void generic_draft(const J &op) {
     ProFeature f = create(root);
     ProElementFree(&root);
     remember(op, f);
+    // FEAT-051: report the tree-proven reference application and the actual
+    // draft parameters/direction evidence beside the unchanged request.
+    J details = J::object();
+    details["draft_geometry"] = draft_geometry_json(f);
+    details["reference_application"] = draft_reference_application(f, (int)op["surfaces"].size());
+    return details;
 }
 static void generic_sweep(const J &op) {
     std::string mode = op.value("mode", "add");
