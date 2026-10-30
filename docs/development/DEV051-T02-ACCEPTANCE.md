@@ -102,3 +102,54 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；pydantic 
 - 未测：方向编辑（`creo_update_geometry` 改 dir）、下游特征、`revision` 递增语义、非法 `dir` 的实机拒绝、busy/单通道、WorkBuddy、Creo 9/10。
 
 给集成人：本次新增 `tools/test_arc_direction_live.py`（离线默认、`--live` 需双开关），无生产代码改动。
+
+## 2026-10-30：T02 弧方向编辑与保存重载补验——离线阶段
+
+分支 `codex/dev051-feedback070`，接手时 HEAD `641edb3`。上一窗口半成品已在工作区（`tools/test_arc_direction_live.py` 大幅重写），本窗口核对后补完离线阶段：**未连接 MCP/Toolkit、未启动 Creo、未执行 `bridge.py build`、未改 `native/`、未改版本、未合 main、未 push、未发布**。工作期间 T05 并行窗口提交 `f4adc99`（吸收 `src/creo_mechdog/schema.py`、`server.py`、`native/advanced.cpp`、`tests/unit/test_sheetmetal_box_live.py` 等）；派发时曾标注为 T02 的 `schema.py` +14 行实为 T05 `end_trim_mm` 契约（`SheetmetalFlangeOp` 可选正数字段 + 拒布尔校验，与 `server.py`/`advanced.cpp` 端到端一致，缺省不改旧行为，必要且保守），本窗口未回退、未触碰，已随 `f4adc99` 入库，归属见 [T05 卡](DEV051-T05-ACCEPTANCE.md)。本节改动仅 `tools/test_arc_direction_live.py` 与新增 `tests/unit/test_arc_direction_live.py`。
+
+### 两个判定缺陷：修复前后对比
+
+| 缺陷 | 修复前（`641edb3` 版驱动） | 修复后（本节） |
+| --- | --- | --- |
+| ①「只看体积就算 passed」 | `passed = measured is not None and abs(measured-expected) ≤ 0.01`；不查原生回显、不查重载证据。2026-10-29 四例实机报告 `saved_file_reloaded_and_verified=null` 仍全部 passed | `judge_create_case`/`judge_direction_edit`/`judge_save_reload` 要求：job succeeded ∧ 实测体积对上独立 oracle ∧ `arc_geometry` 原生回显（`source="native"` 且 dir/扫角一致）∧ `result.saved_file_reloaded_and_verified is True`；缺任一项记 `failures` 且 `passed=false`。回归：`test_missing_native_arc_echo_cannot_pass`、`test_missing_reload_evidence_cannot_pass`、`test_volume_only_evidence_cannot_pass` |
+| ②「从 terminal 顶层取重载标志」 | `terminal.get("saved_file_reloaded_and_verified")`——该字段实际只在 `result` 块（`generic_bridge.py` 对成功非只读作业强制校验该字段；`creo_get_job` 全量返回 `result.*`），顶层永远取不到 → 永远 null，无法区分「没保存验证」与「读错位置」 | `reload_flag()` 只读 `result.saved_file_reloaded_and_verified`；顶层同名字段不算证据。回归：`test_top_level_reload_flag_is_not_evidence`、`test_save_reload_ignores_top_level_flag` |
+
+### 本次覆盖（任务②）与判定口径
+
+- **弧方向编辑**：`EDIT_CASES` 三例经 `creo_update_sketch_geometry` 就地切换 dir——`edit_switch_dir_0_to_90`（0→90，1→−1）、`edit_switch_dir_cross_zero`（350→10 跨零）、`edit_switch_dir_tilted_xz`（XZ 倾斜帧）。
+- **下游特征跟随**：`judge_direction_edit` 要求体积变为 to_dir oracle 且不再等于 from_dir（`geometry_did_not_change` 即失败），revision 恰好 +1，`preserved_feature_id` 与 `body` 别名 feature_id 保持（矛盾即 `sketch_identity_changed`/`downstream_identity_changed`；数据缺失只记录不判）。
+- **非法编辑报错且不破坏模型**：`ILLEGAL_EDIT_CASES` 五例——`illegal_dir_zero`、`illegal_dir_float`、`illegal_zero_sweep`、`illegal_full_circle`（schema 拒绝）与 `illegal_open_profile`（schema 合法、原生失败走回滚）。`judge_illegal_edit` 要求 rejected、前后**同源实测**体积不变（基线取 stage 3 保存后实测，不再用 oracle 冒充基线）、revision 不变（本窗口新增显式判定 `revision_evidence_missing`/`revision_changed_after_illegal_edit`），原生失败终端须有 `rollback_succeeded`/`model_unchanged` 证据（沉默不算证据）。stage 5 随后合法回切 dir + 保存重载，证明模型未卡死。
+- **保存重载后方向与几何仍正确**：创建/编辑/恢复各阶段后显式 `creo_save_model`，以保存作业 `result.saved_file_reloaded_and_verified=true` 加重载后实测体积判定（弓形体积 142.7/1428.1 mm³（及跨零 1.76/1569.0）相差数量级，方向可判别）。
+- **旧四例不动**：`legacy_0_to_90`、`legacy_90_to_0`、`dir_minus1_90_to_0`、`dir_minus1_0_to_90` 的角度、dir、容差 0.01 mm³ 与 2026-10-29 接受值一致；单测 `test_four_geometry_cases_are_not_loosened`、`test_oracle_volumes_keep_the_2026_10_29_values` 钉死，未放宽。
+
+### 改动文件与每处意图
+
+| 文件 | 意图 |
+| --- | --- |
+| `tools/test_arc_direction_live.py`（接手半成品续做，对 `641edb3` 为 +684/−65） | 判定拆成纯函数（`result_block`/`reload_flag`/`arc_echoes`/`native_arc_echo`/`echo_failures`/`edit_identity`/`judge_create_case`/`judge_direction_edit`/`judge_illegal_edit`/`judge_save_reload`）；唯一 run 目录 + 拒绝覆盖报告 + 逐阶段落盘 + `local_provenance`；五阶段 live 矩阵（创建含 XZ、编辑、非法、恢复、各阶段保存重载）；offline 输出创建/编辑/非法 oracle 台账 |
+| 同上，本窗口在半成品之上补的四处 | ①`judge_illegal_edit` 增 revision 稳定性判定与行内记录；②非法编辑基线体积改用 stage 3 保存后同源实测值（实测对实测证明“未破坏”）；③`EDIT_CASES` 增倾斜 XZ 编辑例并在创建/台账透传 plane；④删除半成品遗留的未用参数 `submit_job(allow_failure)` |
+| `tests/unit/test_arc_direction_live.py`（新增） | 判定回归 27 用例：两个具名缺陷回归、顶层标志不算证据、体积单独不可过、完整证据正例、方向编辑（几何变化/revision/回显/identity）、非法编辑（接受/变几何/变 revision/缺 revision 证据/缺回滚）、保存重载、旧四例钉死、报告目录拒绝覆盖 |
+
+### 命令与真实结果
+
+| # | 命令 | 真实结果 |
+| --- | --- | --- |
+| 1 | `.\.venv\Scripts\python.exe -m unittest tests.unit.test_arc_direction tests.unit.test_arc_direction_live tests.unit.test_sketch_stability tests.unit.test_sketch_geometry_edit tests.unit.test_profile_checks tests.unit.test_t02_operation_results tests.unit.test_sheetmetal_flange tests.unit.test_sheetmetal_contract` | exit 0，Ran 145，OK |
+| 2 | 同上两模块首跑（写测试时） | 一处 FAIL：`test_volume_only_evidence_cannot_pass` 报 `AssertionError: 'reload_verification_missing' not found in ['native_arc_echo_missing']`——**测试夹具缺陷**（`terminal()` 默认带 reload=true，未表达“仅有体积”），修正夹具为 `reload_value=MISSING` 后全过；判定逻辑本身未动 |
+| 3 | `.\.venv\Scripts\python.exe tools\test_arc_direction_live.py` | exit 0；输出 offline oracle：5 创建行（含 XZ）、3 编辑行、5 非法用例名；`LIVE NOT RUN: no MCP client, no Toolkit call, no Creo connection.` |
+| 4 | `.\.venv\Scripts\python.exe -m ruff check tools\test_arc_direction_live.py tests\unit\test_arc_direction_live.py src\creo_mechdog\schema.py` 与 `ruff format --check` 同路径 | check 通过；format 首轮两文件需重排（半成品遗留格式 + 新增），`ruff format` 后复检通过；`schema.py` 本窗口未改动（已随 `f4adc99` 入库） |
+
+### 未测范围
+
+- 全部实机行为未验：本节零 MCP/Toolkit/Creo 调用。真实 `arc_geometry` 原生回显、方向编辑后下游再生体积、revision 递增语义、保存重载、非法编辑的原生拒绝/回滚字段形态、恢复编辑、busy/单通道（须真实并行调用才可报告）均未观察，不能以离线 oracle 或单测代替。
+- `creo_update_sketch_geometry` 弧编辑在服务端标注 experimental；XZ 倾斜帧上的弧编辑、开口 profile 原生失败是否恰带 `rollback_succeeded`/`model_unchanged` 未实测。
+- WorkBuddy 黑盒验收、Creo 9/10、`populate_profile` 嵌套 profile 回显、T09B 中心线计数均不在本节。
+- 未改任何生产代码与 `native/generic.cpp`（按约束未动、未编译）；若实机发现原生缺回显/回滚字段，再按条目登记生产修复，不得先放宽判定。
+
+### 实机待验步骤（另行指派；须先满足 BUG-001 会话可操作条件）
+
+1. 前置：按 AGENTS.md 与 BUG-001 条件确认会话可操作；`config.json` 保持 `auto_start_creo=false`；只经 `MCP_CREO_MechDog_dev` 串行执行；不启动/结束 Creo、不清 unknown、不故障注入。
+2. `.\.venv\Scripts\python.exe tools\test_arc_direction_live.py --live --confirm-session-usable`（落盘 `build\arc_direction_live\<run_id>\report.json` + `report.sha256`，唯一目录、拒绝覆盖；任何失败行立即 raise 并保留已落盘证据，不重提作业）。
+3. 预期：5 创建例逐例 create→inspect→save→inspect 全 passed；3 编辑例 create→update→save 全 passed（体积按 to_dir oracle、revision +1、identity 保持）；5 非法例 rejected 且体积/revision 不变（原生失败例须见回滚证据）；恢复编辑 + 保存重载 passed。
+4. 核对报告：`arc_echo.source="native"`、`result` 块 `saved_file_reloaded_and_verified=true`（不是顶层）、`identity`、`rollback`、`revision_before/after`、provenance（commit/branch/dirty/source_fingerprint）。
+5. 证据回填本卡实机节；FEAT-034 首页与工具描述的 `dir`/`arc_geometry` 说明归 T01 收口。
