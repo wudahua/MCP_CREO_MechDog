@@ -31,6 +31,7 @@
 - **T09B 中心线计数（FEAT-008/N08）**：拷贝截面上系统投影参考不再报 projection，单靠投影过滤把一条用户线计成 3；改为按草图别名记录（`entity_ids` 中 type=centerline 的实体）分类用户中心线，探针只作回退。本机实机 `section_centerline_count=1` 与 `spin_centerline` id 对账通过。
 - **N05/N06 折边失败取证传播**：失败路径的 `flange_failure_evidence` 原先挂在扁平块上，复测轮读到 null；改为嵌套挂到 `operations[]` 下，原生日志取证行（`stage`/`feature_status`/邻接面型等）进入报告汇总。
 - **驱动判定补严（N07—N10/N12 离线预检）**：实机驱动不再以体积或成功终态单独判过——要求 job succeeded ∧ 实测体积对上独立 oracle ∧ 原生回显 ∧ `result.saved_file_reloaded_and_verified is True`；重载标志只认 `result` 块；T12 以 tip 口径 oracle 判定并把备选算式列为 defect；N09 组件镜像比较改 canonical sort key（修复 `dict` 排序 TypeError）；N04 取 revision 改读 job manifest 顶层（缺省清晰报错而非 KeyError）；N05 选边改相对基线板 bbox 并排除 rim 边（`driver_edge_selection_error` 判驱动错而非 Creo 失败）。N12 基准驱动补 30 项判定单元与等价口径。
+- **种子包校验摘要随版回填（修复 0.9.0 遗留缺陷）**：0.9.0 发布时未把种子包 SHA256 回填进 `seeds.py` 的 `expected_digest`（仍指向 0.8.5 包），导致其已发布源码包经 `creo_install_seed_library` 按 archive 安装时拒绝配套的 0.9.0 种子包；本版重建 0.10.0 种子包并将 `expected_digest` 回填为该包实测 SHA256（校验逻辑不变，9 枚种子原字节不变，两份 `seed_manifest.json` 的 `compatible_server_version` 随版 0.10.0）。
 
 ## 诊断增强
 
