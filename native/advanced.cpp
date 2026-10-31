@@ -1228,15 +1228,21 @@ static J flange_adjacent_bend_end_evidence(const J &op) {
                     "radius=%.4f faces=%s\n",
                     which, nb_id, curve_type, is_arc ? 1 : 0, is_arc ? arc_radius : 0.0,
                     nb_faces.c_str());
-                J row = {{"neighbor_edge_id", nb_id},
-                         {"neighbor_edge_type", curve_type},
-                         {"neighbor_arc", is_arc},
-                         {"neighbor_radius_mm", is_arc ? J(arc_radius) : J()},
-                         {"radius_bound_mm", bound},
-                         {"bend_face_ids", bend_faces},
-                         {"adjacent_bend_end", adjacent}};
-                row["point_mm"] = ends[which].at("point_mm");
-                ends[which].update(row);
+                // Keep the first adjacency hit's evidence for this end: a
+                // later non-adjacent neighbour (e.g. the straight edge after
+                // the bend arc in the vertex fan) must not overwrite the arc's
+                // radius with null - the summary reads it as a number.
+                if (!end_hit || adjacent) {
+                    J row = {{"neighbor_edge_id", nb_id},
+                             {"neighbor_edge_type", curve_type},
+                             {"neighbor_arc", is_arc},
+                             {"neighbor_radius_mm", is_arc ? J(arc_radius) : J()},
+                             {"radius_bound_mm", bound},
+                             {"bend_face_ids", bend_faces},
+                             {"adjacent_bend_end", adjacent}};
+                    row["point_mm"] = ends[which].at("point_mm");
+                    ends[which].update(row);
+                }
                 if (adjacent) {
                     end_hit = true;
                     any_hit = true;
@@ -1284,11 +1290,17 @@ static std::string flange_adjacent_ends_summary(const J &evidence) {
                        ? std::to_string(row["end"].get<int>())
                        : std::string("?");
         summary += ": neighbour arc edge ";
-        summary += std::to_string(row["neighbor_edge_id"].get<int>());
+        summary += row.contains("neighbor_edge_id") && row["neighbor_edge_id"].is_number()
+                       ? std::to_string(row["neighbor_edge_id"].get<int>())
+                       : std::string("?");
         summary += " radius ";
-        summary += std::to_string(row["neighbor_radius_mm"].get<double>());
+        summary += row.contains("neighbor_radius_mm") && row["neighbor_radius_mm"].is_number()
+                       ? std::to_string(row["neighbor_radius_mm"].get<double>())
+                       : std::string("?");
         summary += " mm within the bend-setback bound ";
-        summary += std::to_string(row["radius_bound_mm"].get<double>());
+        summary += row.contains("radius_bound_mm") && row["radius_bound_mm"].is_number()
+                       ? std::to_string(row["radius_bound_mm"].get<double>())
+                       : std::string("?");
         summary += " mm, bend faces ";
         summary += row["bend_face_ids"].dump();
     }

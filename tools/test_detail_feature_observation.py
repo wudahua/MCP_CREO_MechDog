@@ -237,7 +237,14 @@ def cylinder_operations(with_axis: bool = False) -> list[dict]:
             {
                 "op": "datum_axis",
                 "label": "cyl_axis",
-                "references": [{"kind": "surface", "id": 1}],
+                # Default datum planes 2 (X-normal) and 4 (Y-normal) intersect
+                # on the Z axis, which is the cylinder axis at origin. A live
+                # surface id is not known before the base plan runs (the
+                # 2026-10-31 live run proved surface id 1 does not exist).
+                "references": [
+                    {"kind": "datum_plane", "id": 2},
+                    {"kind": "datum_plane", "id": 4},
+                ],
             }
         )
     return operations
