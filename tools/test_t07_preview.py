@@ -201,6 +201,17 @@ def sheetmetal_volume() -> float:
     return WALL_LENGTH_MM * WALL_THICKNESS_MM * WALL_DEPTH_MM
 
 
+def sheetmetal_model_name(run_id: str) -> str:
+    """A unique model name for the sheetmetal comparison case.
+
+    The name must fit the repository rule (lowercase letters, digits and
+    underscores, at most 31 characters) and must not collide with an earlier
+    run: the model stays in the Creo session under this name.
+    """
+    suffix = run_id.rsplit("_", 1)[-1]
+    return f"t07_sheetmetal_{suffix}"
+
+
 def require_live(args: argparse.Namespace) -> bool:
     if args.live and not args.confirm_session_usable:
         raise ValueError(
@@ -362,6 +373,36 @@ class Acceptance:
         """
         accepted = await self.call("creo_new_part", {})
         return await self.terminal(accepted["job_id"])
+
+    async def sheetmetal_part_case(self, model_name: str) -> dict:
+        """Create the sheetmetal model the wall operation needs.
+
+        A sheetmetal operation is refused on a part model ("Sheetmetal
+        operations require an MCP sheetmetal model"), so the comparison model
+        is created with the sheetmetal entry point first and the wall plan
+        then continues that model.
+
+        The creation job returns the model revision in its terminal payload:
+        a new model starts at revision 0 and the creation job takes it to 1,
+        so the wall plan continues it with ``expected_revision=1``.
+        """
+        accepted = await self.call("creo_new_sheetmetal", {"model_name": model_name})
+        terminal = await self.terminal(accepted["job_id"])
+        self.report["sheetmetal_model"] = {
+            "model_name": model_name,
+            "job_id": terminal.get("job_id"),
+            "model_id": terminal.get("model_id"),
+            "revision": terminal.get("revision"),
+            "status": terminal.get("status"),
+            "created_with": "creo_new_sheetmetal",
+        }
+        self.save()
+        if terminal.get("status") != "succeeded":
+            raise RuntimeError(
+                f"sheetmetal model {model_name}: job {terminal.get('job_id')} "
+                f"ended {terminal.get('status')}"
+            )
+        return terminal
 
     async def terminal(self, job_id: str) -> dict:
         deadline = time.monotonic() + 360
@@ -571,7 +612,19 @@ class Acceptance:
         # A thin sheetmetal wall as the body-shape comparison: the raster path is
         # the same one, so a difference in the written file is attributable to
         # the body and not to a second capture implementation.
-        sheetmetal = await self.run_case("sheetmetal_wall", sheetmetal_plan(), None)
+        #
+        # The model is created with the sheetmetal entry point first. A
+        # sheetmetal operation is refused on a part model ("Sheetmetal
+        # operations require an MCP sheetmetal model"), so submitting the wall
+        # plan as a new model would never reach the raster path at all.
+        sheetmetal_created = await self.sheetmetal_part_case(
+            sheetmetal_model_name(self.report["run_id"])
+        )
+        sheetmetal_source = {
+            "model_id": sheetmetal_created["model_id"],
+            "revision": sheetmetal_created["revision"],
+        }
+        sheetmetal = await self.run_case("sheetmetal_wall", sheetmetal_plan(), sheetmetal_source)
         sheetmetal_model = {
             "model_id": sheetmetal["terminal"]["model_id"],
             "revision": sheetmetal["terminal"]["revision"],

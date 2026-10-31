@@ -742,5 +742,151 @@ class DriverCoverage(unittest.TestCase):
         self.assertEqual(images, self.root / "run-2" / "images")
 
 
+class FakeToolResult:
+    def __init__(self, structured: dict) -> None:
+        self.is_error = False
+        self.structured_content = structured
+        self.content = "ok"
+
+
+class FakeClient:
+    """A scripted MCP client: every call is recorded, nothing is connected."""
+
+    def __init__(self, image: Path) -> None:
+        self.calls: list[tuple[str, dict]] = []
+        self.image = image
+
+    async def call_tool(self, name: str, args: dict):
+        self.calls.append((name, args))
+        if name == "creo_new_sheetmetal":
+            return FakeToolResult({"job_id": "j" * 32, "model_id": "m" * 32, "revision": 0})
+        if name == "creo_execute_plan":
+            return FakeToolResult({"job_id": "k" * 32})
+        if name == "creo_get_job":
+            job_id = args["job_id"]
+            revision = 1 if job_id == "j" * 32 else 2
+            return FakeToolResult(
+                {
+                    "job_id": job_id,
+                    "model_id": "m" * 32,
+                    "status": "succeeded",
+                    "revision": revision,
+                    "result": {
+                        "preview": {
+                            "status": "written",
+                            "codes": {
+                                "display": 0,
+                                "window_get": 0,
+                                "window_model_get": 0,
+                                "current_set": 0,
+                                "current_get": 0,
+                                "activate": 0,
+                                "view_matrix_set": 0,
+                                "view_matrix_get": 0,
+                                "refit": 0,
+                                "refresh": 0,
+                                "repaint": 0,
+                                "raster": 0,
+                            },
+                            "failed_step": None,
+                            "failed_code": None,
+                            "file_verified": True,
+                            "path": str(self.image),
+                        },
+                        "preview_code": 0,
+                    },
+                }
+            )
+        raise AssertionError(f"unexpected tool {name}")
+
+
+class SheetmetalFixture(unittest.TestCase):
+    """N11: the wall plan must run on a sheetmetal model, not on a part.
+
+    A sheetmetal operation is refused on a part model ("Sheetmetal operations
+    require an MCP sheetmetal model"), so the fixture creates the comparison
+    model with the sheetmetal entry point and continues that model.
+    """
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix="t07_sheetmetal_")
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        (self.root / "output").mkdir()
+        self.image = self.root / "output" / "preview.jpg"
+        self.image.write_bytes(b"\xff\xd8\xff sheetmetal capture bytes")
+        self.client = FakeClient(self.image)
+        self.acceptance = driver.Acceptance(
+            client=self.client,
+            output=self.root / "report.json",
+            images=self.root / "images",
+            run_id="20261031T120000_ab12cd34",
+        )
+
+    def test_the_model_name_is_unique_and_fits_the_label_rule(self):
+        name = driver.sheetmetal_model_name("20261031T120000_ab12cd34")
+        self.assertRegex(name, r"^[a-z0-9][a-z0-9_]{0,30}$")
+        self.assertLessEqual(len(name), 31)
+        self.assertNotEqual(name, driver.sheetmetal_model_name("20261031T130000_ff00ff00"))
+
+    def test_the_wall_plan_continues_the_sheetmetal_model(self):
+        import asyncio
+
+        created = asyncio.run(self.acceptance.sheetmetal_part_case("t07_sheetmetal_ab12cd34"))
+        self.assertEqual(created["status"], "succeeded")
+        self.assertEqual(created["model_id"], "m" * 32)
+        # The creation job takes the new model from revision 0 to 1, so the
+        # wall plan continues it with that revision.
+        self.assertEqual(created["revision"], 1)
+
+        terminal = asyncio.run(
+            self.acceptance.plan(driver.sheetmetal_plan(), created["model_id"], created["revision"])
+        )
+        self.assertEqual(terminal["status"], "succeeded")
+
+        names = [name for name, _ in self.client.calls]
+        self.assertEqual(names[0], "creo_new_sheetmetal")
+        self.assertIn("creo_execute_plan", names)
+        plan_call = next(args for name, args in self.client.calls if name == "creo_execute_plan")
+        self.assertEqual(plan_call["model_id"], "m" * 32)
+        self.assertEqual(plan_call["expected_revision"], 1)
+        # The wall plan is submitted against the sheetmetal model; it is never
+        # submitted as a new model, which would create a part.
+        self.assertNotIn("model_type", plan_call)
+        self.assertEqual(
+            [op["op"] for op in plan_call["operations"]], ["sketch", "sheetmetal_wall"]
+        )
+
+    def test_a_failed_sheetmetal_model_creation_is_not_continued(self):
+        import asyncio
+
+        class Failing(FakeClient):
+            async def call_tool(self, name: str, args: dict):
+                if name == "creo_get_job":
+                    self.calls.append((name, args))
+                    return FakeToolResult(
+                        {
+                            "job_id": args["job_id"],
+                            "model_id": "m" * 32,
+                            "status": "failed",
+                            "revision": None,
+                            "message": "template missing",
+                        }
+                    )
+                return await super().call_tool(name, args)
+
+        client = Failing(self.image)
+        acceptance = driver.Acceptance(
+            client=client,
+            output=self.root / "failed.json",
+            images=self.root / "images",
+            run_id="20261031T120000_ab12cd34",
+        )
+        with self.assertRaises(RuntimeError):
+            asyncio.run(acceptance.sheetmetal_part_case("t07_sheetmetal_ab12cd34"))
+        # No wall plan may be submitted after a failed creation.
+        self.assertNotIn("creo_execute_plan", [name for name, _ in client.calls])
+
+
 if __name__ == "__main__":
     unittest.main()
