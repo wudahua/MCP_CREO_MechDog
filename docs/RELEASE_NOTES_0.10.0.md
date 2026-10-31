@@ -6,7 +6,7 @@
 - [FEAT-008](work-items/FEAT-008.md)：草图结果发布 `entity_ids`（可与 `revolve_axis.id` 对账）；
 - [FEAT-014](work-items/FEAT-014.md)：折边邻接折弯端的明确拒绝语义（`failure_reason=adjacent_bend_ends`，创建前拒绝）。
 
-同时含行为修复：[FEAT-035](work-items/FEAT-035.md)/T12 盲孔 `depth` 改为钻尖（tip）口径（对齐冻结契约的 overall 语义）、[FEAT-034](work-items/FEAT-034.md)/T02 编辑后弧回显修复（`named_ids` 再快照）、[FEAT-008](work-items/FEAT-008.md)/T09B 中心线按用户线计数、[BUG-049](work-items/BUG-049.md)/N03 端点诊断可观测性（`max_endpoint_gap_mm` 等）。无新增公开工具，公开工具仍为 **94** 个。0.9.0 及更早的提交、标签、Release 和附件均保持原样。
+同时含行为修复：[FEAT-035](work-items/FEAT-035.md)/T12 盲孔 `depth` 改为钻尖（tip）口径（对齐冻结契约的 overall 语义）、[FEAT-034](work-items/FEAT-034.md)/T02 编辑后弧回显修复（`named_ids` 再快照）、[FEAT-008](work-items/FEAT-008.md)/T09B 中心线按用户线计数、[BUG-049](work-items/BUG-049.md)/N03 端点诊断可观测性（`max_endpoint_gap_mm` 等）。另 [FEAT-023](work-items/FEAT-023.md)/T09A 组件身份四例实机回归通过（跨作业重载 `identity_mirrors_unchanged`、删除重插不误指、未知 label 拒绝；capabilities 摘要/分页子项已闭环，其余体积议题保持开放）。无新增公开工具，公开工具仍为 **94** 个。0.9.0 及更早的提交、标签、Release 和附件均保持原样。
 
 ## 升级必读
 
@@ -53,6 +53,7 @@
 - [BUG-049](work-items/BUG-049.md) 原件（`gear10.json` 等）缺失，替代夹具不得当作原案回放通过；内核焊接容差未定。
 - T05/T11：四壁不支持（`four_walls_complete=false`），第三壁/角部内部机理未定，`relief` 材料端释放几何不可观测，`end_trim_mm` 语义未定（`trim_ignored`）。
 - N07 `illegal_dir_zero` 非法编辑反例判定未过（schema 拒绝后同源体积证据缺失），其余 4 非法例与恢复编辑未执行，待查（[BUG-093](work-items/BUG-093.md)）。
+- [BUG-092](work-items/BUG-092.md)（live 驱动结束后其派生 `server.py` 子进程残留、占用 stdout 管道）已登记待处理，退出路径修复与驱动复验未做。
 - [BUG-088](work-items/BUG-088.md) 空件缺图的 I/O 根因未定（文件级判别量已定），原案回放缺原件未执行，保持观察。
 - N12 large 样本状态见发布记录。
 - N08 真多中心线（真多用户线）外部夹具未提供；N09 `id_renumbering` 半场景限制保持；N04 `zero_delta` 为离线专属、单位矩阵 mm/in/混合/未知仅离线覆盖。

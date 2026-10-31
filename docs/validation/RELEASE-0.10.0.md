@@ -59,10 +59,10 @@ GitHub Release 链接与发布状态：**[Phase B 回填]**
 
 | 项目 | 上一版 | 本版 | 结论 / 注册影响 |
 | --- | --- | --- | --- |
-| native/third_party 原字节（含 json.hpp、第三方许可） | 未变 | 未变 | 无注册影响 |
-| 回调指纹（sha256-repo-lf-v1） | （Phase B 核对） | （Phase B 核对） | 本轮 native 变更集中 advanced.cpp/generic.cpp（邻接预检、tip 口径、FEAT-051 回报、诊断字段），回调面是否变动以 Phase B 实测为准 |
-| loader DLL SHA256 | （Phase B 核对） | （Phase B 核对） | [Phase B 回填] |
-| callback DLL SHA256 | （Phase B 核对） | （Phase B 核对） | [Phase B 回填] |
-| worker SHA256 | 变更 | 变更 | 需 `setup.ps1` 或 `bridge.py build` 重建执行器 |
-| protk.dat / 注册表路径 | 未变 | 未变 | 无 |
-| 实际注册影响 | — | — | 预计重启 MCP 服务并重建执行器即可，无需重新注册（Phase B 按实测确认） |
+| native/third_party 原字节（含 json.hpp、第三方许可） | 未变 | 未变 | 无注册影响（`git diff v0.9.0..HEAD -- native/third_party/` 为空） |
+| 回调指纹（sha256-repo-lf-v1） | `9d2c9641d695365f31476b0b9643aabc34ab6f869d3fc95361b4804ab0ecfcb8`（0.9.0 未留值；按同算法对 `v0.9.0` 树同输入重算） | `9d2c9641d695365f31476b0b9643aabc34ab6f869d3fc95361b4804ab0ecfcb8`（实测，与 `build/blend_sync_build.json` 一致） | 未变（loader 指纹 `de87b1457d7ca677a17c583136b2696406c22b5a221f742907c57d7bca4eab03` 亦未变，generation_key `695fdd07…` 保持；本轮 native 变更在 advanced.cpp/generic.cpp/sketch_edit.cpp，属 worker 侧） |
+| loader DLL SHA256 | `9ea544642a02dca2fdedb2d7b198d546f1448c106985d84e0898261a64d386c9`（DLL 生成于 2026-10-21，早于 0.8.5/0.9.0 发布，0.9.0 记录“未变”） | `9ea544642a02dca2fdedb2d7b198d546f1448c106985d84e0898261a64d386c9`（实测，与构建缓存一致） | 未变 |
+| callback DLL SHA256 | `71b1093a77c51aa09cbda000afe11e5fcb40227aff9f67b7f81a4cd33a447662`（同上） | `71b1093a77c51aa09cbda000afe11e5fcb40227aff9f67b7f81a4cd33a447662`（实测，与构建缓存一致） | 未变 |
+| worker SHA256 | 变更（0.9.0 未留哈希） | 变更：`42cbfc08aa16d7c9afed4262d3f13750146a16cf68e35e608e06611171230a77`（2026-10-31 14:26 构建，戳记 `build/source.sha256`=`993a4380…c6ff57` 与当前源码一致） | 需 `setup.ps1` 或 `bridge.py build` 重建执行器；本批 `tools/generate_constants.py` 增函数声明探测（BUG-090），影响生成 `constants.inc`（worker 侧） |
+| protk.dat / 注册表路径 | 未变 | 未变 | 无（`setup.ps1`、`config.example.json`、`client-config.example.json` 的 `git diff v0.9.0..HEAD` 为空） |
+| 实际注册影响 | — | — | 实测确认：loader/callback DLL 与注册路径均未变，无需重新注册；worker 变更，升级时重建执行器并重启 MCP 服务即可 |
