@@ -810,6 +810,11 @@ def native_source() -> dict:
         "adjacency_rejection_reason": "failure_reason=adjacent_bend_ends" in flange,
         "adjacency_arc_measured": "ProArcdataGet" in source and "ProEdgeDataGet" in source,
         "adjacency_bend_face_checked": "PRO_SRF_CYL" in source,
+        # 2026-10-31 fix: ProEdgeNeighborsGet's contour-neighbour edges can both
+        # sit at one end of the attachment edge (live edge 197: the bend-side
+        # arc was never examined), so the per-end enumeration must come from
+        # ProEdgeVertexdataGet(PRO_EDGE_START/PRO_EDGE_END).
+        "adjacency_per_end_vertex_query": "ProEdgeVertexdataGet" in source,
         "adjacency_radius_bound": "radius_bound_mm" in source,
         "adjacency_evidence_staged_nested": source.count(
             'stage_operation_result({{"flange_failure_evidence"'

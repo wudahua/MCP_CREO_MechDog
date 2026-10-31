@@ -972,6 +972,21 @@ static J flange_point_json(const ProVector &point, ProError code) {
     return {{"x_mm", point[0]}, {"y_mm", point[1]}, {"z_mm", point[2]}};
 }
 
+// Reads a face's surface type and id for the adjacency diagnostics. Returns
+// the ProSurfacedata type (PRO_SRF_* from ProSurfacedata.h) or -1 when the
+// data cannot be read; *face_id is -1 when the id cannot be read.
+static int flange_face_type_id(ProSurface face, int *face_id) {
+    *face_id = -1;
+    ProSurfaceIdGet(face, face_id);
+    ProGeomitemdata *sdata = nullptr;
+    if (ProSurfaceDataGet(face, &sdata) != PRO_TK_NO_ERROR || !sdata)
+        return -1;
+    ProSurfacedata *surf = PRO_SURF_DATA(sdata);
+    int type = surf ? (int)surf->type : -1;
+    ProGeomitemdataFree(&sdata);
+    return type;
+}
+
 static J flange_edge_forensics(const J &op) {
     J evidence = J::object();
     ProSelection sel = resolve(op["edge"]);
@@ -1072,8 +1087,9 @@ static void flange_created_feature_evidence(const J &op, const ProFeature &creat
 // API for this create path. This pre-check therefore repairs nothing. Before
 // any element tree exists it looks for the confirmed trigger shape at each end
 // of the attachment edge and requires BOTH positive signals:
-//   1. adjacency - the contour-neighbour edge at that end is an arc that
-//      borders a cylindrical face (the bend region's boundary);
+//   1. adjacency - an edge meeting the attachment edge at that end (vertex
+//      fan, ProEdgeVertexdataGet) is an arc that borders a cylindrical face
+//      (the bend region's boundary);
 //   2. consumption - the arc radius stays within the bend-setback bound
 //      radius <= 2*(radius + thickness) + tolerance, so the end was consumed by
 //      a bend and not by unrelated curvature. The confirmed 2026-10-31 walls
@@ -1091,7 +1107,6 @@ static void flange_created_feature_evidence(const J &op, const ProFeature &creat
 // evidence under flange_failure_evidence and fails the job with
 // failure_reason=adjacent_bend_ends before any feature is created.
 static const double FLANGE_ADJACENT_BEND_TOLERANCE_MM = 1e-3;
-static const double FLANGE_ADJACENT_END_MATCH_MM = 1e-4;
 
 static J flange_adjacent_bend_end_evidence(const J &op) {
     J evidence = J::object();
@@ -1115,106 +1130,126 @@ static J flange_adjacent_bend_end_evidence(const J &op) {
         ProVector end0, d0a, d0b, d0c, end1, d1a, d1b, d1c;
         ProError end0_code = ProEdgeXyzdataEval(edge, 0.0, end0, d0a, d0b, d0c);
         ProError end1_code = ProEdgeXyzdataEval(edge, 1.0, end1, d1a, d1b, d1c);
-        auto near_end = [](const ProVector &a, const ProVector &b) {
-            double dx = a[0] - b[0], dy = a[1] - b[1], dz = a[2] - b[2];
-            return std::sqrt(dx * dx + dy * dy + dz * dz) <= FLANGE_ADJACENT_END_MATCH_MM;
-        };
         J ends = J::array({{{"end", 0},
                             {"point_mm", flange_point_json(end0, end0_code)},
                             {"adjacent_bend_end", false}},
                            {{"end", 1},
                             {"point_mm", flange_point_json(end1, end1_code)},
                             {"adjacent_bend_end", false}}});
-        ProEdge nb1 = nullptr, nb2 = nullptr;
-        ProSurface shared1 = nullptr, shared2 = nullptr;
-        ProError neighbours_code = ProEdgeNeighborsGet(edge, &nb1, &nb2, &shared1, &shared2);
-        if (neighbours_code) {
-            log("FLANGE_ADJACENT_BEND skip=neighbors_code=%d\n", neighbours_code);
-            return J::object();
-        }
         bool any_hit = false;
-        J unmatched = J::array();
-        for (ProEdge nb : {nb1, nb2}) {
-            if (!nb)
+        // ProEdge.h semantics, verified against the SDK header (2026-10-31):
+        // ProEdgeNeighborsGet's p_edge1/p_edge2 are "the next edge in the
+        // contour on p_face1/p_face2" - the contour walk direction is a face
+        // storage detail, so BOTH returned edges can sit at the SAME end of
+        // the input edge. The 2026-10-31 live rerun hit exactly that on
+        // plate-top edge 197: neighbours 207/104 both resolved to the free
+        // corner, the bend-side arc was never examined, and unmatched=0 only
+        // meant "matched some end". ProEdgeVertexdataGet is the documented
+        // per-end primitive - for PRO_EDGE_START / PRO_EDGE_END it returns
+        // every edge meeting at that end (p_vertex_arr) plus the surfaces
+        // adjacent to those edges (p_surf_arr) - which is the enumeration the
+        // adjacency criterion always meant.
+        for (ProType end_query : {PRO_EDGE_START, PRO_EDGE_END}) {
+            int which = end_query == PRO_EDGE_START ? 0 : 1;
+            ProEdgelist end_edges = nullptr;
+            ProType *end_types = nullptr;
+            ProSurflist end_surfs = nullptr;
+            int end_count = 0;
+            ProError vertex_code = ProEdgeVertexdataGet(edge, end_query, &end_edges, &end_types,
+                                                        &end_surfs, &end_count);
+            if (vertex_code) {
+                log("FLANGE_ADJACENT_BEND end=%d vertex_code=%d\n", which, vertex_code);
                 continue;
-            int nb_id = -1;
-            ProEdgeIdGet(nb, &nb_id);
-            ProGeomitemdata *data = nullptr;
-            ProError data_code = ProEdgeDataGet(nb, &data);
-            ProCurvedata *curve = data ? PRO_CURVE_DATA(data) : nullptr;
-            // ProCurvedata is a union (ProCurvedata.h) - it has no top-level
-            // "type" member; the SDK accessor ProCurvedataTypeGet reads the
-            // type shared by every union arm (ProObjects.h: PRO_ENT_ARC = 3).
-            ProEnttype curve_ent = PRO_ENT_NONE;
-            int curve_type = (curve && ProCurvedataTypeGet(curve, &curve_ent) == PRO_TK_NO_ERROR)
-                                 ? (int)curve_ent
-                                 : -1;
-            double arc_radius = 0;
-            ProVector arc_v1, arc_v2, arc_origin;
-            double arc_start = 0, arc_end = 0;
-            bool is_arc = !data_code && curve && curve_type == PRO_ENT_ARC &&
-                          ProArcdataGet(curve, arc_v1, arc_v2, arc_origin, &arc_start, &arc_end,
-                                        &arc_radius) == PRO_TK_NO_ERROR;
-            J bend_faces = J::array();
-            if (is_arc) {
-                ProEdge fa1 = nullptr, fa2 = nullptr;
-                ProSurface sfa = nullptr, sfb = nullptr;
-                if (ProEdgeNeighborsGet(nb, &fa1, &fa2, &sfa, &sfb) == PRO_TK_NO_ERROR) {
-                    for (ProSurface face : {sfa, sfb}) {
-                        if (!face)
-                            continue;
-                        ProGeomitemdata *sdata = nullptr;
-                        if (ProSurfaceDataGet(face, &sdata) == PRO_TK_NO_ERROR && sdata) {
-                            ProSurfacedata *surf = PRO_SURF_DATA(sdata);
-                            if (surf && surf->type == PRO_SRF_CYL) {
-                                int face_id = -1;
-                                ProSurfaceIdGet(face, &face_id);
+            }
+            std::string end_faces;
+            for (int i = 0; i < end_count && i < 16; ++i) {
+                int face_id = -1;
+                int face_type = flange_face_type_id(end_surfs[i], &face_id);
+                end_faces += (end_faces.empty() ? "" : ";");
+                end_faces += std::to_string(face_id) + ":" + std::to_string(face_type);
+            }
+            log("FLANGE_ADJACENT_BEND_END end=%d edges=%d faces=%s\n", which, end_count,
+                end_faces.c_str());
+            bool end_hit = ends[which].value("adjacent_bend_end", false);
+            for (int i = 0; i < end_count && i < 16; ++i) {
+                ProEdge nb = end_edges[i];
+                int nb_id = -1;
+                ProEdgeIdGet(nb, &nb_id);
+                if (nb_id == item.id)
+                    continue; // the attachment edge meets at its own end
+                ProGeomitemdata *data = nullptr;
+                ProError data_code = ProEdgeDataGet(nb, &data);
+                ProCurvedata *curve = data ? PRO_CURVE_DATA(data) : nullptr;
+                // ProCurvedata is a union (ProCurvedata.h) - it has no top-level
+                // "type" member; the SDK accessor ProCurvedataTypeGet reads the
+                // type shared by every union arm (ProObjects.h: PRO_ENT_ARC = 3).
+                ProEnttype curve_ent = PRO_ENT_NONE;
+                int curve_type =
+                    (curve && ProCurvedataTypeGet(curve, &curve_ent) == PRO_TK_NO_ERROR)
+                        ? (int)curve_ent
+                        : -1;
+                double arc_radius = 0;
+                ProVector arc_v1, arc_v2, arc_origin;
+                double arc_start = 0, arc_end = 0;
+                bool is_arc = !data_code && curve && curve_type == PRO_ENT_ARC &&
+                              ProArcdataGet(curve, arc_v1, arc_v2, arc_origin, &arc_start, &arc_end,
+                                            &arc_radius) == PRO_TK_NO_ERROR;
+                // The neighbour edge's own two faces: ProEdge.h documents
+                // ProEdgeNeighborsGet's p_face1/p_face2 as the input edge's
+                // adjacent surfaces ("The first/second adjacent surface"), so
+                // calling it on the neighbour returns exactly the faces that
+                // neighbour borders - the cylinder check keeps its pairing to
+                // the arc instead of scanning the whole vertex fan.
+                J bend_faces = J::array();
+                std::string nb_faces;
+                {
+                    ProEdge fa1 = nullptr, fa2 = nullptr;
+                    ProSurface sfa = nullptr, sfb = nullptr;
+                    ProError nb_faces_code = ProEdgeNeighborsGet(nb, &fa1, &fa2, &sfa, &sfb);
+                    if (nb_faces_code) {
+                        nb_faces = "code=" + std::to_string((int)nb_faces_code);
+                    } else {
+                        for (ProSurface face : {sfa, sfb}) {
+                            if (!face)
+                                continue;
+                            int face_id = -1;
+                            int face_type = flange_face_type_id(face, &face_id);
+                            nb_faces += (nb_faces.empty() ? "" : ";");
+                            nb_faces += std::to_string(face_id) + ":" + std::to_string(face_type);
+                            if (face_type == PRO_SRF_CYL)
                                 bend_faces.push_back(face_id);
-                            }
-                            ProGeomitemdataFree(&sdata);
                         }
                     }
                 }
-            }
-            if (data)
-                ProGeomitemdataFree(&data);
-            bool adjacent = is_arc && !bend_faces.empty() && arc_radius <= bound;
-            int which = -1;
-            if (!end0_code && !end1_code) {
-                ProVector pa, pa1, pa2, pad, pb, pb1, pb2, pbd;
-                if (ProEdgeXyzdataEval(nb, 0.0, pa, pa1, pa2, pad) == PRO_TK_NO_ERROR) {
-                    if (near_end(pa, end0))
-                        which = 0;
-                    else if (near_end(pa, end1))
-                        which = 1;
-                }
-                if (which < 0 &&
-                    ProEdgeXyzdataEval(nb, 1.0, pb, pb1, pb2, pbd) == PRO_TK_NO_ERROR) {
-                    if (near_end(pb, end0))
-                        which = 0;
-                    else if (near_end(pb, end1))
-                        which = 1;
-                }
-            }
-            J row = {{"neighbor_edge_id", nb_id},
-                     {"neighbor_edge_type", curve_type},
-                     {"neighbor_arc", is_arc},
-                     {"neighbor_radius_mm", is_arc ? J(arc_radius) : J()},
-                     {"radius_bound_mm", bound},
-                     {"bend_face_ids", bend_faces},
-                     {"adjacent_bend_end", adjacent}};
-            if (which >= 0) {
+                if (data)
+                    ProGeomitemdataFree(&data);
+                bool adjacent = is_arc && !bend_faces.empty() && arc_radius <= bound;
+                log("FLANGE_ADJACENT_BEND_NB end=%d id=%d curve_type=%d is_arc=%d "
+                    "radius=%.4f faces=%s\n",
+                    which, nb_id, curve_type, is_arc ? 1 : 0, is_arc ? arc_radius : 0.0,
+                    nb_faces.c_str());
+                J row = {{"neighbor_edge_id", nb_id},
+                         {"neighbor_edge_type", curve_type},
+                         {"neighbor_arc", is_arc},
+                         {"neighbor_radius_mm", is_arc ? J(arc_radius) : J()},
+                         {"radius_bound_mm", bound},
+                         {"bend_face_ids", bend_faces},
+                         {"adjacent_bend_end", adjacent}};
                 row["point_mm"] = ends[which].at("point_mm");
                 ends[which].update(row);
-            } else {
-                unmatched.push_back(row);
+                if (adjacent) {
+                    end_hit = true;
+                    any_hit = true;
+                }
+                ends[which]["adjacent_bend_end"] = end_hit;
             }
-            if (adjacent)
-                any_hit = true;
+            ProArrayFree((ProArray *)&end_edges);
+            ProArrayFree((ProArray *)&end_types);
+            ProArrayFree((ProArray *)&end_surfs);
         }
-        log("FLANGE_ADJACENT_BEND edge=%d end0=%d end1=%d unmatched=%d\n", item.id,
+        log("FLANGE_ADJACENT_BEND edge=%d end0=%d end1=%d\n", item.id,
             ends[0].value("adjacent_bend_end", false) ? 1 : 0,
-            ends[1].value("adjacent_bend_end", false) ? 1 : 0, (int)unmatched.size());
+            ends[1].value("adjacent_bend_end", false) ? 1 : 0);
         if (!any_hit)
             return J::object();
         evidence["stage"] = "before_create";
@@ -1225,8 +1260,6 @@ static J flange_adjacent_bend_end_evidence(const J &op) {
         evidence["radius_bound_mm"] = bound;
         evidence["tolerance_mm"] = FLANGE_ADJACENT_BEND_TOLERANCE_MM;
         evidence["ends"] = ends;
-        if (!unmatched.empty())
-            evidence["unmatched_neighbor_edges"] = unmatched;
         return evidence;
     } catch (ProError code) {
         log("FLANGE_ADJACENT_BEND_FAILED=%d\n", code);
@@ -1239,27 +1272,25 @@ static J flange_adjacent_bend_end_evidence(const J &op) {
 
 static std::string flange_adjacent_ends_summary(const J &evidence) {
     std::string summary;
-    // Copies, not pointers: value() returns temporaries that would dangle in a
+    // Copy, not pointer: value() returns a temporary that would dangle in a
     // pointer initializer_list before the loop body runs.
-    for (const J &rows : {evidence.value("ends", J::array()),
-                          evidence.value("unmatched_neighbor_edges", J::array())}) {
-        for (const auto &row : rows) {
-            if (!row.value("adjacent_bend_end", false))
-                continue;
-            summary += (summary.empty() ? "" : "; ");
-            summary += "end";
-            summary += row.contains("end") && row["end"].is_number()
-                           ? std::to_string(row["end"].get<int>())
-                           : std::string("?");
-            summary += ": neighbour arc edge ";
-            summary += std::to_string(row["neighbor_edge_id"].get<int>());
-            summary += " radius ";
-            summary += std::to_string(row["neighbor_radius_mm"].get<double>());
-            summary += " mm within the bend-setback bound ";
-            summary += std::to_string(row["radius_bound_mm"].get<double>());
-            summary += " mm, bend faces ";
-            summary += row["bend_face_ids"].dump();
-        }
+    const J rows = evidence.value("ends", J::array());
+    for (const auto &row : rows) {
+        if (!row.value("adjacent_bend_end", false))
+            continue;
+        summary += (summary.empty() ? "" : "; ");
+        summary += "end";
+        summary += row.contains("end") && row["end"].is_number()
+                       ? std::to_string(row["end"].get<int>())
+                       : std::string("?");
+        summary += ": neighbour arc edge ";
+        summary += std::to_string(row["neighbor_edge_id"].get<int>());
+        summary += " radius ";
+        summary += std::to_string(row["neighbor_radius_mm"].get<double>());
+        summary += " mm within the bend-setback bound ";
+        summary += std::to_string(row["radius_bound_mm"].get<double>());
+        summary += " mm, bend faces ";
+        summary += row["bend_face_ids"].dump();
     }
     return summary;
 }
