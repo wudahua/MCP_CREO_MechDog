@@ -2293,7 +2293,11 @@ static J generic_hole(const J &op) {
                 op.contains("depth") ? PRO_HLE_STD_VAR_DEPTH : PRO_HLE_STD_THRU_ALL_DEPTH);
         if (op.contains("depth")) {
             real(com, PRO_E_HLE_DRILLDEPTH, op.at("depth"));
-            integer(com, PRO_E_HLE_DEPTH_DIM_TYPE, PRO_HLE_DEP_SHOULDER_DIM_SCHEME);
+            // FEAT-035/T12: the blind depth is the overall depth from the
+            // placement face down to the drill tip, so the custom hole
+            // dimensions till the tip. The plain straight-hole branch keeps
+            // its own element tree and its flat-bottomed overall depth.
+            integer(com, PRO_E_HLE_DEPTH_DIM_TYPE, PRO_HLE_DEP_TIP_DIM_SCHEME);
         }
         if (counterbore) {
             real(com, PRO_E_HLE_CBOREDIAM, op["counterbore"].at("diameter"));

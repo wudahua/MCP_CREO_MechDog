@@ -21,13 +21,23 @@ BASE = {
 }
 
 
+def is_custom_branch(option: dict) -> bool:
+    """True when the request carries a counterbore or a countersink.
+
+    The native picks the custom hole branch from exactly these two keys, so
+    the oracle follows the same branch the element tree will build.
+    """
+    return "counterbore" in option or "countersink" in option
+
+
 def oracle_removed(diameter: float, depth: float, option: dict) -> float:
     """Flat-bottom analytical reference for a fully embedded hole in a plate.
 
     ``depth`` is the overall drill depth measured from the placement face
     (contract semantics); pass the material thickness for a through hole.
-    A conical drill tip below that depth is not included here, see
-    :func:`oracle_tip_extra`.
+    This reference ends in a plane at ``depth`` and carries no drill point,
+    see :func:`oracle_tip_extra`; the blind custom hole reaches its drill
+    tip instead, see :func:`oracle_removed_tip`.
     """
     base = math.pi * diameter**2 * depth / 4
     if "counterbore" in option:
@@ -53,10 +63,36 @@ def oracle_tip_height(diameter: float, angle: float = 118.0) -> float:
 
 
 def oracle_tip_extra(diameter: float, angle: float = 118.0) -> float:
-    """Volume below the flat depth if the drill end is a conical tip."""
+    """Volume of the conical drill point (one third of its body cylinder)."""
     radius = diameter / 2.0
     height = oracle_tip_height(diameter, angle)
     return math.pi * radius * radius * height / 3.0
+
+
+def oracle_tip_body(diameter: float, angle: float = 118.0) -> float:
+    """Volume of the cylinder that encloses the conical drill point."""
+    radius = diameter / 2.0
+    return math.pi * radius * radius * oracle_tip_height(diameter, angle)
+
+
+def oracle_removed_tip(diameter: float, depth: float, option: dict) -> float:
+    """Removal of a blind custom hole dimensioned till its drill tip.
+
+    The native custom branch writes ``PRO_HLE_DEP_TIP_DIM_SCHEME``, so the
+    requested depth is the overall depth from the placement face down to the
+    tip vertex. The flat-bottom reference ends in a plane at that depth; the
+    drill point replaces the last cone height of the bore column (a cylinder
+    of ``pi * r^2 * h``) by the cone itself (one third of it), so the removal
+    drops by two thirds of that cylinder, i.e. by twice the cone volume
+    :func:`oracle_tip_extra` returns:
+
+        flat_overall - 2 * tip_cone = flat_overall - (2/3) * tip_body
+
+    The two thirds belong to the cone *body* cylinder, not to the cone
+    volume: subtracting two thirds of the cone volume would leave the hole
+    one third of a cone too deep.
+    """
+    return oracle_removed(diameter, depth, option) - 2.0 * oracle_tip_extra(diameter)
 
 
 def oracle_faces(option: dict, blind: bool) -> int:
@@ -64,22 +100,25 @@ def oracle_faces(option: dict, blind: bool) -> int:
 
     Every revolved surface of a native hole arrives as two seam-split half
     faces (the seam lies in the plane through the hole axis), so the bore
-    wall, the seat wall and the sink cone each count twice. A flat bottom
-    and a seat floor are one plane each.
+    wall, the seat wall, the sink cone and the drill point each count
+    twice. A seat floor and the plain branch's flat bottom are one plane
+    each.
 
-    The contract blind hole ends in a flat bottom at the requested overall
-    depth. The native custom hole instead ends in a 118 degree drill point
-    (two half-cone faces), which is the visible signature of its till-shoulder
-    depth reading; see :func:`oracle_faces_native`.
+    The blind custom branch is dimensioned till its drill tip, so it ends in
+    the 118 degree point (two half-cone faces) whose vertex sits at the
+    requested overall depth. The plain straight-hole branch has no drill
+    point and keeps its flat bottom plane.
 
     Measured on Creo 12.4.0.0: the plain blind hole +3, the through
-    counterbore +5 and the through countersink +4 match this count, while
-    the blind counterbore measures +7 and the blind countersink +6 because
-    the drill point replaces the flat bottom.
+    counterbore +5, the through countersink +4, the blind counterbore +7 and
+    the blind countersink +6 all match this count.
     """
     faces = 2  # the bore wall, two half-cylinder faces
     if blind:
-        faces += 1  # the flat bottom plane
+        if is_custom_branch(option):
+            faces += 2  # the drill point, two half-cone faces
+        else:
+            faces += 1  # the flat bottom plane
     if "counterbore" in option:
         faces += 3  # the seat wall halves and the seat floor plane
     if "countersink" in option:
@@ -88,48 +127,97 @@ def oracle_faces(option: dict, blind: bool) -> int:
 
 
 def oracle_faces_native(option: dict, blind: bool) -> int:
-    """Faces the native hole adds, with its drill point instead of a flat bottom.
+    """Faces the native hole adds to the plate.
 
-    The custom branch builds a 118 degree drill point below the bore, so its
-    blind hole carries two half-cone faces where the contract expects the one
-    flat bottom plane. The plain branch is the legacy straight hole and keeps
-    its flat bottom.
+    The custom branch always drills a 118 degree point and the plain branch
+    keeps its flat bottom. Since the custom branch is now dimensioned till
+    its tip, the native topology and the contract shape coincide; the two
+    names are kept apart so the report can show that convergence instead of
+    a silent assumption.
     """
-    faces = oracle_faces(option, blind)
-    if blind and ("counterbore" in option or "countersink" in option):
-        faces += 1
-    return faces
+    return oracle_faces(option, blind)
 
 
-def oracle_variants(diameter: float, depth: float, option: dict) -> dict:
+def oracle_contract(diameter: float, depth: float, option: dict, blind: bool = True) -> float:
+    """The removal the frozen contract requires for this hole.
+
+    A blind custom hole is dimensioned till its drill tip, so the tip vertex
+    sits ``depth`` below the placement face and the full-diameter bore stops
+    one tip height higher than the flat-bottom reference. A through custom
+    hole has no drill point and every plain-branch hole ends in a plane, so
+    those keep the flat-bottom reference.
+    """
+    if blind and is_custom_branch(option):
+        return oracle_removed_tip(diameter, depth, option)
+    return oracle_removed(diameter, depth, option)
+
+
+def contract_variant_key(option: dict, blind: bool = True) -> str:
+    """The variant name that carries the contract removal for this hole."""
+    if blind and is_custom_branch(option):
+        return "contract_tip_overall"
+    return "contract_flat_overall"
+
+
+def expected_depth_semantics(option: dict, blind: bool = True) -> str:
+    """The depth reading the contract requires for this hole."""
+    if blind and is_custom_branch(option):
+        return "overall_tip"
+    return "overall_flat"
+
+
+def oracle_variants(diameter: float, depth: float, option: dict, blind: bool = True) -> dict:
     """Named removable-volume references; the contract one is judged.
 
-    ``contract_flat_overall`` is the frozen contract (flat bottom, ``depth``
-    overall from the placement face). The others diagnose native semantics:
-    a 118-degree drill tip below the flat depth, or a counterbore whose drill
-    depth is counted from the seat ("till shoulder") instead of the placement
-    face.
+    The judged contract is ``contract_tip_overall`` for a blind custom hole
+    (its depth reaches the drill tip) and ``contract_flat_overall``
+    otherwise. The ``defect_*`` entries are the readings the fix must not
+    produce: the till-shoulder reading, whose drill point hangs one tip
+    height below the requested depth, and a counterbore whose drill depth is
+    counted from the seat instead of the placement face.
 
     Measured on Creo 12.4.0.0 (2026-10-30 live run, N10): the custom hole
-    path removes exactly ``contract_flat_overall + drill_tip_118_below_depth``
-    (residual 5.5e-12 mm3 for the counterbore case), so the native reads
-    ``depth`` as the depth to the shoulder plus a 118-degree drill point
-    beyond it. The plain branch (no counterbore, no countersink) is the
-    legacy straight hole, which has a flat bottom and no drill point, and it
-    matches the contract oracle to 2.8e-12 mm3. The variant is reported,
-    never silently adopted: the frozen contract stays the judged reference.
+    path removed exactly the till-shoulder form (residual 5.5e-12 mm3 for
+    the counterbore case), i.e. it read ``depth`` as the depth to the
+    shoulder plus a 118 degree drill point beyond it. After the fix that
+    form must not be measured again. The plain branch is the legacy
+    straight hole with a flat bottom and no drill point; it matches the
+    contract oracle to 2.8e-12 mm3 and is unchanged by the fix.
     """
     flat = oracle_removed(diameter, depth, option)
     variants = {
-        "contract_flat_overall": flat,
-        "drill_tip_118_below_depth": flat + oracle_tip_extra(diameter),
+        contract_variant_key(option, blind): oracle_contract(diameter, depth, option, blind)
     }
+    if blind:
+        variants["defect_till_shoulder_below_tip"] = flat + oracle_tip_extra(diameter)
     if "counterbore" in option:
         bore = option["counterbore"]
-        variants["shoulder_measured_drilldepth"] = (
+        variants["defect_seat_measured_drilldepth"] = (
             math.pi * bore["diameter"] ** 2 * bore["depth"] / 4 + math.pi * diameter**2 * depth / 4
         )
     return variants
+
+
+def oracle_bore_span(diameter: float, depth: float, option: dict, top: float = 10.0) -> tuple:
+    """The (low, high) span of the full-diameter bore of a blind hole.
+
+    The span is in the placement face's axis coordinate (z for the plate top
+    face). The custom branch is dimensioned till its drill tip, so its
+    full-diameter bore stops one drill-point height above the tip vertex
+    and starts below the seat; the plain straight-hole branch keeps its flat
+    bottom at the requested depth.
+    """
+    if not is_custom_branch(option):
+        return (top - depth, top)
+    low = top - depth + oracle_tip_height(diameter)
+    if "counterbore" in option:
+        high = top - option["counterbore"]["depth"]
+    elif "countersink" in option:
+        sink = option["countersink"]
+        high = top - (sink["diameter"] - diameter) / (2 * math.tan(math.radians(sink["angle"] / 2)))
+    else:
+        high = top
+    return (low, high)
 
 
 def closest_variant(removed: float, variants: dict, tol: float = 1.0) -> str | None:
@@ -246,15 +334,19 @@ def hole_depth_evidence(
 def depth_semantics(evidence: dict, expected_depth: float, tip_height: float) -> str:
     """Which depth reading the measured hole follows.
 
-    ``overall_flat`` places the deepest point of the hole exactly
-    ``expected_depth`` below the placement face; ``shoulder_plus_tip`` places
-    the cylindrical walls there and the drill point ``tip_height`` below it.
+    ``overall_tip`` places the drill tip vertex exactly ``expected_depth``
+    below the placement face; the full-diameter bore then stops one tip
+    height higher. ``overall_flat`` places the deepest point of a hole
+    without a drill point exactly ``expected_depth`` below the placement
+    face. ``shoulder_plus_tip`` places the cylindrical walls there and the
+    drill point ``tip_height`` below it, which is the till-shoulder defect
+    the fix removes.
     """
     total = evidence.get("total_depth")
     if total is None:
         return "unknown"
     if abs(total - expected_depth) <= 0.05:
-        return "overall_flat"
+        return "overall_tip" if evidence.get("cone_depth_max") is not None else "overall_flat"
     if tip_height and abs(total - (expected_depth + tip_height)) <= 0.05:
         return "shoulder_plus_tip"
     return "other"
@@ -356,6 +448,8 @@ class NativeCountersinkTest(unittest.TestCase):
                 self.assertEqual(op[next(iter(option))], option[next(iter(option))])
 
     def test_blind_and_edit_oracles(self):
+        # The flat-bottom reference is the plain branch's contract; the blind
+        # custom hole is dimensioned till its drill tip and removes less.
         blind = oracle_removed(6, 7, {})
         self.assertAlmostEqual(blind, math.pi * 36 * 7 / 4, places=9)
         self.assertAlmostEqual(blind, 197.92033717615698, places=6)
@@ -370,15 +464,64 @@ class NativeCountersinkTest(unittest.TestCase):
         self.assertAlmostEqual(edited, math.pi * 100 * 3 / 4 + math.pi * 49 * 5 / 4, places=9)
         self.assertAlmostEqual(edited, 428.0419990516093, places=6)
 
+    def test_the_tip_oracle_is_the_flat_reference_less_two_thirds_of_the_cone_body(self):
+        # Till tip: the tip vertex sits `depth` below the placement face, so
+        # the bore column loses one cone height and the cone itself replaces
+        # the last of it. The removal drops by two thirds of the cone body.
+        option = {"counterbore": {"diameter": 10, "depth": 2}}
+        flat = oracle_removed(6, 8, option)
+        self.assertAlmostEqual(oracle_tip_body(6), math.pi * 9 * oracle_tip_height(6), places=9)
+        self.assertAlmostEqual(oracle_tip_extra(6), oracle_tip_body(6) / 3.0, places=9)
+        self.assertAlmostEqual(
+            oracle_removed_tip(6, 8, option), flat - 2.0 / 3.0 * oracle_tip_body(6), places=9
+        )
+        # The two thirds belong to the cone body, not to the cone volume.
+        self.assertAlmostEqual(
+            oracle_removed_tip(6, 8, option), flat - 2.0 * oracle_tip_extra(6), places=9
+        )
+        self.assertNotAlmostEqual(
+            oracle_removed_tip(6, 8, option), flat - 2.0 / 3.0 * oracle_tip_extra(6), places=6
+        )
+
+    def test_the_tip_oracle_values_are_locked(self):
+        # FEAT-035/T12: the blind custom holes are dimensioned till the
+        # drill tip vertex. These are the numbers the live run must hit.
+        self.assertAlmostEqual(
+            oracle_contract(6, 8, {"counterbore": {"diameter": 10, "depth": 2}}),
+            292.74776845510735,
+            places=9,
+        )
+        self.assertAlmostEqual(
+            oracle_contract(6, 8, {"countersink": {"diameter": 10, "angle": 90}}),
+            238.29349579288424,
+            places=9,
+        )
+        self.assertAlmostEqual(
+            oracle_contract(7, 8, {"counterbore": {"diameter": 10, "depth": 3}}),
+            374.0864038721959,
+            places=9,
+        )
+        # The plain straight hole keeps its flat bottom and its overall depth.
+        self.assertAlmostEqual(oracle_contract(6, 7, {}), 197.92033717615698, places=9)
+
+    def test_the_contract_variant_follows_the_branch(self):
+        custom = {"counterbore": {"diameter": 10, "depth": 2}}
+        self.assertEqual(contract_variant_key(custom), "contract_tip_overall")
+        self.assertEqual(contract_variant_key({}), "contract_flat_overall")
+        self.assertEqual(contract_variant_key(custom, blind=False), "contract_flat_overall")
+        self.assertEqual(expected_depth_semantics(custom), "overall_tip")
+        self.assertEqual(expected_depth_semantics({}), "overall_flat")
+
     def test_face_deltas_and_variants(self):
-        # The contract shape keeps its flat bottom; the native custom hole
-        # replaces it with a 118 degree drill point (two half-cone faces).
+        # The blind custom hole is dimensioned till its drill tip, so the
+        # contract shape and the native shape now coincide: the cone is in
+        # the contract, not only in the native tree.
         self.assertEqual(oracle_faces({}, blind=False), 2)
         self.assertEqual(oracle_faces({}, blind=True), 3)
         self.assertEqual(oracle_faces({"counterbore": {"diameter": 10, "depth": 2}}, False), 5)
-        self.assertEqual(oracle_faces({"counterbore": {"diameter": 10, "depth": 2}}, True), 6)
+        self.assertEqual(oracle_faces({"counterbore": {"diameter": 10, "depth": 2}}, True), 7)
         self.assertEqual(oracle_faces({"countersink": {"diameter": 10, "angle": 90}}, False), 4)
-        self.assertEqual(oracle_faces({"countersink": {"diameter": 10, "angle": 90}}, True), 5)
+        self.assertEqual(oracle_faces({"countersink": {"diameter": 10, "angle": 90}}, True), 6)
         self.assertEqual(oracle_faces_native({}, blind=True), 3)
         self.assertEqual(
             oracle_faces_native({"counterbore": {"diameter": 10, "depth": 2}}, True), 7
@@ -391,25 +534,43 @@ class NativeCountersinkTest(unittest.TestCase):
         self.assertEqual(
             set(variants),
             {
-                "contract_flat_overall",
-                "drill_tip_118_below_depth",
-                "shoulder_measured_drilldepth",
+                "contract_tip_overall",
+                "defect_till_shoulder_below_tip",
+                "defect_seat_measured_drilldepth",
             },
         )
         self.assertGreater(oracle_tip_extra(6), 0)
+        # The till-shoulder reading is a defect form now: it must not be hit.
         self.assertAlmostEqual(
-            variants["drill_tip_118_below_depth"],
-            variants["contract_flat_overall"] + oracle_tip_extra(6),
+            variants["defect_till_shoulder_below_tip"],
+            oracle_removed(6, 8, option) + oracle_tip_extra(6),
             places=9,
         )
         self.assertGreater(
-            variants["shoulder_measured_drilldepth"], variants["contract_flat_overall"]
+            variants["defect_till_shoulder_below_tip"], variants["contract_tip_overall"]
+        )
+        self.assertGreater(
+            variants["defect_seat_measured_drilldepth"], variants["contract_tip_overall"]
         )
         self.assertEqual(
-            closest_variant(variants["contract_flat_overall"], variants, tol=1e-6),
-            "contract_flat_overall",
+            closest_variant(variants["contract_tip_overall"], variants, tol=1e-6),
+            "contract_tip_overall",
         )
         self.assertIsNone(closest_variant(-5.0, variants, tol=1e-6))
+
+    def test_the_bore_span_stops_one_tip_height_above_the_tip(self):
+        # Till tip: the full-diameter bore stops one drill-point height above
+        # the tip vertex, so the cone occupies the last cone height.
+        self.assertEqual(
+            oracle_bore_span(6, 8, {"counterbore": {"diameter": 10, "depth": 2}}),
+            (10.0 - 8.0 + oracle_tip_height(6), 8.0),
+        )
+        self.assertEqual(
+            oracle_bore_span(6, 8, {"countersink": {"diameter": 10, "angle": 90}}),
+            (10.0 - 8.0 + oracle_tip_height(6), 8.0),
+        )
+        # The plain branch keeps its flat bottom at the requested depth.
+        self.assertEqual(oracle_bore_span(6, 7, {}), (3.0, 10.0))
 
     def test_geometry_and_dimension_helpers(self):
         self.assertTrue(axis_is_parallel([0, 0, 10], [0, 0, -1]))
@@ -471,6 +632,7 @@ class NativeCountersinkTest(unittest.TestCase):
             expected_face_delta=oracle_faces({}, blind=True),
             expected_dims={"diameter": 6, "depth": 7},
             variants=variants,
+            expected_variant=contract_variant_key({}, blind=True),
             cylinder_expectations=[
                 {
                     "radius": 3.0,
@@ -483,9 +645,11 @@ class NativeCountersinkTest(unittest.TestCase):
         )
         self.assertEqual(problems, [])
         self.assertEqual(fields["matched_variant"], "contract_flat_overall")
-        # a volume that matches the drill-tip variant instead never passes
+        # a volume that matches the defect drill-point variant never passes
         wrong = json.loads(json.dumps(after))
-        wrong["inspection"]["volume_mm3"] = PLATE_VOLUME - variants["drill_tip_118_below_depth"]
+        wrong["inspection"]["volume_mm3"] = (
+            PLATE_VOLUME - variants["defect_till_shoulder_below_tip"]
+        )
         _, problems = judge_geometry(
             entry,
             terminal,
@@ -495,9 +659,10 @@ class NativeCountersinkTest(unittest.TestCase):
             expected_face_delta=oracle_faces({}, blind=True),
             expected_dims={"diameter": 6, "depth": 7},
             variants=variants,
+            expected_variant=contract_variant_key({}, blind=True),
             cylinder_expectations=[],
         )
-        self.assertTrue(any("contract flat-bottom oracle" in item for item in problems))
+        self.assertTrue(any("contract oracle" in item for item in problems))
         # missing reload evidence is a failure, not a silent pass
         _, problems = judge_geometry(
             entry,
@@ -508,6 +673,7 @@ class NativeCountersinkTest(unittest.TestCase):
             expected_face_delta=oracle_faces({}, blind=True),
             expected_dims={"diameter": 6, "depth": 7},
             variants=variants,
+            expected_variant=contract_variant_key({}, blind=True),
             cylinder_expectations=[],
         )
         self.assertIn("saved_file_reloaded_and_verified is not true", problems)
@@ -532,6 +698,34 @@ class NativeCountersinkTest(unittest.TestCase):
         ):
             self.assertIn(name, body)
         self.assertEqual(body.count("ProFeature f = create(root)"), 1)
+
+    def test_the_custom_branch_dimensions_till_the_tip(self):
+        """FEAT-035/T12: the custom branch must write the tip scheme.
+
+        The custom branch carries the 118 degree drill point, so its blind
+        depth is only "overall" when the depth dimension scheme is the tip
+        one. The plain straight-hole branch has no drill point and must
+        keep its own element tree untouched.
+        """
+        source = (ROOT / "native/generic.cpp").read_text(encoding="utf-8")
+        start = source.index("static J generic_hole(")
+        end = source.index("static J ", start + 1)
+        body = source[start:end]
+        custom_start = body.index("if (custom) {")
+        plain_start = body.index("} else {", custom_start)
+        custom = body[custom_start:plain_start]
+        plain = body[plain_start:]
+        # The custom branch writes the tip scheme and never the shoulder one.
+        self.assertIn("PRO_E_HLE_DEPTH_DIM_TYPE", custom)
+        self.assertIn("PRO_HLE_DEP_TIP_DIM_SCHEME", custom)
+        self.assertNotIn("PRO_HLE_DEP_SHOULDER_DIM_SCHEME", custom)
+        self.assertEqual(custom.count("PRO_E_HLE_DEPTH_DIM_TYPE"), 1)
+        # The plain straight-hole branch keeps its own depth element tree.
+        self.assertNotIn("PRO_E_HLE_DEPTH_DIM_TYPE", plain)
+        self.assertNotIn("PRO_HLE_DEP_", plain)
+        self.assertIn("PRO_HLE_STRGHT_BLIND_DEPTH", plain)
+        # No branch writes the shoulder scheme any more.
+        self.assertNotIn("PRO_HLE_DEP_SHOULDER_DIM_SCHEME", body)
 
 
 class CaseSelectionTests(unittest.TestCase):
@@ -591,28 +785,32 @@ class RemainderExpectationTests(unittest.TestCase):
     """The six remainder cases keep their frozen oracles and expectations."""
 
     def test_the_blind_depth_is_overall_from_the_placement_face(self):
-        # depth is the overall drill depth measured from the placement face;
-        # the flat-bottom oracle uses it as such.
+        # depth is the overall drill depth measured from the placement face.
+        # The plain branch ends in a flat bottom there.
         blind = oracle_removed(6, 7, {})
         self.assertAlmostEqual(blind, math.pi * 36 * 7 / 4, places=9)
+        self.assertAlmostEqual(oracle_contract(6, 7, {}), blind, places=9)
 
     def test_the_three_blind_variants_keep_their_expected_volumes(self):
-        self.assertAlmostEqual(oracle_removed(6, 7, {}), 197.92033717615698, places=6)
+        # The plain blind hole keeps its flat bottom; the two blind custom
+        # holes are dimensioned till their drill tip vertex.
+        self.assertAlmostEqual(oracle_contract(6, 7, {}), 197.92033717615698, places=6)
         self.assertAlmostEqual(
-            oracle_removed(6, 8, {"counterbore": {"diameter": 10, "depth": 2}}),
-            326.7256359733385,
+            oracle_contract(6, 8, {"counterbore": {"diameter": 10, "depth": 2}}),
+            292.74776845510735,
             places=6,
         )
         self.assertAlmostEqual(
-            oracle_removed(6, 8, {"countersink": {"diameter": 10, "angle": 90}}),
-            272.2713633111154,
+            oracle_contract(6, 8, {"countersink": {"diameter": 10, "angle": 90}}),
+            238.29349579288424,
             places=6,
         )
 
     def test_the_face_deltas_match_the_three_blind_variants(self):
         # Measured on Creo 12.4.0.0: each revolved surface arrives as two
         # seam-split half faces, and the blind custom hole ends in a 118
-        # degree drill point (two half-cone faces) instead of a flat bottom.
+        # degree drill point (two half-cone faces). The contract shape now
+        # carries that point too, so both oracles agree.
         self.assertEqual(oracle_faces_native({}, blind=True), 3)
         self.assertEqual(
             oracle_faces_native({"counterbore": {"diameter": 10, "depth": 2}}, blind=True), 7
@@ -620,17 +818,15 @@ class RemainderExpectationTests(unittest.TestCase):
         self.assertEqual(
             oracle_faces_native({"countersink": {"diameter": 10, "angle": 90}}, blind=True), 6
         )
-        # The contract shape keeps its flat bottom, one face less than the
-        # native drill point on the custom branch.
         self.assertEqual(oracle_faces({}, blind=True), 3)
-        self.assertEqual(oracle_faces({"counterbore": {"diameter": 10, "depth": 2}}, blind=True), 6)
+        self.assertEqual(oracle_faces({"counterbore": {"diameter": 10, "depth": 2}}, blind=True), 7)
         self.assertEqual(
-            oracle_faces({"countersink": {"diameter": 10, "angle": 90}}, blind=True), 5
+            oracle_faces({"countersink": {"diameter": 10, "angle": 90}}, blind=True), 6
         )
 
     def test_the_edit_case_keeps_its_post_edit_oracle(self):
-        edited = oracle_removed(7, 8, {"counterbore": {"diameter": 10, "depth": 3}})
-        self.assertAlmostEqual(edited, 428.0419990516093, places=6)
+        edited = {"counterbore": {"diameter": 10, "depth": 3}}
+        self.assertAlmostEqual(oracle_contract(7, 8, edited), 374.0864038721959, places=6)
 
 
 class ModelNameTests(unittest.TestCase):
@@ -706,9 +902,29 @@ class NativeTopologyTests(unittest.TestCase):
         self.assertAlmostEqual(evidence["total_depth"], 7.0, places=9)
         self.assertEqual(depth_semantics(evidence, 7.0, oracle_tip_height(6)), "overall_flat")
 
-    def test_the_depth_reading_of_a_drill_point_hole(self):
-        # The measured 2026-10-30 custom hole: the bore reaches the requested
-        # depth and the 118 degree drill point extends 1.802582 mm below it.
+    def test_the_depth_reading_of_a_till_tip_drill_point_hole(self):
+        # The fixed custom branch: the tip vertex sits exactly `depth` below
+        # the placement face, so the bore stops one tip height higher and the
+        # cone occupies the last cone height of the hole.
+        surfaces = [
+            {
+                "id": 1,
+                "radius": 3.0,
+                "axis": [0, 0, 1],
+                "bbox": [[22, 22, 3.802581857], [28, 28, 8]],
+            },
+            {"id": 2, "type": 37, "bbox": [[22, 22, 2], [28, 28, 3.802581857]]},
+        ]
+        evidence = hole_depth_evidence(self.snapshot(surfaces), 10.0, 2, -1)
+        self.assertAlmostEqual(evidence["bore_depth_max"], 6.197418143, places=6)
+        self.assertAlmostEqual(evidence["cone_depth_max"], 8.0, places=9)
+        self.assertAlmostEqual(evidence["total_depth"], 8.0, places=9)
+        self.assertEqual(depth_semantics(evidence, 8.0, oracle_tip_height(6)), "overall_tip")
+
+    def test_the_till_shoulder_reading_is_the_defect_form(self):
+        # The measured 2026-10-30 custom hole before the fix: the bore
+        # reached the requested depth and the 118 degree drill point
+        # extended 1.802582 mm below it. That shape must not come back.
         surfaces = [
             {"id": 1, "radius": 3.0, "axis": [0, 0, 1], "bbox": [[22, 22, 2], [28, 28, 8]]},
             {"id": 2, "type": 37, "bbox": [[22, 22, 0.19741814291731785], [28, 28, 2]]},
@@ -727,20 +943,22 @@ class LiveEvidenceTests(unittest.TestCase):
     """The oracle characterization must stay locked to the measured numbers.
 
     The 2026-10-30 live run (build/post090_live_20261030T234952/n10) is the
-    evidence behind the characterization: the custom hole path removes the
-    contract flat-bottom volume plus exactly one 118 degree drill point.
+    evidence behind the characterization: the custom hole path removed the
+    contract flat-bottom volume plus exactly one 118 degree drill point,
+    i.e. it read the depth till the shoulder. After the FEAT-035/T12 fix
+    that reading is the defect form and must not be measured again.
     """
 
-    def test_the_measured_custom_removals_hit_the_drill_point_variant(self):
+    def test_the_measured_custom_removals_hit_the_defect_form(self):
         counterbore = oracle_variants(6, 8, {"counterbore": {"diameter": 10, "depth": 2}})
         countersink = oracle_variants(6, 8, {"countersink": {"diameter": 10, "angle": 90}})
         self.assertEqual(
             closest_variant(343.7145697324486, counterbore),
-            "drill_tip_118_below_depth",
+            "defect_till_shoulder_below_tip",
         )
         self.assertEqual(
             closest_variant(289.26029707022826, countersink),
-            "drill_tip_118_below_depth",
+            "defect_till_shoulder_below_tip",
         )
 
     def test_the_measured_plain_removal_hits_the_contract_variant(self):
@@ -751,8 +969,17 @@ class LiveEvidenceTests(unittest.TestCase):
         # The blind counterbore does not measure its drill depth from the seat.
         variants = oracle_variants(6, 8, {"counterbore": {"diameter": 10, "depth": 2}})
         self.assertNotEqual(
-            closest_variant(343.7145697324486, variants), "shoulder_measured_drilldepth"
+            closest_variant(343.7145697324486, variants), "defect_seat_measured_drilldepth"
         )
+
+    def test_the_pre_fix_measurement_is_far_from_the_fixed_contract(self):
+        # The fixed contract oracle must not be confused with the pre-fix
+        # measurement: they differ by the whole cone body.
+        variants = oracle_variants(6, 8, {"counterbore": {"diameter": 10, "depth": 2}})
+        contract = variants["contract_tip_overall"]
+        self.assertAlmostEqual(contract, 292.74776845510735, places=9)
+        self.assertAlmostEqual(contract, 343.7145697324486 - oracle_tip_body(6), places=9)
+        self.assertGreater(343.7145697324486 - contract, 50.0)
 
 
 if __name__ == "__main__":

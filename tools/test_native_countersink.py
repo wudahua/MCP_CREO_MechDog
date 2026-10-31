@@ -232,16 +232,17 @@ def resolve_case_selection(requested: list[str] | None) -> list[str]:
 #
 # The plain branch (no counterbore, no countersink) is the legacy straight
 # hole: its bore runs from the placement face down to a flat bottom exactly
-# `depth` below it. The custom branch instead ends in a 118 degree drill
-# point, so its bore stops `depth` below the placement face and the cone
-# reaches one drill-point height further (measured 2026-10-30, N10).
+# `depth` below it. The custom branch ends in a 118 degree drill point and
+# is now dimensioned till that point (FEAT-035/T12), so its full-diameter
+# bore stops one drill-point height above the tip vertex and the tip vertex
+# sits exactly `depth` below the placement face.
 BLIND_CYLINDERS = {
     "blind_straight": [
         {
             "radius": 3.0,
             "axis_normal": [0, 0, 1],
             "bbox_axis": 2,
-            "bbox_range": (3.0, 10.0),
+            "bbox_range": fixture.oracle_bore_span(6.0, 7.0, {}),
             "bbox_center": {0: 25.0, 1: 25.0},
         },
     ],
@@ -250,7 +251,7 @@ BLIND_CYLINDERS = {
             "radius": 3.0,
             "axis_normal": [0, 0, 1],
             "bbox_axis": 2,
-            "bbox_range": (2.0, 8.0),
+            "bbox_range": fixture.oracle_bore_span(6.0, 8.0, BLIND_CASES["blind_counterbore"]),
             "bbox_center": {0: 25.0, 1: 25.0},
         },
         {
@@ -266,7 +267,7 @@ BLIND_CYLINDERS = {
             "radius": 3.0,
             "axis_normal": [0, 0, 1],
             "bbox_axis": 2,
-            "bbox_range": (2.0, 8.0),
+            "bbox_range": fixture.oracle_bore_span(6.0, 8.0, BLIND_CASES["blind_countersink"]),
             "bbox_center": {0: 25.0, 1: 25.0},
         },
     ],
@@ -291,7 +292,12 @@ def reload_flag(terminal: dict | None) -> bool | None:
 
 
 def depth_probe(
-    placement_value: float, axis_index: int, direction: int, expected_depth: float, diameter: float
+    placement_value: float,
+    axis_index: int,
+    direction: int,
+    expected_depth: float,
+    diameter: float,
+    semantics: str,
 ) -> dict:
     """The depth reading a case expects, for the measured depth comparison."""
     return {
@@ -300,6 +306,7 @@ def depth_probe(
         "direction": direction,
         "expected_depth": expected_depth,
         "tip_height": fixture.oracle_tip_height(diameter),
+        "expected_semantics": semantics,
     }
 
 
@@ -313,6 +320,7 @@ def judge_geometry(
     expected_face_delta: int,
     expected_dims: dict,
     variants: dict,
+    expected_variant: str,
     cylinder_expectations: list | None = None,
     probe: dict | None = None,
 ) -> tuple[dict, list]:
@@ -363,9 +371,15 @@ def judge_geometry(
             f"removed {removed!r} outside 1 mm3 of the contract oracle {expected_removed!r}"
             f" (excess {excess!r} mm3)"
         )
-    if matched != "contract_flat_overall":
+    if matched != expected_variant:
         detail = "" if semantics is None else f" (measured depth semantics {semantics!r})"
-        problems.append(f"removal matches {matched!r}, not the contract flat-bottom oracle{detail}")
+        problems.append(
+            f"removal matches {matched!r}, not the contract oracle {expected_variant!r}{detail}"
+        )
+    if probe is not None and semantics != probe["expected_semantics"]:
+        problems.append(
+            f"measured depth semantics {semantics!r}, not the contract {probe['expected_semantics']!r}"
+        )
     if fields["feature_delta"].get("hole", 0) != 1:
         problems.append(f"hole feature delta={fields['feature_delta'].get('hole')!r}")
     if fields["base_faces"] is not None and faces is not None:
@@ -486,10 +500,11 @@ async def case_blind(runner: LiveRunner, case_key: str, option: dict) -> None:
         terminal,
         after,
         label="blind_hole",
-        expected_removed=fixture.oracle_removed(6.0, option["depth"], option),
+        expected_removed=fixture.oracle_contract(6.0, option["depth"], option, blind=True),
         expected_face_delta=fixture.oracle_faces_native(option, blind=True),
         expected_dims=expected_dims,
-        variants=fixture.oracle_variants(6.0, option["depth"], option),
+        variants=fixture.oracle_variants(6.0, option["depth"], option, blind=True),
+        expected_variant=fixture.contract_variant_key(option, blind=True),
         cylinder_expectations=BLIND_CYLINDERS[case_key],
         probe=depth_probe(
             placement_value=PLATE_TOP_Z,
@@ -497,6 +512,7 @@ async def case_blind(runner: LiveRunner, case_key: str, option: dict) -> None:
             direction=-1,
             expected_depth=option["depth"],
             diameter=6.0,
+            semantics=fixture.expected_depth_semantics(option, blind=True),
         ),
     )
     entry.update(fields)
@@ -551,10 +567,11 @@ async def case_direction_side(runner: LiveRunner) -> None:
         terminal,
         after,
         label="side_hole",
-        expected_removed=fixture.oracle_removed(6.0, 7.0, {}),
+        expected_removed=fixture.oracle_contract(6.0, 7.0, {}, blind=True),
         expected_face_delta=fixture.oracle_faces_native({}, blind=True),
         expected_dims={"diameter": 6.0, "depth": 7.0},
-        variants=fixture.oracle_variants(6.0, 7.0, {}),
+        variants=fixture.oracle_variants(6.0, 7.0, {}, blind=True),
+        expected_variant=fixture.contract_variant_key({}, blind=True),
         cylinder_expectations=[
             {
                 "radius": 3.0,
@@ -570,6 +587,7 @@ async def case_direction_side(runner: LiveRunner) -> None:
             direction=1,
             expected_depth=7.0,
             diameter=6.0,
+            semantics=fixture.expected_depth_semantics({}, blind=True),
         ),
     )
     entry.update(fields)
@@ -639,10 +657,11 @@ async def case_flip_guard(runner: LiveRunner) -> None:
             terminal,
             final,
             label="recovery_hole",
-            expected_removed=fixture.oracle_removed(6.0, 7.0, {}),
+            expected_removed=fixture.oracle_contract(6.0, 7.0, {}, blind=True),
             expected_face_delta=fixture.oracle_faces_native({}, blind=True),
             expected_dims={"diameter": 6.0, "depth": 7.0},
-            variants=fixture.oracle_variants(6.0, 7.0, {}),
+            variants=fixture.oracle_variants(6.0, 7.0, {}, blind=True),
+            expected_variant=fixture.contract_variant_key({}, blind=True),
             cylinder_expectations=[],
             probe=depth_probe(
                 placement_value=PLATE_TOP_Z,
@@ -650,6 +669,7 @@ async def case_flip_guard(runner: LiveRunner) -> None:
                 direction=-1,
                 expected_depth=7.0,
                 diameter=6.0,
+                semantics=fixture.expected_depth_semantics({}, blind=True),
             ),
         )
         entry["recovery"] = fields
@@ -690,7 +710,7 @@ async def case_edit_dimensions(runner: LiveRunner) -> None:
         terminal,
         after,
         label="edit_hole",
-        expected_removed=fixture.oracle_removed(6.0, 8.0, option),
+        expected_removed=fixture.oracle_contract(6.0, 8.0, option, blind=True),
         expected_face_delta=fixture.oracle_faces_native(option, blind=True),
         expected_dims={
             "diameter": 6.0,
@@ -698,7 +718,8 @@ async def case_edit_dimensions(runner: LiveRunner) -> None:
             "counterbore_diameter": 10.0,
             "counterbore_depth": 2.0,
         },
-        variants=fixture.oracle_variants(6.0, 8.0, option),
+        variants=fixture.oracle_variants(6.0, 8.0, option, blind=True),
+        expected_variant=fixture.contract_variant_key(option, blind=True),
         cylinder_expectations=BLIND_CYLINDERS["blind_counterbore"],
         probe=depth_probe(
             placement_value=PLATE_TOP_Z,
@@ -706,6 +727,7 @@ async def case_edit_dimensions(runner: LiveRunner) -> None:
             direction=-1,
             expected_depth=8.0,
             diameter=6.0,
+            semantics=fixture.expected_depth_semantics(option, blind=True),
         ),
     )
     entry["create_stage"] = fields
@@ -754,7 +776,7 @@ async def case_edit_dimensions(runner: LiveRunner) -> None:
         terminal,
         final,
         label="edit_hole",
-        expected_removed=fixture.oracle_removed(7.0, 8.0, edited),
+        expected_removed=fixture.oracle_contract(7.0, 8.0, edited, blind=True),
         expected_face_delta=fixture.oracle_faces_native(edited, blind=True),
         expected_dims={
             "diameter": 7.0,
@@ -762,13 +784,14 @@ async def case_edit_dimensions(runner: LiveRunner) -> None:
             "counterbore_diameter": 10.0,
             "counterbore_depth": 3.0,
         },
-        variants=fixture.oracle_variants(7.0, 8.0, edited),
+        variants=fixture.oracle_variants(7.0, 8.0, edited, blind=True),
+        expected_variant=fixture.contract_variant_key(edited, blind=True),
         cylinder_expectations=[
             {
                 "radius": 3.5,
                 "axis_normal": [0, 0, 1],
                 "bbox_axis": 2,
-                "bbox_range": (2.0, 7.0),
+                "bbox_range": fixture.oracle_bore_span(7.0, 8.0, edited),
                 "bbox_center": {0: 25.0, 1: 25.0},
             },
             {
@@ -785,6 +808,7 @@ async def case_edit_dimensions(runner: LiveRunner) -> None:
             direction=-1,
             expected_depth=8.0,
             diameter=7.0,
+            semantics=fixture.expected_depth_semantics(edited, blind=True),
         ),
     )
     entry["edit_stage"] = fields
@@ -1054,20 +1078,24 @@ def main(argv: list[str] | None = None) -> int:
             "countersink_through": fixture.oracle_removed(
                 6, 10, {"countersink": {"diameter": 10, "angle": 90}}
             ),
-            "blind_straight": fixture.oracle_removed(6, 7, {}),
-            "blind_counterbore": fixture.oracle_removed(
-                6, 8, {"counterbore": {"diameter": 10, "depth": 2}}
+            "blind_straight": fixture.oracle_contract(6, 7, {}, blind=True),
+            "blind_counterbore": fixture.oracle_contract(
+                6, 8, {"counterbore": {"diameter": 10, "depth": 2}}, blind=True
             ),
-            "blind_countersink": fixture.oracle_removed(
-                6, 8, {"countersink": {"diameter": 10, "angle": 90}}
+            "blind_countersink": fixture.oracle_contract(
+                6, 8, {"countersink": {"diameter": 10, "angle": 90}}, blind=True
             ),
-            "direction_side_normal": fixture.oracle_removed(6, 7, {}),
-            "edit_after_diameter7_depth3": fixture.oracle_removed(
-                7, 8, {"counterbore": {"diameter": 10, "depth": 3}}
+            "direction_side_normal": fixture.oracle_contract(6, 7, {}, blind=True),
+            "edit_after_diameter7_depth3": fixture.oracle_contract(
+                7, 8, {"counterbore": {"diameter": 10, "depth": 3}}, blind=True
             ),
-            "assumption": "flat drill bottom, depth overall from the placement face and "
-            "complete solid intersection; the 118-degree drill tip and seat-measured "
-            "drill depth variants are reported for diagnosis and never pass a case",
+            "assumption": "the blind custom hole is dimensioned till its drill tip "
+            "(PRO_HLE_DEP_TIP_DIM_SCHEME): the tip vertex sits `depth` below the "
+            "placement face, so the removal is the flat-bottom reference minus two "
+            "thirds of the 118 degree cone body; the plain straight hole keeps its "
+            "flat bottom and its overall depth; the till-shoulder and "
+            "seat-measured drill depth variants are reported for diagnosis and "
+            "never pass a case",
         },
         "faces_added_over_plate": {
             "contract": {
@@ -1079,22 +1107,28 @@ def main(argv: list[str] | None = None) -> int:
             },
             "note": "the native splits every revolved surface into two seam-split half "
             "faces, and the blind custom hole ends in a 118 degree drill point (two "
-            "half-cone faces) where the contract shape has one flat bottom plane",
+            "half-cone faces); since the fix dimensions that hole till its tip, the "
+            "contract shape and the native shape now carry the same point and agree",
         },
-        "depth_semantics_measured_2026_10_30": {
+        "depth_semantics": {
             "plain_branch": "depth is the overall depth from the placement face and the "
             "hole ends in a flat bottom (measured removal matched the flat oracle to "
             "2.8e-12 mm3)",
-            "custom_branch": "depth is the depth to the shoulder; a 118 degree drill point "
-            "reaches one tip height (1.802582 mm at diameter 6) further, so the removed "
-            "volume exceeds the flat oracle by exactly one drill point cone",
-            "measured_removals_mm3": {
+            "custom_branch": "depth is the overall depth from the placement face down to "
+            "the drill tip vertex; the full-diameter bore stops one tip height "
+            "(1.802582 mm at diameter 6) higher, so the removed volume is the "
+            "flat-bottom reference minus two thirds of the cone body",
+            "measured_removals_before_the_fix_mm3": {
                 "blind_straight": 197.92033717615413,
                 "blind_counterbore": 343.7145697324486,
                 "blind_countersink": 289.26029707022826,
             },
+            "note": "the two custom removals above were measured on 2026-10-30 with "
+            "the till-shoulder scheme; after the fix they must come back as the "
+            "contract_tip_overall values in oracle_mm3",
             "drill_point_tip_height_mm": fixture.oracle_tip_height(6.0),
             "drill_point_cone_mm3": fixture.oracle_tip_extra(6.0),
+            "drill_point_cone_body_mm3": fixture.oracle_tip_body(6.0),
         },
         "pending_live": [
             "blind straight / blind counterbore / blind countersink: volume, face delta, "
@@ -1115,8 +1149,10 @@ def main(argv: list[str] | None = None) -> int:
             "non-linear placements, Creo 9/10",
         ],
         "sdk": "Creo 12.4 ProHole.h custom-hole CBORE/CSINK/DRILLDEPTH/DEPTH_DIM_TYPE; "
-        "blind depth scheme is PRO_HLE_DEP_SHOULDER_DIM_SCHEME per native/generic.cpp, "
-        "runtime semantics still unverified",
+        "the blind custom branch writes PRO_HLE_DEP_TIP_DIM_SCHEME (Dimension till tip) "
+        "per native/generic.cpp, so its depth is the overall depth to the drill tip "
+        "vertex; the plain straight branch keeps its own element tree and its "
+        "flat-bottomed overall depth",
         "provenance": provenance(),
     }
     run_id = time.strftime("%Y%m%dT%H%M%S") + "_" + uuid.uuid4().hex[:8]

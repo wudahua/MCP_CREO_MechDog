@@ -272,3 +272,140 @@ PRO_HLE_DEP_TIP_DIM_SCHEME      = 18  /* Dimension till tip */
 - `edit_dimension_values`：真实 dimension ID 编辑直径 6→7、沉台深 2→3，编辑后 revision 变化；**注意**该例同为 custom 分支，其 create/edit 两阶段的体积与 `matched_variant` 项预期同样受第 2 节口径影响。
 
 **未实机**：本次未连接 Creo，未提交任何 Toolkit 作业。
+
+## 2026-10-31 生产修复：T12 盲孔深度口径 = overall（量到钻尖顶点）
+
+阶段：**离线修复完成（生产侧 + 判定侧 + 回归），实机未执行**。分支 `codex/dev051-feedback070`，受测基线提交 `d17c494`（本节改动未提交，由派发方统一提交）。本节**未连接 Creo、未启动 MCP、未创建 MCP 客户端、未运行任何 `--live`**。
+
+### 1. 判定依据（编排方裁定）
+
+编排方裁定：**T12 盲孔深度语义 = "overall"（量到钻尖顶点）**，即请求的 `depth` 是自放置面到**钻尖顶点**的总深。据此**修生产侧**，`docs/work-items/FEAT-035.md` 的契约文档**不改**。
+
+第 2 节记录的生产侧缺陷（custom 分支写 `PRO_HLE_DEP_SHOULDER_DIM_SCHEME`，导致 depth 量到肩面、钻尖再往下伸一个锥高）正是本裁定要消除的对象。契约文档的"depth 为 overall"表述本来就是对的，错的是生产实现。
+
+### 2. SDK 核实（`ProHole.h` 原文摘录）
+
+本机 SDK `C:\Program Files\PTC\Creo 12.4.0.0\Common Files\protoolkit\includes\ProHole.h`：
+
+```c
+/* PRO_E_HLE_DEPTH_DIM_TYPE */
+typedef enum pro_hle_dep_dim_scheme
+{
+  PRO_HLE_DEP_SHOULDER_DIM_SCHEME = -1, /* Dimension till shoulder */
+  PRO_HLE_DEP_TIP_DIM_SCHEME      = 18  /* Dimension till tip */
+}ProHleDepDimScheme;
+```
+
+同文件 589–595 行（元素语义说明）：
+
+```
+|          : PRO_E_HLE_DEPTH_DIM_TYPE   : Available when PRO_E_HLE_DEPTH is  |
+|          :                            : PRO_HLE_STD_VAR_DEPTH              |
+|          :                            : Stores the information of blind    |
+|          :                            : drill depth dimensioning scheme.   |
+|          :                            : PRO_HLE_DEP_SHOULDER_DIM_SCHEME is |
+|          :                            : default. PRO_HLE_DEP_TIP_DIM_SCHEME|
+|          :                            : can be used to dimension till tip. |
+```
+
+同文件 244 行确认元素类型映射：`PRO_E_HLE_DEPTH_DIM_TYPE | ProHleDepDimScheme`。
+
+**核实结论**：SDK 存在可用的 tip 枚举 `PRO_HLE_DEP_TIP_DIM_SCHEME = 18`，且该元素恰在 `PRO_E_HLE_DEPTH == PRO_HLE_STD_VAR_DEPTH`（盲孔）时可用——与本修复的写入条件完全一致。故无需退回备选方案。`native/constants.inc` 已含该常量（6209–6210 行），构建无需重新生成常量表。
+
+### 3. 生产侧改动（`native/generic.cpp`，仅 custom 分支）
+
+```diff
+         if (op.contains("depth")) {
+             real(com, PRO_E_HLE_DRILLDEPTH, op.at("depth"));
+-            integer(com, PRO_E_HLE_DEPTH_DIM_TYPE, PRO_HLE_DEP_SHOULDER_DIM_SCHEME);
++            // FEAT-035/T12: the blind depth is the overall depth from the
++            // placement face down to the drill tip, so the custom hole
++            // dimensions till the tip. The plain straight-hole branch keeps
++            // its own element tree and its flat-bottomed overall depth.
++            integer(com, PRO_E_HLE_DEPTH_DIM_TYPE, PRO_HLE_DEP_TIP_DIM_SCHEME);
+         }
+```
+
+**只改 custom 分支**（`PRO_HLE_CUSTOM_TYPE`，即带沉孔/沉头的孔）。plain 直孔分支（`PRO_HLE_NEW_TYPE_STRAIGHT` + `PRO_E_HOLE_STD_DEPTH` / `PRO_HLE_STRGHT_BLIND_DEPTH`）**一行未动**：它本来就没有钻尖、实测已是平底且 depth 自放置面起算（残差 2.8e−12 mm³），符合 overall，无需改动。
+
+### 4. 新 oracle 的推导（并记录一处算术更正）
+
+钻尖几何：118° 夹角，`tip_height = r / tan(59°)`；锥体体积 `V_cone = π r² h / 3`；**锥体所在的整圆柱**体积 `V_body = π r² h`。
+
+till-tip 下，depth 量到钻尖顶点，故：
+- 钻尖顶点在 z = 10 − depth（放置面 z = 10）；
+- 全径孔壁（Ø6 段）止于 z = 10 − depth + h（比顶点高一个锥高）；
+- 锥体占据最后这 h 高度。
+
+去料量 = 平底参考 **− (2/3)·V_body**（等价于 **− 2·V_cone**）：平底参考的最后 h 高度是一段整圆柱 `V_body`，till-tip 把它换成锥体 `V_cone = V_body/3`，差值 `V_body − V_body/3 = (2/3)·V_body`。
+
+> **算术更正**：任务书给的算例 "Ø6/118°：326.7256 − 11.32596 = 315.3997" 中的减数用错了量。`11.32596 = (2/3)·V_cone` 把"锥体体积"当成了"锥体整圆柱体积"；(2/3) 应乘在 **V_body = 50.96680127734677 mm³** 上，减数是 **33.97786751823118 mm³**，不是 11.32596。
+>
+> 两种独立方式确认正确值：
+> 1. **正向重建**：按 till-tip 几何逐段积分（Ø10 沉台 + Ø6 柱体 + 118° 锥体）得 `292.7477684551073`，与代数式残差 5.7e−14 mm³；
+> 2. **回归实测**：修复前的 till-shoulder 实测值 343.7145697324486 mm³，减去整个锥体整圆柱 `V_body = 50.96680127734677` 得 `292.74776845510183`，与代数式残差 5.5e−12 mm³。
+>
+> 也就是说，till-shoulder 实测 = 平底参考 + V_cone，till-tip 应得 = 平底参考 − 2·V_cone = 实测 − V_body。**本卡与代码一律采用几何正确的 292.74776845510735**，不采用 315.3997。
+
+各例新 oracle（平底参考仍作为推导基线保留）：
+
+| 用例 | 参数 | 平底参考 (mm³) | **新契约 oracle (till-tip)** | 差值 |
+| --- | --- | --- | --- | --- |
+| `blind_straight` | Ø6 深 7（plain 分支，无钻尖） | 197.920 337 176 156 98 | **197.920 337 176 156 98**（不变） | 0 |
+| `blind_counterbore` | Ø6 深 8 + Ø10×2 | 326.725 635 973 338 5 | **292.747 768 455 107 35** | −33.977 867 518 231 18 |
+| `blind_countersink` | Ø6 深 8 + Ø10@90° | 272.271 363 311 115 4 | **238.293 495 792 884 24** | −33.977 867 518 231 18 |
+| `edit_dimension_values`（编辑后） | Ø7 深 8 + Ø10×3 | 428.041 999 051 609 3 | **374.086 403 872 195 9** | −53.955 595 179 413 4 |
+
+（编辑后用例直径为 7，锥高 `3.5/tan(59°) = 2.103012166596461`，`V_body = 67.44449397426675`，故差值为其 2/3。）
+
+### 5. 判定侧改动（`tools/test_native_countersink.py` + 夹具 `tests/unit/test_native_countersink.py`）
+
+- **主 oracle 换成 tip-overall**：`oracle_contract()` 按分支给出判定值——blind custom 分支取 till-tip 值，plain 分支与通孔保持平底参考。夹具新增 `oracle_tip_body()`（锥体整圆柱）与 `oracle_removed_tip()`。
+- **`matched_variant` 矩阵调整**：判定键由写死的 `contract_flat_overall` 改为按分支取 `contract_tip_overall`（blind custom）/ `contract_flat_overall`（其他），经 `contract_variant_key()` 传递。**"shoulder+below"（till-shoulder 读法）降级为 `defect_till_shoulder_below_tip` 缺陷形态**，只并列上报、永不判过；座面起量读法同样降级为 `defect_seat_measured_drilldepth`。
+- **深度语义判定改为期望锥尖顶点在 z = 10 − depth**：`depth_semantics()` 在总深等于 `expected_depth` 时按有无锥面区分 `overall_tip`（custom 分支，须有锥面）与 `overall_flat`（plain 分支，无锥面）；`shoulder_plus_tip`（总深 = depth + 锥高）保留为缺陷读法。`judge_geometry()` 新增一项硬判定：实测语义必须等于 `expected_depth_semantics()`，否则判失败。
+- **面数与圆柱轴并集判定不变**：仍按实测拓扑判定（`oracle_faces_native`），+3 / +7 / +6 未动；圆柱面仍用并集 bbox 分组，未动。
+- **孔壁 bbox 随新几何更新**：till-tip 下 Ø6 全径段止于一个锥高之上，故 `blind_counterbore` / `blind_countersink` 的 Ø6 并集 bbox 由 z∈[2,8] 改为 **z∈[3.802 582, 8]**（锥尖顶点在 z=2）；`blind_straight` 仍为 z∈[3,10]；编辑后 Ø7 段为 z∈[4.103 012, 7]。这些值由夹具 `oracle_bore_span()` 统一推导，不写死。
+
+### 6. 离线证据
+
+| 命令 | 结果 |
+| --- | --- |
+| `.venv\Scripts\python.exe -m unittest tests.unit.test_native_countersink -v` | exit 0，**36/36 OK**（原 29 → 新增 7） |
+| `.venv\Scripts\python.exe tools\test_native_countersink.py` | exit 0，内置 36/36 OK；报告 `build/native_countersink/20261031T110827_808aaadb/report.json`，SHA256 `e329279a3e1427261b11991ea93fd4661ce71a67735da4571cf8f64da272073a` |
+| `.venv\Scripts\python.exe tools\dev_check.py --work-item FEAT-035` | exit 0，`"success": true`；`unit_tests: passed`、`native_validation: not_run`（该工具不跑实机） |
+| `.venv\Scripts\python.exe bridge.py build` | exit 0，生成 `build/creo_worker.exe` |
+| `.venv\Scripts\ruff.exe format --check` / `ruff check`（两个 Python 文件）、`.venv\Scripts\clang-format.exe --dry-run --Werror native/generic.cpp` | 全部通过 |
+
+新增单测 7 例：`test_the_custom_branch_dimensions_till_the_tip`（源码守卫：custom 分支必须写 tip 枚举、全文不得再出现 shoulder 枚举、plain 分支不得写 `DEPTH_DIM_TYPE`）、`test_the_tip_oracle_is_the_flat_reference_less_two_thirds_of_the_cone_body`（并显式断言"不是 (2/3)·锥体体积"）、`test_the_tip_oracle_values_are_locked`（新 oracle 数值锁）、`test_the_contract_variant_follows_the_branch`、`test_the_bore_span_stops_one_tip_height_above_the_tip`、`test_the_depth_reading_of_a_till_tip_drill_point_hole`、`test_the_pre_fix_measurement_is_far_from_the_fixed_contract`；改写 `test_the_depth_reading_of_a_drill_point_hole` → `test_the_till_shoulder_reading_is_the_defect_form`（保留旧读法为缺陷形态证据）。
+
+**未实机**：本次未连接 Creo、未启动 MCP、未提交任何 Toolkit 作业；实机语义是否与 till-tip 一致仍待验证。
+
+### 7. 实机重跑命令与逐例预期
+
+```powershell
+# 默认：6 例余项全跑
+.\.venv\Scripts\python.exe tools\test_native_countersink.py --live --confirm-session-usable --output build\post090_live_<runid>\n12_countersink\report.json
+
+# 分段（可选，例：先只跑两个 custom 盲孔）
+.\.venv\Scripts\python.exe tools\test_native_countersink.py --live --confirm-session-usable --case blind_counterbore --case blind_countersink --output build\post090_live_<runid>\n12_countersink\custom\report.json
+```
+
+**六例全部按 tip-overall 口径判定**（方向、编辑、翻向回滚三例**首次获得执行机会**）：
+
+| 用例 | 期望 `matched_variant` | 期望 `depth_semantics` | 期望去料 (mm³) | 面增量 | Ø 圆柱并集 bbox | 预期结论 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `blind_straight` | `contract_flat_overall` | `overall_flat` | 197.920 337 176 157 (±1) | +3 | r=3，z∈[3,10]，中心 (25,25) | **预期通过**（plain 分支不受本修复影响） |
+| `blind_counterbore` | `contract_tip_overall` | `overall_tip` | 292.747 768 455 107 (±1) | +7 | r=3 z∈[3.802 582,8]；r=5 座面 z∈[8,10] | **预期通过**（本次修复的目标） |
+| `blind_countersink` | `contract_tip_overall` | `overall_tip` | 238.293 495 792 884 (±1) | +6 | r=3 z∈[3.802 582,8] | **预期通过**（本次修复的目标） |
+| `direction_side_normal` | `contract_flat_overall` | `overall_flat` | 197.920 337 176 157 (±1) | +3 | r=3，轴 ∥X，x∈[0,7]，中心 (25,5) | **预期通过**（首次执行） |
+| `direction_flip_guard` | `contract_flat_overall` | `overall_flat` | 恢复孔 197.920 337 176 157 (±1) | +3 | 恢复孔 r=3，z∈[3,10] | **预期通过**（首次执行：作业级失败 + `rollback_succeeded=true` + 体积/面数不变） |
+| `edit_dimension_values` | `contract_tip_overall` | `overall_tip` | 建后 292.747 768 455 107；编辑后 374.086 403 872 196 (±1) | 均 +7 | 建后 r=3 z∈[3.802 582,8]；编辑后 r=3.5 z∈[4.103 012,7]、r=5 z∈[7,10] | **预期通过**（首次执行；revision 必须变化） |
+
+判定失败信号（任一出现即为不通过，不得静默改判）：
+
+- `matched_variant` 为 `defect_till_shoulder_below_tip`（= 平底参考 + 锥体体积 = 343.714 569 732 454 / 289.260 297 070 231）或 `defect_seat_measured_drilldepth`（= 383.274 303 737 955）→ 说明仍读作 till-shoulder 或座面起量；
+- `depth_semantics` 为 `shoulder_plus_tip`（总深 = depth + 锥高 = 9.802 581 857）→ 修复未生效；
+- `depth_semantics` 为 `other` → 深度不在任何已知读法上；
+- 去料超出新 oracle ±1 mm³ → 形状与 till-tip 解析式不符。
+
+若实机实测与上表不符（例如 Creo 对 `PRO_E_HLE_DEPTH_DIM_TYPE` 的实际作用与 SDK 注释不符、或编辑后锥高随直径变化的规律不同），**保留报告并在本卡回写口径修订，不静默改判**。
