@@ -362,3 +362,13 @@ GUI 控制接口不可用，无法确认菜单、视图和对话框可操作；�
 - **离线修复（随本次提交交付，未实机）**：选边改为相对基线板 bbox（base snapshot 冻结，fresh inspection 只供候选边与 revision）；排除厚度尺度 rim 边（span ≤ 2×板厚）；`allow_shortened` 加有界下限（超过两端 bend 消耗 2×(R+t) 即拒绝）；选边不唯一/不合格在驱动中记 `driver_edge_selection_error`（组判定 passed=false），永不记为 Creo 失败或触发复现。新增单元锁定：rim 边失败判驱动错误而非 `trigger_reproduced`、−X 侧选边确定性、body bbox 误用必失败。
 - 实机需以新 runid 重跑正式驱动复验本修复；本更正只改判定有效性，"机理证据仍缺、四壁未完成"的现状不变。
 
+## 2026-10-31：DEV-052 N05 修复后实机重跑预检中止（追加）
+
+本轮为唯一实机负责人，分支 `codex/dev051-feedback070`；执行前 `git log -1` 为 `0f1844ac992821010f95c9adfa9a07295ea65112`（含选边修复 `a94139e`），`build/source.sha256=19036d6467e69320e3d10a999c06fd68a2e26aef824c8021399aae18dbb27ac6`。执行前工作区已有 `docs/validation/RELEASE-0.8.5.md`、`session_activity.json` 及本机未跟踪内容，本轮未修改。`tasklist` 见 `parametric.exe` PID 25596、`xtop.exe` PID 21968、`nmsd.exe` PID 11824、`pro_comm_msg.exe` PID 23448；`config.json` 的 `auto_start_creo=false`。沿用编排方已完成的 GUI 可操作核验，本轮未重启 Creo。
+
+命令：`.\.venv\Scripts\python.exe tools\test_sheetmetal_box_live.py --live --confirm-session-usable --output build\post090_n05_live_20261031T113052_81f5a63d\report.json`。输出路径唯一新建；报告内部 `run_id=20261031T113053_97caa6aa`。驱动退出码 1，报告路径 `build/post090_n05_live_20261031T113052_81f5a63d/report.json`，SHA256 `C134417A5913DC6019D007A153676DA551B43088BA60FD74DDAB28D2C2B30C5F`。报告分阶段落盘，`cases=[]`，仅有 118 次 `creo_startup_status` 调用，无任何底板或折边提交；所有组的 job_id、model_id、revision、终态、几何量测、失败取证及保存重载均为**未产生/未验证**。历史两个 `unknown_outcome` 模型保持不动，未查询或清理。
+
+停止原因：`LiveRunner.start` 抛出 `LiveStop: Toolkit is not ready; nothing submitted`。最后启动状态为 `state=timeout`、`connected=false`、`in_flight_phase=waiting_for_connection`、`coordinator_running=true`，原生连接观测为 `connection_state=not_found_or_unreadable`、`toolkit_code=-4`；只读健康摘要为 `status=unknown`、`reason=session_identity_stale`。当时通道 owner 记录为 `operation=session_status`，无 job_id/model_id；不能由此断定 Creo 本体已退出或连接超时的根因。退出后 `tasklist` 仍见原 `parametric`/`xtop` PID，协调进程 PID 23892 已不在任务表；未做第二次连接、重提、重启或清保护。报告顶层 `passed=true` 与 `stopped` 并存，且 `cases=[]`，因此该布尔值**不构成 N05 实机通过**；按实际停止原因判为**实机未验—会话不可用**。
+
+本轮没有 trim 量测，`end_trim_mm` 语义仍仅有 10/30 首跑的 `trim_ignored` 观察；修复后的 `ny_first`、`px_then_ny`、`px_nx_then_ny` 均未执行，181.46 mm 与 232 mm 板顶边选择、触发条件复现、`FLANGE_FAILURE_EVIDENCE`、回滚和保存重载均未复验。**给 N06 的机理结论：**无新增附着边端部/邻接折弯、截面越界或相邻料重叠证据，内部机理仍未定；不据本次预检推断角部方案。会话保持运行；Creo 9/10、WorkBuddy 黑盒及四壁能力未验。
+
