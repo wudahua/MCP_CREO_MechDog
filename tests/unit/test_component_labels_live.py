@@ -84,6 +84,56 @@ class ScenarioCoverageTests(unittest.TestCase):
         self.assertIn("not constructible through this service", scenario["live_verifiability"])
 
 
+class IdentityMirrorComparisonTests(unittest.TestCase):
+    """The reload check compares identity mirrors, whose identity is a dict.
+
+    Sorting the raw mirror tuples raises ``TypeError`` (dicts are unordered),
+    so the comparison must go through a stable key that keeps the same
+    mirrored fields.
+    """
+
+    def rows(self):
+        return [
+            {
+                "identity": {"model_id": "a" * 32, "feature_id": 40},
+                "label": "part_alpha",
+                "source_model_id": "b" * 32,
+                "source_revision": 1,
+            },
+            {
+                "identity": {"model_id": "a" * 32, "feature_id": 43},
+                "label": "part_beta",
+                "source_model_id": "c" * 32,
+                "source_revision": 2,
+            },
+        ]
+
+    def test_the_sort_key_is_stable_and_never_raises(self):
+        keys = [driver.identity_sort_key(row) for row in self.rows()]
+        self.assertEqual(len(keys), 2)
+        for key in keys:
+            # A canonical JSON string: comparable, hashable and never a dict.
+            self.assertIsInstance(key, str)
+            self.assertEqual(json.loads(key)["model_id"], "a" * 32)
+
+    def test_the_same_mirrors_in_any_order_compare_equal(self):
+        before = self.rows()
+        after = list(reversed(self.rows()))
+        self.assertTrue(driver.identity_mirrors_unchanged(before, after))
+
+    def test_a_changed_identity_is_not_equal(self):
+        before = self.rows()
+        after = self.rows()
+        after[0]["identity"] = {"model_id": "a" * 32, "feature_id": 41}
+        self.assertFalse(driver.identity_mirrors_unchanged(before, after))
+
+    def test_a_changed_source_mirror_is_not_equal(self):
+        before = self.rows()
+        after = self.rows()
+        after[1]["source_revision"] = 9
+        self.assertFalse(driver.identity_mirrors_unchanged(before, after))
+
+
 class OfflineEntryTests(unittest.TestCase):
     def test_the_offline_run_writes_a_report_and_exits_zero(self):
         with tempfile.TemporaryDirectory() as tmp:

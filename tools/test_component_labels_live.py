@@ -298,6 +298,33 @@ def label_map(rows: list[dict]) -> dict:
     return {row["label"]: row["identity"] for row in rows if row.get("label")}
 
 
+def identity_sort_key(row: dict) -> str:
+    """A stable, order-independent key for one component's identity mirror.
+
+    The mirrored identity is a nested dict, so the mirror tuples cannot be
+    sorted or compared directly: dicts are unorderable and raise TypeError
+    (``'<' not supported between instances of 'dict' and 'dict'``). The
+    canonical JSON of the same mirrored fields keeps the comparison meaning
+    "the same set of identity mirrors" without relying on dict ordering.
+    """
+    identity = row.get("identity")
+    identity = identity if isinstance(identity, dict) else {}
+    return json.dumps(
+        {
+            "model_id": identity.get("model_id"),
+            "feature_id": identity.get("feature_id"),
+            "source_model_id": row.get("source_model_id"),
+            "source_revision": row.get("source_revision"),
+        },
+        sort_keys=True,
+    )
+
+
+def identity_mirrors_unchanged(before: list[dict], after: list[dict]) -> bool:
+    """True when both component lists carry the same identity mirrors."""
+    return sorted(map(identity_sort_key, before)) == sorted(map(identity_sort_key, after))
+
+
 async def create_source(runner: LiveRunner, tag: str) -> str:
     name = unique_name(tag)
     created = await runner.submit(
@@ -405,12 +432,7 @@ async def live(output: Path, run_id: str) -> int:
             reloaded = (second_job["terminal"].get("result") or {}).get(
                 "saved_file_reloaded_and_verified"
             )
-            identity_of = lambda row: (
-                row.get("identity"),
-                row.get("source_model_id"),
-                row.get("source_revision"),
-            )
-            identities_same = sorted(map(identity_of, rows)) == sorted(map(identity_of, rows2))
+            identities_same = identity_mirrors_unchanged(rows, rows2)
             runner.case(
                 {
                     "case": "cross_job",
