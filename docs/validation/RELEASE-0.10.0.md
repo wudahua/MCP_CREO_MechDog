@@ -2,7 +2,7 @@
 
 版本与条目：0.10.0；FEAT-051 圆角/倒角/拔模结果可观测性、FEAT-008/T09B 中心线计数与 `entity_ids` 发布、FEAT-014/N06 邻接折弯端拒绝语义、FEAT-035/T12 盲孔 tip 口径、FEAT-034/T02 编辑弧回显、FEAT-023/T09A 组件身份、BUG-049/N03 端点诊断、BUG-088/N11 预览场景补齐、BUG-090/N01 板厚 API 函数门控、BUG-091/N02 离线调查；另登记 BUG-092、BUG-093 两个遗留项。汇总条目 [DEV-052](../work-items/DEV-052.md)。
 
-提交、dirty 标志、受测源码指纹：分支 `codex/dev051-feedback070`；Phase A 基线 `4b4441f`（七段第二轮实机基线 `b5dce10`、N06 终验同基线、dev_check 于 `28de56e` dirty 树执行、性能基准 `20261031T142958` 于 `b5dce10` dirty 树执行，两次 large 补跑于 `4b4441f` dirty 树）；工作区存在他人未提交内容（`docs/validation/RELEASE-0.8.5.md`、`session_activity.json`、`session_erase/` 等），**均保留未触碰**，故各证据的 `provenance.dirty=true`，受测指纹以各报告 `provenance.source_fingerprint` 与 `build/source.sha256`（第二轮记录值 `993a4380…c6ff57`）为准。合入 main 的提交、打包受测指纹与标签在 Phase B 回填：**[Phase B 回填]**。
+提交、dirty 标志、受测源码指纹：分支 `codex/dev051-feedback070`；Phase A 基线 `4b4441f`（七段第二轮实机基线 `b5dce10`、N06 终验同基线、dev_check 于 `28de56e` dirty 树执行、性能基准 `20261031T142958` 于 `b5dce10` dirty 树执行，两次 large 补跑于 `4b4441f` dirty 树）；工作区存在他人未提交内容（`docs/validation/RELEASE-0.8.5.md`、`session_activity.json`、`session_erase/` 等），**均保留未触碰**，故各证据的 `provenance.dirty=true`，受测指纹以各报告 `provenance.source_fingerprint` 与 `build/source.sha256`（第二轮记录值 `993a4380…c6ff57`）为准。合入 main 的提交、打包受测指纹与标签在 Phase B 回填：main = `17a36b953add9498cc6e7ca3b91566027dd12114`（快进合入，无合并提交）；打包在工作树位于该提交时进行，受测指纹 `build/source.sha256`=`993a4380c074a4edaff92e6e74a5f7be52cf32cc98edfaee9fa85f7b35c6ff57`（与 worker 戳记一致）；附注标签 `v0.10.0`（对象 `7e39d64f694708414618dd49937f2aca977f32fc`）指向同一提交。
 
 日期与 Windows/Python/Creo/SDK/MSVC 环境：2026-10-31；Windows 11 x64 / Python 3.12.14 venv / Creo 12.4.0.0（`release_numeric=44`）/ 本机匹配 Toolkit SDK / MSVC x64；`auto_start_creo=false`，会话由用户手工启动；当日 11:30 通道失效（BUG-091 新样本）后经一次受限重启（新进程 11:46—47）继续第二轮复测。
 
@@ -21,27 +21,45 @@
 | 9 | N01 relief `n01relief/run1/report.json`（SHA256 `cefce8ed…5d643a`） | **部分通过**：`relief_none`/`relief_rect_1x1` 自由端墙 +18025.291234 mm³、重载 true，第三墙按 `known_t05_boundary` 归类（释放几何不可观测如实记录）；`mat_*` 五案底件 succeeded（`part_thickness_mm=1.0`）、目标 `f_ny` 全部 `known_t05_boundary`；`free_rect_both_4x4` 真实建成 |
 | 10 | N11 BUG-088 `n11/run1/report.json`（SHA256 `9423057e…33f17`） | **通过（含人工图像复核）**：空件缺图按记录复现（`file_check.exists=false`、`error_code=2`）；实体与盘体三阶段 JPEG 16245/16621/17794 B；钣金件 12381 B 独立写出；图像经编排方人工看图与体积仲裁核对 |
 | 11 | 性能基准 `tools/test_plan_performance.py --live`（`build/post090_perf_20261031T142958/report.json`，SHA256 `20e41bbd…890a6`，run `20261031T142958_84895977`） | small 单操作中位 **22.937 s**（n=3，22.563—23.687）/ 批量 **14.406 s**（n=3，13.375—15.422）；large 单操作中位 **341.2345 s**（n=2，339.937—342.532）/ 批量 **184.4375 s**（n=2，169.937—198.938）；等价校验全过（边数 36/36、1164/1164，体积相等）。large 两次补跑（`145548` 启动预算过期、`150211` 连接就绪）均 0 用例，**large 未达 3 次重复**（N12 large 样本状态：见本记录） |
-| 12 | `python tools/package.py` / `package_seeds.py` | **[Phase B 回填]** |
+| 12 | `python tools/package.py` / `package_seeds.py` | exit 0；源码包 1089 文件（两次构建同哈希）、种子包 24 文件/9 种子（含本批共四次构建同哈希）；`seeds.py` expected_digest == 种子包 SHA256；解压检查见下文“发布后远端核验”与打包小节 |
 
 原生修改保存重载、参数编辑、回滚证据：N10 六例成功项 `saved_file_reloaded_and_verified=true`（含编辑 rev 2→3 后重载）；N04 七例重载 true（`batch_mid_failure` 因整作业失败为 false，属预期，失败操作回滚成功）；N06 `ny_first` 重载 true、两例 fast-fail revision 不变且回滚成功；N08/N09 重载 true（N08 重载后 rev 2）；N01 relief 自由端墙重载 true、第三墙失败回滚后体积/revision 保持。参数编辑：N10 `edit_dimension_values` 用真实 dimension ID 14/13，回读 `[3.0, 7.0, 118.0, 10.0, 8.0, 25.0, 25.0]`。
 
 未测模块、失败用例、兼容限制：N07 其余 4 非法例与恢复编辑未执行（`illegal_dir_zero` 判定未过，见 BUG-093）；N08 真多中心线夹具缺；N09 `id_renumbering` 只能观察拒绝；N10 通孔口径、出口沉头与双端沉孔、螺纹/标准孔未验；N01/T05 四壁不支持、`relief` 材料几何不可观测、`end_trim_mm` 语义未定；N04 单位矩阵与 `zero_delta` 仅离线；N11 原案回放缺原件；N12 large 未满 3 次重复；Creo 9 无 SDK、Creo 10 未复测（BUG-090 定向编译未验）；WorkBuddy 未执行；并发未验证（无真实并行调用）。
 
-源码包及种子包 SHA256（文件名与完整哈希，写入 Release body）：**[Phase B 回填]**
+源码包及种子包 SHA256（文件名与完整哈希，写入 Release body）：
 
-发布候选验收结论：按上表范围通过（N07 反例与 N01 材料场景按实际状态披露，不改判）；开放项随版本说明披露。**[Phase B 回填：打包与解压检查结论]**
+```text
+MCP_CREO_MechDog-0.10.0-source.zip        1850dc03d4d129ed28eaf2f37844833d686f3e3db1812ae08d7d9666dd786885
+MCP_CREO_MechDog-0.10.0-seed-library.zip  99e3b9ec92593fbd5c34b91504134fd015a5e2142ab36f7e7ab4226d50b819c3
+```
 
-合入 main 的提交、版本标签及指向：**[Phase B 回填]**
+源码包（由标签 `v0.10.0` 指向的主干提交源码构建；本记录随该提交入库，附件哈希按两段式流程在打包后回填进 Release body 与本文件，回填提交不属于标签内容）。构建说明：打包在工作树位于 `17a36b9` 时进行；本机专用的 `docs/validation/RELEASE-0.8.5.md` 发布后核验段（该段设计上不进 main）在打包期间临时移出（打包后已字节级恢复，SHA256 `36deDDD1…235` 前后一致），其余内容与标签提交的树一致。种子包按 0.10.0 确定性重建，四次构建（两次独立、回填 `seeds.py expected_digest` 后两次复核）SHA256 均为上值；9 枚种子原字节不变，仅清单版本标记随版。解压检查（`build/release-0.10.0/xcheck`）：源码包 1089 文件、`version.py`/README 标题/双 `seed_manifest.json` 均 0.10.0、双清单字节一致、`seeds.py` expected_digest == 种子包实测哈希、`RELEASE_NOTES_0.10.0.md` 与第三方许可在包、无 `constants.inc`/真实 config/client-config/`seed_registry.json`/`toolkit.lock` 及 `build`/`jobs`/`models`/`.venv` 混入（`config.example.json`、`client-config.example.json` 为随包分发模板，属预期）；种子包 24 文件/9 种子，逐种子 SHA256 与清单一致。
 
-GitHub Release 链接与发布状态：**[Phase B 回填]**
+发布候选验收结论：按上表范围通过（N07 反例与 N01 材料场景按实际状态披露，不改判）；开放项随版本说明披露。打包与解压检查通过（见上小节），两包均可复现构建。
 
-远端附件与 SHA256 核对结果（body 记载与远端附件逐项一致）：**[Phase B 回填]**
+合入 main 的提交、版本标签及指向：main = `17a36b953add9498cc6e7ca3b91566027dd12114`（快进，无合并提交）；附注标签 `v0.10.0`（对象 `7e39d64f694708414618dd49937f2aca977f32fc`）指向该提交，其 `version.py` 为 `0.10.0`。
 
-逐 ID 状态核对（候选态；发布后回填最后一列）：
+GitHub Release 链接与发布状态：https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.10.0 （`draft=false`、`prerelease=false` 正式发布；Release id `429813442`）。
+
+远端附件与 SHA256 核对结果（body 记载与远端附件逐项一致）：见下表，逐项一致。
+
+## 发布后远端核验
+
+2026-10-31 经 REST API 核对：远端 `main=17a36b953add9498cc6e7ca3b91566027dd12114`；附注标签 `v0.10.0` 对象 `7e39d64f694708414618dd49937f2aca977f32fc` 指向同一提交，其 `version.py` 为 `0.10.0`。正式 Release（`draft=false`、`prerelease=false`）：https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.10.0 ，body 直接列出两附件文件名与完整 SHA256（并含 `expected_digest` 回填修复披露）。四附件逐件从远端下载，字节数、SHA256 与 Release body 及本地文件一致；两个 `.sha256` sidecar 内容与相应 ZIP 哈希一致。
+
+| 附件 | 远端字节 | 核验 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.10.0-source.zip` | 6 515 104 | 通过（SHA256 `1850dc03…6885` 与 body 一致） |
+| `MCP_CREO_MechDog-0.10.0-source.zip.sha256` | 102 | 通过 |
+| `MCP_CREO_MechDog-0.10.0-seed-library.zip` | 493 442 | 通过（SHA256 `99e3b9ec…819c3` 与 body 一致） |
+| `MCP_CREO_MechDog-0.10.0-seed-library.zip.sha256` | 108 | 通过 |
+
+逐 ID 状态核对（发布后终态；五处：卡首页／主台账／版本说明／开发入口／实际 Release 已核对一致）：
 
 | ID | 技术状态 | 交付版本 | 剩余范围 | 卡首页 | 主台账 | 版本说明 | 开发入口 | 实际 Release |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| DEV-052 | 本批交付（N01—N13 集成） | 0.10.0 | N13 发布流程由 Phase B 收尾 | DEV-052 | BACKLOG | RELEASE_NOTES_0.10.0 | DEVELOPMENT | （发布后回填） |
+| DEV-052 | 本批交付（N01—N13 集成） | 0.10.0 | N13 发布流程由 Phase B 收尾 | DEV-052 | BACKLOG | RELEASE_NOTES_0.10.0 | DEVELOPMENT | https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.10.0 （正式发布） |
 | FEAT-051 | 已交付（run2 七夹具实机通过） | 0.10.0 | `zero_delta` 离线专属；单位矩阵仅离线 | FEAT-051 | BACKLOG | 同上 | 同上 | 同上 |
 | FEAT-035/T12 | 已交付（tip 口径，六例实机通过） | 0.10.0 | 通孔口径、出口沉头/双端沉孔、螺纹孔 | FEAT-035 | BACKLOG | 同上 | 同上 | 同上 |
 | FEAT-034/T02 | 已交付（创建 5/5+编辑 3/3 实机） | 0.10.0 | `illegal_dir_zero` 反例待查（BUG-093）、恢复编辑未执行 | FEAT-034 | BACKLOG | 同上 | 同上 | 同上 |
