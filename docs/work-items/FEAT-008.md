@@ -375,3 +375,14 @@ R1 §4.1能力摘要、§4.2成熟度、§3.3/§4.3 unchanged、§5五旧请求�
 见 [T01 验收卡](../development/DEV051-T01-ACCEPTANCE.md)。本轮补齐本卡「能力说明一致性」范围的文档：README 增 `execute_plan` 多操作、`feature_state` 删除/抑制/恢复、独立 `draft`、组件标签查询与 `end_trim_mm` 的最小示例（全部经当前 schema `validate_operations` 校验通过，仅为文档示例、非新实机证据）；`docs/REFERENCE_SYNTAX.md` 增 `relief`/`end_trim_mm`/`feature_state`/组件标签的形状行与 `revolve_axis`、组件身份查询两节；`docs/COMPATIBILITY.md` 增「开发分支（0.8.5 之后，未发布）的兼容性边界」；README 与能力表同步标出 `end_trim_mm` 属**开发分支未发布、语义待实机确认**。公开工具仍为 94 个。
 
 本卡「首批底板 holes、对称深度与编辑、平面引用构造」等其余范围不变，整卡保持开放。
+
+### 2026-10-31 DEV-051 T09B 第二轮实机复测（编排方串行）
+
+原始报告 `build/post090_live2_20261031T115830/n08/run2/report.json`（SHA256 `a4b4d2e3…c769`；首轮 `n08/report.json` 因 Toolkit 未就绪在提交前停止、`cases=[]`，不作几何结论）。本节只追加，不改写上方 2026-10-29/30 的实机与离线记录。
+
+- **内部中心线通过**：`internal_centerline`，job `12cfeaa39583457f941ebf695e3c0528`、model `9d2e4ba7227240ab8ae4adbf533fa2ed`、rev 1、体积 9424.777960769377 mm³（对上 oracle 9424.77796076938）。**2026-10-30 的两项待验点本轮均成立**：`revolve_axis.resolution.section_centerline_count=1`（不再是 3），且 `revolve_axis.id=9` 与草图实体 `spin_centerline` 的 `sketch_entity_ids.spin_centerline=9` 一致（`id_source={entity:"spin_centerline", sketch_entity_id:9}`），真实 ID 来源已证实。`revolve_axis` 报 `source=internal_centerline`、`kind=section_centerline`、`frame=model`、`query_code=0`；`resolution.feature_axis_query_code=0`、`axis_item_query_code=null`、`axis_surface_query_code=null`、`section_query_code=null`。保存重载 job `92785620d5e14c54b36d4a4843051665` succeeded、`saved_file_reloaded_and_verified=true`、重载后 rev 2、体积不变。
+- **显式基准轴通过**：`explicit_datum_axis`，job `5b7cadaede754a58adbdea5677800056`、model `72c04d45add0468c9005fbdc2c2e64f9`、rev 1、体积 785.3981633974481 mm³。`revolve_axis.id=52`，与 `inspection.datum_axes[0].id=52` 一致（`id_source={axis:"datum_axes[0]", axis_id:52}`），origin `[10,0,0]`、direction `[1,0,0]`、`frame=model`、`query_code=0`；`resolution.axis_surface_query_code=-4`（surface 解析仍为 E_NOT_FOUND，与 2026-10-30 离线结论一致）。保存重载 job `79a282f3b9964b9c8367160cb17a3857` succeeded、重载后 rev 2、datum 轴仍为 id 52。
+- **无中心线负例通过**：`no_centerline`，job `459f8132d2f64df7b517bb815d2de9da`、model `731acfedeaea483d816f17c4c162b339`、rev 0，作业按预期 failed（`toolkit_code=-1`、`failed_stage=execute_revolve`、`failed_toolkit_call=ProFeatureWithoptionsCreate`），原生消息含 "must contain a centerline, or an explicit axis must be supplied"，且不输出 `revolve_axis` 块。
+- **真多线仍未验**：外部手工多中心线夹具本轮仍未提供，`section_centerline_count>1` 时 `id` 保持 null 的语义仍属未测。
+
+本卡「revolve 实际选轴回显」子项的三条实机用例本轮全部按预期通过；其余范围（首批底板 holes、对称深度与编辑、平面引用构造、工具描述与 README 收口）不变，整卡保持开放。

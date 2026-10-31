@@ -260,3 +260,31 @@ SDK 语义（本机 Creo 12.4.0.0 匹配 SDK `ProSection.h`）：`ProSectionEnti
 ```
 
 预期：`internal_centerline` 例 `section_centerline_count=1`、`revolve_axis.id == sketch 操作记录 entity_ids['spin_centerline']`（原生日志应出现 `SECTION_CENTERLINE_META drawn_user_lines=1`，三条探测行中 2 条系统参考被剔除）、origin 落在 x=0 线、direction ∥Y、体积对上 9424.777961 mm³ oracle、保存重载 true；`explicit_datum_axis` 与 `no_centerline` 负例按既有预期不变。若计数仍 ≠1 或 id 不匹配，以原生日志新证据定性，不得放宽判定。真多线外部夹具仍未提供，继续记未测。
+
+## 2026-10-31：N08 第二轮实机复测（编排方串行）
+
+原始报告 `build/post090_live2_20261031T115830/n08/run2/report.json`，SHA256 `a4b4d2e36fb13ee9891cca56ec51936d9e60a1fc95aeb032e9eaf31b3086c769`，`run_id=20261031T132716_8f2bf9b1`，`mode=live`，`passed=true`，`stopped=null`。同目录另有首轮 `n08/report.json`：该次在提交任何作业前因 Toolkit 未就绪停止（`cases=[]`），不产生几何结论；`n08/console.log` 记录一次"拒绝覆盖既有报告"（唯一输出目录策略生效）。
+
+### 三例结果
+
+| 用例 | job | model | rev | 体积 (mm³) | 关键判定 |
+| --- | --- | --- | --- | --- | --- |
+| `internal_centerline` | `12cfeaa39583457f941ebf695e3c0528` | `9d2e4ba7227240ab8ae4adbf533fa2ed` | 1（重载后 2） | 9424.777960769377 | `section_centerline_count=1`；`revolve_axis.id=9` |
+| `explicit_datum_axis` | `5b7cadaede754a58adbdea5677800056` | `72c04d45add0468c9005fbdc2c2e64f9` | 1（重载后 2） | 785.3981633974481 | `revolve_axis.id=52`＝`datum_axes[0].id` |
+| `no_centerline` | `459f8132d2f64df7b517bb815d2de9da` | `731acfedeaea483d816f17c4c162b339` | 0 | null（预期） | 作业 failed，无 `revolve_axis` 块 |
+
+### 2026-10-30 遗留的两个待验点已成立
+
+1. **计数**：`revolve_axis.resolution.section_centerline_count=1`（不再是 2026-10-29 的 3），投影参考剔除在实机生效。
+2. **真实 ID 来源**：`revolve_axis.id=9`；同次作业的草图记录 `sketch_entity_ids={ring_0:5, ring_1:6, ring_2:7, ring_3:8, spin_centerline:9}`，`id_source={entity:"spin_centerline", sketch_entity_id:9}`——`revolve_axis.id` 与草图实体 id 逐位一致，ID 来源不再是"从计数猜第一条"。`revolve_axis` 另报 `source=internal_centerline`、`kind=section_centerline`、`frame=model`、`geometry_known=true`、`query_code=0`；`resolution.feature_axis_query_code=0`、`axis_item_query_code=null`、`axis_surface_query_code=null`、`section_query_code=null`。保存重载 job `92785620d5e14c54b36d4a4843051665` succeeded、`saved_file_reloaded_and_verified=true`、重载后 rev 2、体积仍为 9424.777960769377。
+
+### 其余两例
+
+- **显式基准轴**：`revolve_axis` 为 `source=explicit`、`kind=datum_axis`、`id=52`、`origin=[10,0,0]`、`direction=[1,0,0]`、`frame=model`、`query_code=0`；`resolution.feature_axis_query_code=0`、`axis_item_query_code=0`、`axis_surface_query_code=-4`（surface 解析仍为 E_NOT_FOUND，与 2026-10-30 离线结论一致）。`inspection.datum_axes[0]` 同为 id 52、origin/direction 逐位一致。保存重载 job `79a282f3b9964b9c8367160cb17a3857` succeeded、重载后 rev 2、重载后 `datum_axes[0].id` 仍为 52。
+- **无中心线负例**：作业 failed，`toolkit_code=-1`、`failed_stage=execute_revolve`、`failed_toolkit_call=ProFeatureWithoptionsCreate`、`rollback_succeeded=false`，原生消息含 "must contain a centerline, or an explicit axis must be supplied, and the profile must be closed"，且不输出 `revolve_axis` 块——与 2026-10-29 的实机形态一致。
+
+### 未测与口径
+
+- **真多线仍未验**：外部手工多中心线夹具本轮未提供，`section_centerline_count>1` 时 `id` 保持 null 的语义继续记未测。
+- `axis_relocation_after_reload` 仍记 `not_observable_via_inspection`（重载后轴位置不可经检查观察），不作实测结论。
+- 修复前 2026-10-29 的实机三例保留其历史时点结论，本节不改写。

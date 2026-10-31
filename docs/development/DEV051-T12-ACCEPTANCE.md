@@ -409,3 +409,28 @@ till-tip 下，depth 量到钻尖顶点，故：
 - 去料超出新 oracle ±1 mm³ → 形状与 till-tip 解析式不符。
 
 若实机实测与上表不符（例如 Creo 对 `PRO_E_HLE_DEPTH_DIM_TYPE` 的实际作用与 SDK 注释不符、或编辑后锥高随直径变化的规律不同），**保留报告并在本卡回写口径修订，不静默改判**。
+
+### 8. 2026-10-31：N10 第二轮实机复测（编排方串行）
+
+原始报告 `build/post090_live2_20261031T115830/n10/run1/report.json`，SHA256 `6056a0974968518dda2e1a7c7281a8878a49dc5d5d6787960a85b4c5d7a76119`，`run_id=20261031T134447_69136d19`，`mode=live`，`passed=true`，`stopped=null`。六例**均首次获得执行机会**并全部通过。
+
+| 用例 | 底板作业 / 孔作业 | rev | 去料实测 (mm³) | `matched_variant` | `depth_semantics` |
+| --- | --- | --- | --- | --- | --- |
+| `blind_straight` | `d67dc571359242618f1d54c8518b49af` / `4a2733102e234ca083a380bc694e1fdb` | 2 | 197.92033717615413 | `contract_flat_overall` | `overall_flat` |
+| `blind_counterbore` | `b9225dea1ced40cd98f7be119feecbff` / `37aae7ae58ae4a5f9557266fab2eeeec` | 2 | 292.7477684551013 | `contract_tip_overall` | `overall_tip` |
+| `blind_countersink` | `468d5a79b60f4b47abb154d01d648864` / `64de562c50174e25990e688076c78687` | 2 | 238.293495792881 | `contract_tip_overall` | `overall_tip` |
+| `direction_side_normal` | `7570b713bac347d69a75917452772fa4` / `076503e1e58c4f0cac52b9f11161c534` | 2 | 197.92033717615777 | `contract_flat_overall` | `overall_flat` |
+| `direction_flip_guard` | `29616cb6534e4d34967856ab1bb5084f` / `c9e9ff90226a41c8baab8cdca24bedf1` | — | 翻向作业 failed（守卫按设计） | 恢复孔 `contract_flat_overall` | `overall_flat` |
+| `edit_dimension_values` | `f23ff0e51dc641db9fa167e1428bb87d` / `1d755a950cb343df95dee70d8b40c719` → 编辑 `fc2ecd45c1884a958699ab2c53b799bc` | 2→3 | 292.7477684551013 → 374.0864038721993 | `contract_tip_overall` | `overall_tip` |
+
+#### 判定要点
+
+1. **tip 口径生产修复（`0f1844a`）实机验证成立**。沉孔与沉头两例均命中 `contract_tip_overall` 且 `depth_semantics=overall_tip`，**未**落到任何 defect 变体（`defect_till_shoulder_below_tip`＝343.7145697324541 / 289.260297070231，`defect_seat_measured_drilldepth`＝383.27430373795477）。`depth_evidence` 侧：沉孔与沉头均 `cone_depth_max=8.0`、`total_depth=8.0`、`bore_depth_max=6.19741814291732`（钻孔段止于锥底），与 till-tip 解析式自洽；直孔分支仍为 `bore_depth_max=7.0`、`total_depth=7.0`。
+2. **方向例**：`direction_side_normal` 去料 197.92033717615777 对 oracle 197.92033717615698（误差 8.0e-13），`matched_variant=contract_flat_overall`；孔轴实测 `(25,25,5)→(25,25,3)`，即沿放置面法向而非默认 Z，尺寸回读 `[6.0, 7.0, 25.0, 5.0]`。
+3. **翻向守卫**：`direction_flip_guard` 的翻向作业按设计失败——`toolkit_code=-1`、`failed_stage=execute_hole`、`rollback_succeeded=true`、`effect_status=rolled_back`，原生消息 "Hole removes no material; check reference offsets, placement, flip and overlap with existing holes"；失败后模型体积 `24999.999999999993`、面数 6，与底件一致（未留半成品几何）。随后恢复作业 `4762ea0f692e420a8a19d831b5a29fe9` succeeded，rev 2，去料 197.92033717615413（`contract_flat_overall`，误差 2.8e-12），保存重载 true。
+4. **尺寸编辑**：编辑走真实 dimension ID（`diameter=14`、`counterbore_depth=13`），编辑后 rev 3、去料 374.0864038721993 对 oracle 374.0864038721959（误差 3.4e-12），`depth_evidence` 的 `cone_depth_max` 仍为 8.0、`bore_depth_max=5.896987833403539`（随孔径 3→3.5 变化，符合编辑后锥高规律），尺寸回读 `[3.0, 7.0, 118.0, 10.0, 8.0, 25.0, 25.0]`，保存重载 true。
+5. **其余一致性**：全部成功例 `saved_file_reloaded_and_verified=true`、`missing_dimensions=[]`、`problems=[]`；面数增量与 oracle 相符（直孔 +3、沉孔 +7、沉头 +6）；`feature_delta` 均为 `hole=+1`、其余类别 0。
+
+#### 未测范围
+
+通孔口径、出口沉头与双端沉孔、螺纹/标准孔、Creo 9/10、WorkBuddy 黑盒。本节不改写 2026-10-29 的三例实机结论，也不据此关闭 FEAT-035 整卡。

@@ -42,3 +42,28 @@
 ## 2026-10-30 离线余项：盲孔/方向/编辑/失败回滚/保存重载（DEV-051 T12）
 
 在既定孔型契约内补齐余项的离线实现与待验驱动：`depth` 盲孔（overall 语义）、方向沿放置面法向（含侧面法向孔与 `flip` 向外钻的守卫失败+回滚+恢复）、真实 dimension ID 的尺寸值编辑（径/沉孔深）、逐例保存重载与参数/几何一致性。每例带独立 oracle（平底去料解析式、面数增量、尺寸回读、圆柱面轴与 bbox），并以 `matched_variant` 区分 118° 钻尖/座面起量备选算式（命中备选不通过）。入口拒绝边界（互斥/尺寸关系/角度）保持不变。修改 `tests/unit/test_native_countersink.py`（9 用例）与 `tools/test_native_countersink.py`（默认 live 跑 6 例余项，三例已通过项仅 `--include-passed-cases` 重跑）；未改 schema、native 与 capabilities。离线：单测 1490 OK、`bridge.py build` 通过、报告 `build/native_countersink/20261030T102226_76e75830/report.json`（SHA256 `ae785e69…fda5500`）。6 例全部未实机；详见 [T12 验收卡](../development/DEV051-T12-ACCEPTANCE.md)「2026-10-30 离线余项」。本条保持开放（实机待验）。
+
+## 2026-10-31：N10 第二轮实机复测（编排方串行）
+
+原始报告 `build/post090_live2_20261031T115830/n10/run1/report.json`（SHA256 `6056a097…76119`，`run_id=20261031T134447_69136d19`，`mode=live`，`passed=true`）。本节只追加，不改写上方 2026-10-29/30 的记录。
+
+**六例全部首次执行并通过**：
+
+| 用例 | 底板 / 孔作业 | rev | 去料实测 / 口径 | 口径变体 |
+| --- | --- | --- | --- | --- |
+| `blind_straight` | `d67dc571359242618f1d54c8518b49af` / `4a2733102e234ca083a380bc694e1fdb` | 2 | 197.92033717615413 | `contract_flat_overall`（`overall_flat`） |
+| `blind_counterbore` | `b9225dea1ced40cd98f7be119feecbff` / `37aae7ae58ae4a5f9557266fab2eeeec` | 2 | 292.7477684551013 | `contract_tip_overall`（`overall_tip`） |
+| `blind_countersink` | `468d5a79b60f4b47abb154d01d648864` / `64de562c50174e25990e688076c78687` | 2 | 238.293495792881 | `contract_tip_overall`（`overall_tip`） |
+| `direction_side_normal` | `7570b713bac347d69a75917452772fa4` / `076503e1e58c4f0cac52b9f11161c534` | 2 | 197.92033717615777 | `contract_flat_overall`（`overall_flat`） |
+| `direction_flip_guard` | `29616cb6534e4d34967856ab1bb5084f` / `c9e9ff90226a41c8baab8cdca24bedf1` | — | 翻向作业 failed（守卫按设计拒绝） | 见下 |
+| `edit_dimension_values` | `f23ff0e51dc641db9fa167e1428bb87d` / `1d755a950cb343df95dee70d8b40c719` → 编辑 `fc2ecd45c1884a958699ab2c53b799bc` | 2→3 | 292.7477684551013 → 374.0864038721993 | `contract_tip_overall`（`overall_tip`） |
+
+要点：
+
+- **T12 tip 口径生产修复（`0f1844a`）实机验证成立**：沉孔与沉头两例均命中 `contract_tip_overall` 且 `depth_semantics=overall_tip`，不再落到 `defect_till_shoulder_below_tip`（343.7145697324541 / 289.260297070231）或 `defect_seat_measured_drilldepth`（383.27430373795477）等备选形态；`depth_evidence` 中 `cone_depth_max` 与 `total_depth` 均为 8.0，钻孔段止于锥底（`bore_depth_max=6.19741814291732`），与该口径自洽。
+- **方向例**：侧面法向孔 `direction_side_normal` 去料 197.92033717615777（与直孔 oracle 197.92033717615698 相符，误差 8.0e-13），孔轴从 `(25,25,5)` 指向 `(25,25,3)`，即沿放置面法向而非默认 Z。
+- **翻向守卫**：`direction_flip_guard` 的翻向作业按设计失败（`toolkit_code=-1`、`failed_stage=execute_hole`、`rollback_succeeded=true`、原生消息 "Hole removes no material; check reference offsets, placement, flip and overlap with existing holes"），失败后模型体积与面数回到 `24999.999999999993` / 6 面；随后恢复作业 `4762ea0f692e420a8a19d831b5a29fe9` succeeded，去料 197.92033717615413、`contract_flat_overall`、`saved_file_reloaded_and_verified=true`。
+- **尺寸编辑**：编辑作业用真实 dimension ID（`diameter=14`、`counterbore_depth=13`），编辑后 rev 3、去料 374.0864038721993（对上 oracle 374.0864038721959，误差 3.4e-12），尺寸回读 `[3.0, 7.0, 118.0, 10.0, 8.0, 25.0, 25.0]`，保存重载 true。
+- 全部成功例 `saved_file_reloaded_and_verified=true`、`missing_dimensions=[]`，面数增量与 oracle 一致（直孔 +3、沉孔 +7、沉头 +6）。
+
+未测范围不变：通孔口径、出口沉头与双端沉孔、螺纹/标准孔、Creo 9/10、WorkBuddy 黑盒。本条在"沉孔/沉头孔参数化 + 盲孔/方向/尺寸编辑"范围内实机已通过，仍不据此关闭本卡整项（通孔与其它孔型未验）。

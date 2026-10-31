@@ -71,3 +71,15 @@ capabilities摘要/分页已随0.4.2交付、0.4.4补验收闭环；0.4.5的READ
 - 本卡其余体积议题（jobs compact 日志、翼型/履带请求体量、union 校验错误）仍未做。
 
 详见 [T09A 验收卡](../development/DEV051-T09A-ACCEPTANCE.md) 2026-10-30 节。本条保持开放（实机重载与删除重插复验未执行）。
+
+## 2026-10-31：N09 第二轮实机复测（编排方串行）
+
+原始报告 `build/post090_live2_20261031T115830/n09/run1/report.json`（SHA256 `d2fe2233…ec4ef`，`run_id=20261031T132838_ae4d387e`，`mode=live`，`passed=true`，`stopped=null`）。本节只追加，不改写 2026-10-28/30 的离线记录。
+
+- **双组件创建通过**：`two_components`，装配作业 `a272ed6046ea4d6aae60d9c5c772fcad`、model `15e103e217d14c5f879a17084839c345`、rev 1、status succeeded。`part_alpha` 解到 feature ID 40（源 `25831b7c7d694efeb57dacc05b34f63e`、源 rev 1），`part_beta` 解到 feature ID 43（源 `6ac989cd03414b54bfbd413a95a2e0c2`、源 rev 1）；两个 label 的 `label_state` 均为 `single`，`source_models_match=true`。
+- **跨作业保存重载通过**：`cross_job`，保存作业 `5328f322486446c5a14d842b19d7ad59`（kind=save）succeeded、`saved_file_reloaded_and_verified=true`、重载后 rev 2、标签集合仍为 `part_alpha`+`part_beta`，`identities_unchanged=true` 且 **`identity_mirrors_unchanged=true`**——2026-10-31 早先的 canonical sort key 修复（`018f9c3`）实机生效，上一轮的 `TypeError: '<' not supported between instances of 'dict' and 'dict'` 不再出现。
+- **删除重插不误指通过**：`rename_reinsert`，删除作业 `442b6fa5502a4639b264d8a826d46879` succeeded、重插作业 `16d90da61d3d440190dcacef4f79bbb7` succeeded，rev 2→4。`part_alpha` 仍绑 feature ID 40，新 `part_gamma` 绑 feature ID 46（源仍是 `6ac989cd03414b54bfbd413a95a2e0c2`）；`deleted_identities=[]`、`old_label_observable="absent"`、`old_label_on_new_component=false`、`stale_binding_on_new_id=false`——旧 label `part_beta` 没有落到新 ID 上。
+- **未知 label 拒绝通过**：`unknown_label`，作业 `3f55cef59a374cf59ba8e027be8795a0` failed，`toolkit_code=-1`、`failed_stage=execute_component_placement`、`rollback_succeeded=true`，原生消息 "Unknown feature label: part_beta; available labels: part_alpha, part_gamma"；revision 4→4 未变，`labels_after` 仍为 `part_alpha`+`part_gamma`。注意 `rejected_at_admission=false`——拒绝发生在原生放置阶段而非入口准入，消息按实际可用标签给出。
+- **`id_renumbering` 半场景限制保持**：本轮 live 矩阵不含独立的 `id_renumbering` 判定行，原生在保存路径上拒绝重编号，**只能观察拒绝、不得整体记为实机通过**的限制不变。
+
+本卡"组件清单内联业务 label 及 source_model_id/source_revision"子项的实机四例本轮全部按预期通过；本卡其余体积议题（jobs compact 日志、翼型/履带请求体量、union 校验错误）仍未做，整卡保持开放。

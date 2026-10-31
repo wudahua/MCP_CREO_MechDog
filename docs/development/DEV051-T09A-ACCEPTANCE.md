@@ -256,3 +256,29 @@ TypeError: '<' not supported between instances of 'dict' and 'dict'
 预期：`cross_job` 重载后 `identity_mirrors_unchanged=true`（不再抛 TypeError），`saved_file_reloaded_and_verified=true` ∧ 标签集合不变；随后 `rename_reinsert` 与 `id_renumbering` 两例得以执行（此前被崩溃阻断）。`id_renumbering` 的"半场景"限制不变：原生拒绝该保存，只能观察拒绝，**不得整体记为实机通过**。
 
 **未实机**：本次未连接 Creo，未提交任何 Toolkit 作业。
+
+## 2026-10-31：N09 第二轮实机复测（编排方串行）
+
+原始报告 `build/post090_live2_20261031T115830/n09/run1/report.json`，SHA256 `d2fe2233ac4387c4cdfb982de25a2a0cf73e1d28311749bd3cc315ce893ec4ef`，`run_id=20261031T132838_ae4d387e`，`mode=live`，`passed=true`，`stopped=null`，`calls=87`。
+
+### 四例结果
+
+| 用例 | 作业 | 关键证据 | 判定 |
+| --- | --- | --- | --- |
+| `two_components` | 装配 `a272ed6046ea4d6aae60d9c5c772fcad` | model `15e103e217d14c5f879a17084839c345`、rev 1、status succeeded | passed |
+| `cross_job` | 保存 `5328f322486446c5a14d842b19d7ad59` | kind=save、succeeded、`saved_file_reloaded_and_verified=true`、rev→2 | passed |
+| `rename_reinsert` | 删除 `442b6fa5502a4639b264d8a826d46879`、重插 `16d90da61d3d440190dcacef4f79bbb7` | 均 succeeded、rev 2→4 | passed |
+| `unknown_label` | `3f55cef59a374cf59ba8e027be8795a0` | failed、`toolkit_code=-1`、`rollback_succeeded=true`、rev 4→4 | passed |
+
+### 逐例细节
+
+- **双组件**：`part_alpha` → feature ID 40（源 `25831b7c7d694efeb57dacc05b34f63e`、源 rev 1），`part_beta` → feature ID 43（源 `6ac989cd03414b54bfbd413a95a2e0c2`、源 rev 1）；两个 label 的 `label_state` 均为 `single`，`labels_resolved={part_alpha:40, part_beta:43}`，`source_models_match=true`。
+- **跨作业保存重载**：重载后标签集合不变，`identities_unchanged=true`、**`identity_mirrors_unchanged=true`**——2026-10-31 早先的 canonical sort key 修复（`018f9c3`）实机生效，上一轮在 `sorted(map(identity_of, rows))` 上的 `TypeError: '<' not supported between instances of 'dict' and 'dict'` 不再出现，且镜像比较语义未放宽。
+- **删除重插不误指**：`part_alpha` 仍绑 feature ID 40；新 `part_gamma` 绑 feature ID 46，源件仍是 `6ac989cd03414b54bfbd413a95a2e0c2`（原 `part_beta` 的源）；`deleted_identities=[]`、`old_label_observable="absent"`、`old_label_on_new_component=false`、`stale_binding_on_new_id=false`——旧 label `part_beta` 没有落到新 ID 上，也没有以 deleted 身份残留。
+- **未知 label 拒绝**：作业 failed，`toolkit_code=-1`、`failed_stage=execute_component_placement`、`rollback_succeeded=true`；原生消息 "Unknown feature label: part_beta; available labels: part_alpha, part_gamma"。`rejected_at_admission=false`——拒绝发生在原生放置阶段而非入口准入，拒绝消息按当时实际存在的标签给出；revision 4→4 未变，`labels_after` 仍为 `part_alpha`+`part_gamma`。
+
+### 未测与口径
+
+- **`id_renumbering` 半场景限制保持不变**：本轮 live 矩阵不含独立的 `id_renumbering` 判定行；原生在保存路径上拒绝重编号保存，只能观察拒绝，**不得整体记为实机通过**。
+- 未测：多标签挂同一 feature_id、被篡改 `aliases_ref`、40 组件大清单分页、compact/full 一致性、Creo 9/10、WorkBuddy。
+- 2026-10-29/30 的历史结论保留其时点，本节不改写。

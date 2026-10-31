@@ -36,3 +36,31 @@
 - 实机入口：`.\.venv\Scripts\python.exe tools\test_arc_direction_live.py --live --confirm-session-usable`（唯一 dev 服务 `MCP_CREO_MechDog_dev`，先满足 BUG-001 会话条件）。
 
 详见 [T02 验收卡](../development/DEV051-T02-ACCEPTANCE.md) 2026-10-30 节。本条保持开放（编辑/下游/重载/非法编辑实机未验）。
+
+## 2026-10-31：N07 第二轮实机复测（编排方串行）
+
+分支 `codex/dev051-feedback070`，受测提交 `49decae`（工作区 dirty），原始报告 `build/post090_live2_20261031T115830/n07/report.json`（SHA256 `b9942a89…dde4de`，`provenance.source_fingerprint=734d2c1c…b901`）。本节只追加，不改写 2026-10-30 离线节与首轮记录。
+
+**创建例 5/5 通过**（`arc_echo.source="native"`、`query_code=0`、各阶段保存重载 true）：
+
+| 用例 | job | model | rev | 实测 / oracle 体积 (mm³) | 误差 |
+| --- | --- | --- | --- | --- | --- |
+| `legacy_0_to_90` | `8ae9dc7798ee465fa46e4777506be822` | `5e9c9d35035940bca9a4703dfc5931e2` | 1 | 142.69908169840258 / 142.69908169872414 | 3.22e-10 |
+| `legacy_90_to_0` | `8d0f3abe3380402b82e055e64a4fe8c9` | `0632662c335948b0b521ded3576f0c41` | 1 | 1428.09724510173 / 1428.0972450961724 | 5.56e-09 |
+| `dir_minus1_90_to_0` | `162dca88025c481a860fb6600a945b60` | `ec24ad7c31dc4cb087ba707fd28e14e6` | 1 | 142.69908169840258 / 142.69908169872414 | 3.22e-10 |
+| `dir_minus1_0_to_90` | `2fe5cc9fb9e84d6d9a0dafa989c180d9` | `3df1c0e88de340ff80f4ae2ba8e673b6` | 1 | 1428.09724510173 / 1428.0972450961724 | 5.56e-09 |
+| `tilted_xz_dir_minus1_0_to_90` | `aee9189d0b6c499698b63a84c6e2aa68` | `c30e8212bd9c47178a5fc63bab25a389` | 1 | 1428.0972450906143 / 1428.0972450961724 | 5.56e-09 |
+
+**编辑例 3/3 通过**——2026-10-31 早先的 `named_ids` 修复实机生效，编辑后回显不再是 `unknown`/`query_code=-2`：
+
+| 用例 | job | model | rev | 实测 / oracle 体积 (mm³) | 回显 |
+| --- | --- | --- | --- | --- | --- |
+| `edit_switch_dir_0_to_90` | `effd024f149e43fda8b06d5e1a6fc947` | `6aa751d862cf4de1ad513e32ea22f583` | 1→2 | 1428.0972451017303 / 1428.0972450961724 | native、query_code=0、dir=-1、sweep 270° |
+| `edit_switch_dir_cross_zero` | `5d96fde8db5f43bd9fb64bc5cc2a3cb1` | `0fe34708ae2b44ce9a852e09a90c4b24` | 1→2 | 1569.0348997575504 / 1569.0349000265974 | native、query_code=0、dir=-1、sweep 340° |
+| `edit_switch_dir_tilted_xz` | `0de57535e7d841e29f7c8161a888b375` | `65cb00f32c524d9d80f277855b0a473c` | 1→2 | 1428.0972450906143 / 1428.0972450961724 | native、query_code=0、dir=-1、sweep 270° |
+
+三例的 `preserved_feature_id=40` 保持，revision 恰好 +1，各阶段保存重载 true。
+
+**非法编辑反例判定未过，待查。** 本轮 `illegal_edits` 只执行到第一例 `illegal_dir_zero`（`kind=schema`）即 `passed=false`、`failures=["volume_missing"]`，原始形态为：工具入参被 **schema 层显式校验拒绝**（pydantic `value_error`："Arc dir must be the strict integer +1 (counterclockwise) or -1 (clockwise) … input_value=0"），**未产生作业**（`job_id=null`、`terminal_status=null`、`rollback=null`），模型 revision 3→3 未变、基线体积 1428.0972451017303 保持。判定失败缺的是"拒绝之后的同源实测体积"这一证据：驱动在拒绝后用 `creo_refresh_model` 取体积，本次该结果块未带 `volume_mm3`（`measured_volume_mm3=null`），故判 `volume_missing`。**不是"作业失败"，也不是"非法编辑被接受"**；但按严格判定该反例**未通过**，驱动随即 `raise AssertionError` 终止，本段其余 4 个非法例（`illegal_dir_float`、`illegal_zero_sweep`、`illegal_full_circle`、`illegal_open_profile`）与 stage 5 恢复编辑/保存重载**未执行**。
+
+因此本条状态口径更新为：**创建 5/5 与方向编辑 3/3 实机通过（回显、revision、下游体积、保存重载均成立）；非法编辑反例判定未过、待查；恢复编辑与保存重载阶段未执行**。不得因"拒绝确实发生了"就把反例记为通过，也不得据此放宽判定。

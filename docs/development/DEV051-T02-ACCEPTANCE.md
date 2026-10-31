@@ -228,3 +228,24 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；pydantic 
 ```
 
 预期：5 创建例与 3 编辑例全 passed；编辑例 `arc_echo.source="native"`、`query_code=0`、dir/扫角与 to_dir 一致（编辑后回显不再 unknown/-2）；体积按 to_dir oracle、revision +1、identity 保持、各阶段保存重载 true；5 非法例照旧拒绝且模型不变。若编辑例回显仍为 unknown，以原生日志新证据定性，不得放宽判定。
+
+## 2026-10-31：N07 第二轮实机复测（编排方串行）
+
+分支 `codex/dev051-feedback070`，受测提交 `49decae`（工作区 dirty）。原始报告 `build/post090_live2_20261031T115830/n07/report.json`，SHA256 `b9942a89045bc30442bda975360b88693d5a3f5d5b8f584bbea9490cd8dde4de`，`provenance.source_fingerprint=734d2c1c057fea196ed108aa3b24b6a910ec547d171d6ba0b241dbd2fbe5b901`，`calls=271`，驱动在 `tools/test_arc_direction_live.py:719` 以 `AssertionError(row)` 终止。
+
+### 通过项
+
+- **创建例 5/5 passed**：`legacy_0_to_90`（job `8ae9dc7798ee465fa46e4777506be822`、model `5e9c9d35035940bca9a4703dfc5931e2`、rev 1）、`legacy_90_to_0`（`8d0f3abe3380402b82e055e64a4fe8c9`、`0632662c335948b0b521ded3576f0c41`、rev 1）、`dir_minus1_90_to_0`（`162dca88025c481a860fb6600a945b60`、`ec24ad7c31dc4cb087ba707fd28e14e6`、rev 1）、`dir_minus1_0_to_90`（`2fe5cc9fb9e84d6d9a0dafa989c180d9`、`3df1c0e88de340ff80f4ae2ba8e673b6`、rev 1）、`tilted_xz_dir_minus1_0_to_90`（`aee9189d0b6c499698b63a84c6e2aa68`、`c30e8212bd9c47178a5fc63bab25a389`、rev 1）。实测/误差：142.69908169840258/3.22e-10、1428.09724510173/5.56e-09、142.69908169840258/3.22e-10、1428.09724510173/5.56e-09、1428.0972450906143/5.56e-09（mm³）；五例 `arc_echo.source="native"`、`query_code=0`，各阶段保存重载 true。
+- **编辑例 3/3 passed**（2026-10-31 早先的 `named_ids` 修复实机生效，回显不再 `unknown`/`query_code=-2`）：`edit_switch_dir_0_to_90`（job `effd024f149e43fda8b06d5e1a6fc947`、model `6aa751d862cf4de1ad513e32ea22f583`、rev 1→2、1428.0972451017303/1428.0972450961724、native+query_code=0+dir=-1+sweep 270°）、`edit_switch_dir_cross_zero`（`5d96fde8db5f43bd9fb64bc5cc2a3cb1`、`0fe34708ae2b44ce9a852e09a90c4b24`、rev 1→2、1569.0348997575504/1569.0349000265974、dir=-1+sweep 340°）、`edit_switch_dir_tilted_xz`（`0de57535e7d841e29f7c8161a888b375`、`65cb00f32c524d9d80f277855b0a473c`、rev 1→2、1428.0972450906143/1428.0972450961724、dir=-1+sweep 270°）。三例 `preserved_feature_id=40` 保持、revision 恰好 +1、保存重载 true。
+
+### 未过项（如实记录，不得写成通过）
+
+`illegal_edits` 只执行到第一例 `illegal_dir_zero`（`kind=schema`），结果 `passed=false`、`failures=["volume_missing"]`。原始 JSON 形态：
+
+- 工具入参被 **schema 层显式校验拒绝**——pydantic `value_error`："Arc dir must be the strict integer +1 (counterclockwise) or -1 (clockwise) … input_value=0, input_type=int"；
+- **未产生作业**：`job_id=null`、`terminal_status=null`、`rollback=null`；
+- 模型未被破坏：`revision_before=3`、`revision_after=3`，`baseline_volume_mm3=1428.0972451017303` 保持。
+
+失败点在**判定证据链**而非拒绝行为：驱动在拒绝后调用 `creo_refresh_model` 取"拒绝之后的同源实测体积"，本次该结果块未带 `volume_mm3`（`measured_volume_mm3=null`），于是 `judge_illegal_edit` 记 `volume_missing` 并判失败。换言之，**这不是"作业失败"也不是"非法编辑被接受"**；但严格判定下该反例确实未通过，判定未过、**待查**。驱动随即 `raise AssertionError(row)`，其余 4 个非法例（`illegal_dir_float`、`illegal_zero_sweep`、`illegal_full_circle`、`illegal_open_profile`）与 stage 5 恢复编辑 + 保存重载**均未执行**。
+
+处置口径：保留现有严格判定（不放宽）；后续定位"schema 拒绝后如何取得同源实测体积"再重跑全量非法例与恢复阶段。本轮不得因"拒绝确实发生了"记为通过。

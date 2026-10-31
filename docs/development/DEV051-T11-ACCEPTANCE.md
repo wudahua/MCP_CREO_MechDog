@@ -588,3 +588,22 @@ SHA256 `d2de17487469f10fba9859a0459cfeb64e593537105c8d5a6df5be9bf829d58f`，驱�
   任一缺失保持 `failed`，回归不藏进边界标签）；案卷按 N05 `trigger_reproduced`
   同约定：边界命中是有效诊断、`passed=true`，`relief_geometry_verified` 另记。
   单元锁定 9 例；命令与退出码见 BUG-090 卡。实机重跑命令同卡（预期判定在卡内）。
+
+## 2026-10-31：N01 relief 第二轮实机复测（编排方串行）
+
+原始报告 `build/post090_live2_20261031T115830/n01relief/run1/report.json`，SHA256 `cefce8ed54488b0d860c7b587cd9dd35f48151b79d36098accc75fba5b5d643a`，`run_id=20261031T133009_e33744d9`，`mode=live`，`passed=true`，`stopped=null`，`material_scenario_passed=true`。
+
+### 逐例判定
+
+- **`relief_none`**（model `f5c640ff5bee4ebcae312f08a8443372`、底件 job `5ad732b693014902b5daa914a14d3479`、rev 1、42920.0 mm³）：`f_px`（job `87168b4503ad45459f9f36544fa408c5`）与 `f_nx`（job `a98d6447fab94e6fbf113df9ce7e3606`）自由端折边 succeeded，各 +18025.291234 mm³（误差 6.9e-7）、rev 1→2→3、重载 true；`f_ny` 失败并归 `known_t05_boundary`。案卷 `known_t05_boundary=["f_ny"]`、`relief_geometry_unverified=["f_ny","f_py"]`、`verdict="known_t05_boundary"`、`passed=true`。
+- **`relief_rect_1x1`**（model `ceb6abdd9a414fca98200cf08a1af5de`、底件 job `c2fc07c8972144698d66ebbdbb463279`）：同上两自由端墙成功（`f_px` job `07f1634e4a0145a480fcf6272f8e213e`、`f_nx` job `7c9be326190f4fc49d5320b96f7a0f4f`），`relief_echo` 齐全（type=rectangular、ends=both、side1/side2 宽深 1.0 mm、blind、`part_thickness_mm=1.0`、`width_at_least_thickness=true`、`corner_overlap_run_mm=77.46`、`depth_covers_corner_run=false`）；`f_ny` 失败归 `known_t05_boundary`，`relief_removed_mm3=2.0`（该值取自已失败的请求回显，非实测去料）。
+- **材料矩阵五案**：`mat_baseline`（`e248ffbafce84b89b4dd657960f0773b`）、`mat_rect_both_1x1`（`faca4b5e448744e39be2cafe9d5a17b3`）、`mat_rect_both_4x4`（`21fac055a70a4c87b15bcb9ef3fd1f6f`）、`mat_rect_side1_1x1`（`ae346760ce474692aaf4104941fac785`）、`mat_rect_side2_1x1`（`ac5ab90163744589aea7c6da8dbdaef9`）。五案底件均 succeeded、rev 1、42920.0 mm³，`wall_contract.part_thickness_mm=1.0`（`part_thickness_synced=true`），`f_px` 自由端建成（各 +18025.291234051932 mm³、重载 true），目标 `f_ny` 失败并归 `known_t05_boundary`，`verdict` 为 `{"status":"known_t05_boundary","passed":true,"evidence_class":"none","relief_geometry_verified":false}`，`reasons` 指明"目标折边被已证的 T05 边界挡住；此场景下释放几何不可观测"。矩阵的 `expected_delta_mm3`（0 / −1 / −16 / −1 / −1）全部未取得实测差（`measured_delta_vs_baseline_mm3=null`）。
+- **`free_rect_both_4x4`**（model `b6845c6048cf49ce9aeb7e27554d294e`、底件 job `4ae4f30dc1154e808be8aec94e9d5099`）：目标为自由端 `f_px`（job `71ef2f4526324dbfbcb86bf31f3e2361`）——**真实建成通过**，rev 1→2、+18025.291234051932 mm³、`saved_file_reloaded_and_verified=true`，`relief_echo` 与 `relief_element_echo` 齐全（side1/side2 宽深各 4.0 mm、blind、`length_type=-31`、`type=3`），`verdict.scenario="free"`、`passed=true`、`reasons=[]`。
+
+### T11 侧要点
+
+- **自由端 vs 材料端必须分开读**：自由端（`f_px`/`f_nx`）差分 0.000000 mm³、缺口面 0 个是**口径内的预期行为**（`profile_comparison` 中 `f_px`/`f_nx` 的 `notch_faces_without_relief=0`、`notch_faces_with_relief=0`、`measured_delta_mm3=0.0`、`expected_delta_mm3=-0.0`，`all_within_tolerance=true`）；材料端（本轮全部被 T05 边界挡住）**没有可观测的释放几何**。
+- 因此本轮**不构成"释放几何生效"的证据**。可确认的是：自由端释放请求被真实接受并建成、释放元素树回显与请求逐项一致（`relief_element_echo`）；不可确认的是材料端缺口是否被真实切出——`relief_geometry_verified=false`、`relief_geometry_unverified=["f_ny","f_py"]` 已如实记录。
+- 上一节"材料场景没有跑起来"的旧因已除：夹具边 ID 泄漏修复后底件不再失败，`f_px` 自由端四组全部建成。剩余阻塞仍只有一条——**第三墙在 T05 边界内**，与释放实现无关。
+- `end_trim_mm` 语义仍未定：N06 终验的 `trim_probe` 仍为 `trim_ignored`（完整墙与 20 mm 修剪墙增量同为 18025.291234051932 mm³，`setback_confirmed=false`），不能用于角部让位。
+- 状态口径不变：四壁不支持、corner relief/miter 未实现、释放在材料端未取得可观测几何，**FEAT-014 保持开放**。

@@ -229,3 +229,36 @@ Creo、未构建、未实机。
   `.\.venv\Scripts\python.exe tools\test_detail_feature_observation.py --live --confirm-session-usable --output build\post090_n04_<新runid>\report.json`；
   预期：九夹具逐例有判定行，不再出现 KeyError；结果缺顶层 revision 时报告为
   清晰驱动错误而不是崩溃。
+
+## 2026-10-31：N04 第二轮实机复测（编排方串行）
+
+原始报告 `build/post090_live2_20261031T115830/n04/run2/report.json`（SHA256 `714db02d…9fc2`，`run_id=20261031T133944_03b62f94`，`mode=live`，`native_acceptance=recorded`，`live_run=true`，`volume_tolerance_mm3=0.01`，`flip_pair_opposite_signs=true`，`provenance.source_fingerprint=ae5ec35b…1a4eb`）。本节只追加，不改写 2026-10-30～31 首轮记录。
+
+### run1 的夹具失败与修复（过程如实记录）
+
+首轮 `build/post090_live2_20261031T115830/n04/run1/report.json`（SHA256 `eb7622d0…79abc`）在 `draft_explicit_pull` 的底件创建阶段失败：`RuntimeError: base creation failed for draft_explicit_pull: … Toolkit call ProModelitemInit(board, id, t, &mi) failed with code -23 during execute_datum_axis`（job `a044dfcfe5fe4b8986953e8872773f99`）。根因是**夹具把 datum_axis 的引用硬编码成 `{"kind":"surface","id":1}`**，而实机不存在 surface id 1；`-23` 即 `PRO_TK_NOT_EXIST`。修复提交 `b5dce10` 改用默认基准面 2（X 法向）与 4（Y 法向）相交构造 Z 轴（与圆柱轴同轴），run2 全部通过。该修复只动夹具，不动原生语义。
+
+### run2 九夹具结果
+
+| 夹具 | model / 作业 | 实测材料变化 (mm³) | 树证 | 判定 |
+| --- | --- | --- | --- | --- |
+| `round_convex` | `6fccaa4d677e44acb10430af5d9d2d76` / `97f1a3614de8456c92c0c8b4ce8baea3` | **−38.62833848818991**（对上 −38.628330588459306，误差 7.9e-06） | applied=requested=1 | pass |
+| `round_concave` | `a8fec19200f14c6495d0b639607b0ba2` / `d2edc6f4485c40b982618e0aec763df9` | **+38.628301733198896**（对上 +38.628330588459306，误差 2.9e-05） | applied=requested=1 | pass |
+| `chamfer_three_face_pairs` | `9c22f813336946999ee65e1b17ce0e05` / `8a8e2b6c1e0c435cb00f78641e3c9a46` | **−120.00000000000364**（对上 −120.0，误差 3.6e-12） | applied=requested=3 | pass |
+| `draft_flip_false` | `579bc2acfa5840a1b6e29f163a120713` / `04a937bb6e484c9f9d44ee97f8f31a9e` | **+17.556230361033258**（对上 +17.556230360737217，误差 3.0e-10） | applied=requested=1 | pass |
+| `draft_flip_true` | `1deee2ff096a44b8bdb56653b637c8c5` / `e6d56733887246a29e8788377fd2e707` | **−15.41961220323752**（对上 −15.419612203499526，误差 2.6e-10） | applied=requested=1 | pass |
+| `draft_default_pull` | `a0b2b2a9163d46a0b8696c88b3dee2a1` / `ff0d3b51ab42473eb69b458e701c76d1` | **−15.41961220323752** | applied=requested=1 | pass（`pull_verdict=pass`） |
+| `draft_explicit_pull` | `2dbed55b07554e359663dcd8b7aa4c68` / `218a026bb8a744e2987e73eb08f2d65e` | **−15.41961220323752** | applied=requested=1 | pass（`pull_verdict=pass`） |
+| `batch_mid_failure` | `45397c2a2e4b4bb5977efc679c4ffd4c` / `2d81e427398e434dafa16a9378084ba4` | 首操作有读数 −38.62833848818991（`effect_status=rolled_back`） | — | `batch_verdict.status=pass` |
+| `zero_delta` | — | — | — | `not_applicable_live`（离线专属） |
+
+要点：
+
+- **拔模方向成对**：flip=false 为 **+17.556230361033258**、flip=true 为 **−15.41961220323752**，符号相反、幅度精确对上解析值（−15.419612203499526 / +17.556230360737217），`flip_pair_opposite_signs=true` 成立。flip 方向映射仍由"中性面朝向 + 实测符号"自证，未强设（外部 0.8.5 报告的 +17.564 / −15.406 为外部值，本机独立解析值以本表为准）。
+- **pull 方向回读**：缺省 pull 时 `neutral_plane` 与 `pull_direction` 同为 id 54（type 5，面）、`pull_vector.source=plane_normal`、向量 `[0,0,1]`；显式 pull 时 `pull_direction` 为 id 72（type 21，轴）、`pull_vector.source=axis_direction`、向量同为 `[0,0,1]`。两例 `pull_verdict=pass`。
+- **批中途失败按设计验证**：作业终态 failed、`rollback_succeeded=true`；第一操作（好圆角）**保留读数** −38.62833848818991 且 `effect_status=rolled_back`，第二操作（失败圆角）`material_measurement.status=unknown`、after 侧读数为 null，第三操作（尾随倒角）`execution_status=not_executed`、`effect_status=no_effect`——"首操作有读数、失败回滚、后续 not_executed"三条判读信号齐备。
+- **重载**：七例 `saved_file_reloaded_and_verified=true`（`batch_mid_failure` 为 false，因整作业失败，属预期）；`material_measurement` 全部 `status=measured`，查询码 before/after 均 0。
+
+### 未测范围
+
+`zero_delta`（合法零差值投影）为**离线专属**，实机不适用；单位矩阵 mm/in/混合/未知仍只由离线合成记录覆盖。外部 SDK 与其它 Creo 版本未测。本卡本节不改写 2026-10-30 的离线交付记录。

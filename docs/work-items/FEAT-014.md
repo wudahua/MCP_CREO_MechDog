@@ -170,3 +170,33 @@ T05 可交付可复现/未复现结论与根因证据，但只有四壁原生特
 - **单测**：`tests/unit/test_sheetmetal_box_live.py` 原生静态守卫新增 `adjacency_per_end_vertex_query`（锁定 `ProEdgeVertexdataGet` 在源码中），其余 11 项守卫继续通过。六个钣金/折边单测模块联测 233/233 通过；`dev_check --work-item FEAT-014` 通过；`bridge.py build` 重编译执行器成功。
 - **未测（实机，待编排方窗口）**：同上节清单；本轮新增观察点——两例失败 job 重跑时应看到 `FLANGE_ADJACENT_BEND_END/NB` 行给出折弯端弧边（曲线类型 3、半径 3.54、faces 含圆柱面 id）并触发 `adjacent_bend_ends` 拒绝；若端点面扇区或弧两面与预期不符，日志足以直接定位。
 
+## 2026-10-31：N06 终验实机通过——邻接明确拒绝已实机生效
+
+原始报告 `build/post090_n06_live_20261031T142644/report.json`（SHA256 `5fd12b29…fe768`，`run_id=20261031T142644_dc902bac`，`mode=live`，`passed=true`，`stopped=null`）。本节只追加，不改写上方 2026-10-28～31 的迭代记录。
+
+**邻接明确拒绝（`adjacent_bend_ends`）已在实机按设计生效**：第三墙不再进入再生失败，而是**创建前就被原生预检拒绝**，revision 不变。
+
+| 组 | 底板 model / 作业 | 墙作业 | rev | 结果 |
+| --- | --- | --- | --- | --- |
+| `ny_first` | `559909ffe92d4202b5d1ecc93f6599a5` / `d69ea37cbc1846418de8b2c32b989281` | `f_ny` `40aae64263a24e65b9e3d360bf435360` | 1→2 | **自由壁建成**，体积 42920.0→57293.61585482106，`saved_file_reloaded_and_verified=true`，`outcome=free_wall_built` |
+| `px_then_ny` | `6fb3d627e480477086c5c9db379344d6` / `9582ae64991648acba88fe512acaaf40` | `f_px` `a114cd70e0a94e30a1b90aa8c9d3d855` → `f_ny` `f706af6a78f1483c9a6ce20586605c15` | 1→2，2→**2 不变** | `f_ny` **fast-fail `adjacent_bend_ends_rejected`** |
+| `px_nx_then_ny` | `eb91bdf54c6d45a085087dc7a559b5de` / `d7557ac06ed04673861bb9ed3d50f693` | `f_px` `51886e0916b340bab6f4b815ee9812e6` → `f_nx` `42e5e30a9a0f4ca6b0f4b4d4b83fb597` → `f_ny` `94ea4ea25c5b42e3887aafe9688e41aa` | 1→2→3，3→**3 不变** | `f_ny` **fast-fail `adjacent_bend_ends_rejected`** |
+
+取证细节（原生 `flange_failure_evidence`，`stage="before_create"`）：`px_then_ny` 的 `f_ny` 附着边 id 197、长 181.46 mm，两端中 **end1** 命中——邻接弧边 201、半径 2.54 mm（= R2.54）、折弯面 [193]，在折弯退让界限 7.081 mm 内，end0 的邻边 125 是直边不命中；`px_nx_then_ny` 的 `f_ny` 附着边 id 296、长 177.92 mm，**两端均命中**（end0 邻接弧边 298/折弯面 [292]，end1 邻接弧边 201/折弯面 [193]）。两次拒绝的作业终态均为 failed、`toolkit_code=-1`、`rollback_succeeded=true`、`failed_stage=execute_sheetmetal_flange`，消息明确 "sheetmetal_flange rejected before create (failure_reason=adjacent_bend_ends) … 本构建不实现角部释放或斜接，故在提交前拒绝该墙"，并指明四壁尚不支持（FEAT-014 保持开放）。
+
+`trim_probe` 组仍为 `trim_ignored`：完整墙与 `end_trim_mm=20` 修剪墙体积同为 60945.29123405193（增量 18025.291234051932，与基线一致），`setback_confirmed=false`，候选分类中 `trim_ignored` 与基线相同、`setback_from_ends`=14917.482400023644、`length_from_section`=1553.9044166691294、`length_both_sides`=3107.808833338259 均不匹配——trim 语义**仍未确定**，不能用于角部让位。
+
+**能力边界不变**：报告 `capability_claim.four_walls_complete=false`；邻接拒绝是"已知边界按设计生效"，**不是四壁能力达成、也不是触发条件的复现**；corner relief / miter 仍未实现，3/4 仍是上限且第 3 墙被明确拒绝。
+
+**迭代历史（如实记录）**：本轮前已有两轮预检修复——①`ProEdgeNeighborsGet` 的轮廓邻边不保证分属两端，改用 `ProEdgeVertexdataGet` 按端扇区枚举（`582c1a3`）；②端点行被后续直边邻边覆盖导致 summary 取到 null 值崩溃，改为保留首个命中行并对 summary 判空（`b5dce10`）。此前两次实机（`build/post090_n06_live_20261031T134730/`、`build/post090_n06_live_20261031T142121/`）的第三墙仍是 `trigger_reproduced`（前者为再生失败 `feature_status=6`，后者为原生异常 "[json.exception.type_error.302] type must be number, but is null"），本轮 `142644` 才首次得到 `adjacent_bend_ends_rejected`。
+
+## 2026-10-31：N01 relief 第二轮实机复测（编排方串行）
+
+原始报告 `build/post090_live2_20261031T115830/n01relief/run1/report.json`（SHA256 `cefce8ed…643a`，`run_id=20261031T133009_e33744d9`，`mode=live`，`passed=true`，`stopped=null`）。本节只追加。
+
+- **relief_none / relief_rect_1x1 判 `known_t05_boundary`（passed=true）**：两案底板 42920.0 mm³、rev 1。`relief_none`（model `f5c640ff5bee4ebcae312f08a8443372`）与 `relief_rect_1x1`（model `ceb6abdd9a414fca98200cf08a1af5de`）的 `f_px`/`f_nx` 两道自由端折边均 succeeded（各 +18025.291234 mm³，误差 ~6.9e-7，重载 true），第三道 `f_ny` 失败并按双侧正证据归类为 `known_t05_boundary`（原生消息 "Regeneration produced a failed, suppressed or incomplete feature"、`rollback_succeeded=true`、revision 3→3）。案卷 `known_t05_boundary=["f_ny"]`、`relief_geometry_unverified=["f_ny","f_py"]`——**释放几何在受阻折边上仍不可观测，如实记为未验**。
+- **材料矩阵全部 `known_t05_boundary`**：`mat_baseline` 与四组 `mat_rect_*`（`mat_rect_both_1x1`、`mat_rect_both_4x4`、`mat_rect_side1_1x1`、`mat_rect_side2_1x1`）的底件均 succeeded、rev 1、体积 42920.0，`wall_contract.part_thickness_mm=1.0`（`part_thickness_synced=true`，`part_thickness_before_mm=3.71`），`f_px` 自由端建成（+18025.291234 mm³），目标 `f_ny` 失败并归 `known_t05_boundary`（`verdict.reasons`："目标折边被已证的 T05 边界挡住（附着边端部与既有折弯相邻）；此场景下释放几何不可观测"）。**relief 几何在这些场景下不可观测，如实记录，不冒充已验。**
+- **自由端释放真实建成通过**：`free_rect_both_4x4`（model `b6845c6048cf49ce9aeb7e27554d294e`，底件 job `4ae4f30dc1154e808be8aec94e9d5099`）的 `f_px` 自由端折边 succeeded，rev 1→2、+18025.291234051932 mm³，`saved_file_reloaded_and_verified=true`，`relief_echo` 与 `relief_element_echo` 齐全（side1/side2 宽深各 4.0 mm、blind、`length_type=-31`、`type=3`），`verdict.scenario="free"`、`passed=true`、`reasons=[]`。按自由端口径，**差分为 0 属预期**（`profile_comparison` 中 `f_px`/`f_nx` 的 `measured_delta_mm3=0.0`、`notch_faces_with_relief=0`），故此例证明的是"请求被真实接受并建成 + 元素树回显一致"，**不是"释放几何在材料端生效"**。
+
+释放能力总体状态不变：**自由端真实建成、元素回显一致，但材料端的释放几何本轮仍不可观测**（T05 边界挡住了第三墙）。四壁不支持、corner relief/miter 未实现的边界同样不变。
+
