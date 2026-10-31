@@ -195,3 +195,7 @@ merged = merge_reports(reports)  # source_fingerprint 不同会直接抛 ValueEr
 - 本窗口**未优化任何生产逻辑**，未承诺提速百分比；不涉及队列/重试（边界仍归 BUG-009）。
 
 离线产物：`build/post090_live_precheck_20261030T212525_b09a058e/n12_performance/report.json`（含 `protocol.classes/modes/sample_rule`、`observability`）。合并预检小结：同目录 `precheck.md`。
+
+## 2026-10-31 发布后补记：N12 large 样本已补满（追加，不改写上文）
+
+0.10.0 发布说明定稿时 large 两类各只有 n=2（第三轮被 "Model is not ready" 拦停，当时如实披露"未满"）。发布后编排方在新会话上补跑 `--classes large --reps 3`（run `build/post090_perf_large_20261031T150211/`，exit 0、六案例全完成、等价性全过）：large/batch n=3 中位 174.8s（145.8–185.7），large/single n=3 中位 327.0s（298.6–397.9）。与首轮（n=2 各类）合计 large 每类 5 个独立样本；small 每类 3。补跑期间发生一次通道死亡（connect -4 / exit 20，会话重启后恢复），样本已作为 BUG-091 新事例登记。两次运行为同受测源码、分开报告，不拼接为单一统计。
