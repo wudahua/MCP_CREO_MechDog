@@ -1142,7 +1142,13 @@ static J flange_adjacent_bend_end_evidence(const J &op) {
             ProGeomitemdata *data = nullptr;
             ProError data_code = ProEdgeDataGet(nb, &data);
             ProCurvedata *curve = data ? PRO_CURVE_DATA(data) : nullptr;
-            int curve_type = curve ? curve->type : -1;
+            // ProCurvedata is a union (ProCurvedata.h) - it has no top-level
+            // "type" member; the SDK accessor ProCurvedataTypeGet reads the
+            // type shared by every union arm (ProObjects.h: PRO_ENT_ARC = 3).
+            ProEnttype curve_ent = PRO_ENT_NONE;
+            int curve_type = (curve && ProCurvedataTypeGet(curve, &curve_ent) == PRO_TK_NO_ERROR)
+                                 ? (int)curve_ent
+                                 : -1;
             double arc_radius = 0;
             ProVector arc_v1, arc_v2, arc_origin;
             double arc_start = 0, arc_end = 0;
