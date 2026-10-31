@@ -125,3 +125,50 @@ ruff：`tools/test_t07_preview.py`、`tests/unit/test_t07_preview.py` 均 `All c
 
 - 冲突面：`tools/test_t07_preview.py` 与 `tests/unit/test_t07_preview.py` 为 T07/T08A/T08C 共用文件，本次为**追加**空件/钣金夹具与唯一输出目录，未改既有四例的断言与顺序；`native/preview.h` 与 `src/creo_mechdog/preview.py` **未改**，接口无变化。
 - 报告路径：本次离线证据在 `build/post090_n11/`（材料核对与作业语料扫描 JSON），属本机生成物，不入源码包。
+
+## 2026-10-31 N11 离线：钣金对照夹具改为钣金模型（F3c）
+
+分支 codex/dev051-feedback070，基线 5018f02。**离线驱动侧修复，未实机、未构建、未改生产代码。**
+
+### 根因
+
+N11 实机中 `sheetmetal_wall` 一例被入口拒绝：
+
+```
+Sheetmetal operations require an MCP sheetmetal model
+```
+
+`tools/test_t07_preview.py` 的 `run()` 原用 `self.run_case("sheetmetal_wall", sheetmetal_plan(), None)`，`previous=None` 使 `Acceptance.plan()` 不带 `model_id`，`creo_execute_plan` 于是走**新建模型**路径，模型类型是默认的 `part`。`generic_bridge.py:267-268` 的准入规则要求 `sheetmetal_*` 操作的模型 `model_type == "sheetmetal"`，因此在建壁之前就被拒，钣金对照根本没有进入栅格捕获路径。
+
+### 修复
+
+- 新增 `sheetmetal_model_name(run_id)`：按 run_id 派生唯一模型名（`t07_sheetmetal_<8位十六进制>`），落在仓库命名规则 `^[a-z0-9][a-z0-9_]{0,30}$` 内，跨运行不重名。
+- 新增 `Acceptance.sheetmetal_part_case(model_name)`：先用 `creo_new_sheetmetal`（`model_type="sheetmetal"`）建模型，等到作业终态并取其 `model_id` / `revision`；终态非 `succeeded` 直接抛错，**不再**继续提交壁计划。模型 revision 取终态回读值（新模型自 0 起，创建作业成功后为 1），不写死。
+- `run()` 改为：`creo_new_sheetmetal` 建出钣金模型 → 以该模型的 `model_id` + `expected_revision` 提交 `sheetmetal_plan()` 的 sketch + `sheetmetal_wall`。壁计划本身**不再**作为新模型提交，因此不会创建出 `part` 模型。
+- `sheetmetal_plan()`、`sheetmetal_volume()`（185 × 1 × 232 = 42 920 mm³）、唯一输出目录与"空件→实体→钣金"三场景顺序**均未改动**；空件场景仍用 `creo_new_part`（0.8.x 反馈点名的入口），仍只记录不断言。
+
+### 单元锁定
+
+`tests/unit/test_t07_preview.py` 新增 `SheetmetalFixture`（3 例）：
+
+1. 模型名合法且随 run_id 唯一；
+2. 脚本化 MCP 客户端下，调用序列为 `creo_new_sheetmetal` → `creo_execute_plan(model_id=..., expected_revision=1)`，壁计划以 `["sketch", "sheetmetal_wall"]` 两步提交且**不带** `model_type`；
+3. 创建作业失败时**不**提交壁计划（不带着坏 revision 继续）。
+
+### 离线证据
+
+| 命令 | 结果 |
+| --- | --- |
+| `.venv\Scripts\python.exe -m unittest tests.unit.test_t07_preview -v` | 39/39 OK，退出码 0 |
+| `.venv\Scripts\python.exe tools\test_t07_preview.py` | 退出码 0；离线提示夹具体积 disk=60318.579、after_cut=56548.668、after_pattern=45238.934、sheetmetal_wall=42920.000 mm³，未连接、未捕获 |
+
+### 实机重跑命令与预期判定
+
+```powershell
+.\.venv\Scripts\python.exe tools\test_t07_preview.py --live --confirm-session-usable `
+  --output build\post090_n11_preview\<run_id>\report.json
+```
+
+预期：`sheetmetal_wall` 一例**不再**被 "Sheetmetal operations require an MCP sheetmetal model" 拒绝——报告的 `sheetmetal_model` 段记录创建作业的 `job_id` / `model_id` / `revision` / `status`，随后壁计划在该模型上执行并进入同一条栅格捕获路径；`empty_part` 与 `empty_part_solid` 两例的记录方式与判定不变（空件捕获允许失败、只记录不断言）。文件写出与图像内容仍分两栏判定，图像内容留人工目视。
+
+**未实机**：本次未连接 Creo，未提交任何 Toolkit 作业。

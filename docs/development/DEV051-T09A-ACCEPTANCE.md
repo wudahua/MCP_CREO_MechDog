@@ -207,3 +207,52 @@ Windows 11 Enterprise x64 / PowerShell；Python 3.12.14（`.venv`）；ruff 0.17
 ## 2026-10-30～31 N09 实机复测追加
 
 分支 codex/dev051-feedback070，基线 7288f2f，runid 20261030T234952。双组件 label→feature ID 40/43 创建通过；重载身份比较遭字典排序 TypeError，删除重插与 ID 重排未执行。 完整 job_id/model_id/revision、原始错误、命令、报告路径与 SHA256 见 [七段实机总报告](../development/POST090-LIVE-SEVEN-SEGMENTS-2026-10-31.md)；原始 JSON 留在 build/post090_live_20261030T234952/，未入库。未重放已受理作业，会话保持运行。
+
+## 2026-10-31 N09 离线：重载身份比较的 TypeError 修复（F3a）
+
+分支 codex/dev051-feedback070，基线 5018f02。**离线驱动侧修复，未实机、未构建、未改生产代码。**
+
+### 根因
+
+`tools/test_component_labels_live.py` 的重载比较写成 `sorted(map(identity_of, rows)) == sorted(map(identity_of, rows2))`，而 `identity_of` 返回的元组首项 `identity` 是 **dict**。Python 的 `sorted` 要求元素可比较，dict 之间无序，比较时抛：
+
+```
+TypeError: '<' not supported between instances of 'dict' and 'dict'
+```
+
+崩溃点在 `cross_job` 用例的重载身份比较处，因此双组件创建（已通过）之后的 `rename_reinsert` 与 `id_renumbering` 未执行。比较的**语义**（重载前后是同一组身份镜像）本身没问题，错的只是排序键。
+
+### 修复
+
+`tools/test_component_labels_live.py` 新增两个模块级函数：
+
+- `identity_sort_key(row)`：把镜像涉及的 `identity.model_id`、`identity.feature_id`、`source_model_id`、`source_revision` 四个字段按 `json.dumps(..., sort_keys=True)` 序列化为**稳定字符串键**。canonical JSON 是本仓库既有的规范化写法（`json.dumps(..., sort_keys=True)`），且与 dict 的键序无关。
+- `identity_mirrors_unchanged(before, after)`：两侧各取键、排序后比较。
+
+比较语义不变：仍是"两组身份镜像相同"，只是不再依赖 dict 的可排序性。
+
+### 单元锁定
+
+`tests/unit/test_component_labels_live.py` 新增 `IdentityMirrorComparisonTests`（4 例）：
+
+1. 排序键是稳定字符串且**任何输入都不抛异常**（原崩溃点）；
+2. 同一组镜像换序后仍判定相等；
+3. `identity.feature_id` 改变 → 不等；
+4. `source_revision` 改变 → 不等。
+
+### 离线证据
+
+| 命令 | 结果 |
+| --- | --- |
+| `.venv\Scripts\python.exe -m unittest tests.unit.test_component_labels_live -v` | 15/15 OK，退出码 0 |
+| `.venv\Scripts\python.exe tools\test_component_labels_live.py` | 退出码 0；离线报告 `build/component_labels/<runid>/report.json`，`contract_failures=[]` |
+
+### 实机重跑命令与预期判定
+
+```powershell
+.\.venv\Scripts\python.exe tools\test_component_labels_live.py --live --confirm-session-usable --output build\post090_live_<runid>\n09_component_labels\report.json
+```
+
+预期：`cross_job` 重载后 `identity_mirrors_unchanged=true`（不再抛 TypeError），`saved_file_reloaded_and_verified=true` ∧ 标签集合不变；随后 `rename_reinsert` 与 `id_renumbering` 两例得以执行（此前被崩溃阻断）。`id_renumbering` 的"半场景"限制不变：原生拒绝该保存，只能观察拒绝，**不得整体记为实机通过**。
+
+**未实机**：本次未连接 Creo，未提交任何 Toolkit 作业。

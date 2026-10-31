@@ -164,3 +164,111 @@ oracle 假设与风险：平底孔、深度自放置面 overall 量取、完整�
 ## 2026-10-30～31 N10 实机复测追加
 
 分支 codex/dev051-feedback070，基线 7288f2f，runid 20261030T234952。3 盲孔重载 true，但严格几何 oracle 未通过；后续方向用例因 31 字符模型名约束中断，尺寸编辑与翻向回滚未执行。 完整 job_id/model_id/revision、原始错误、命令、报告路径与 SHA256 见 [七段实机总报告](../development/POST090-LIVE-SEVEN-SEGMENTS-2026-10-31.md)；原始 JSON 留在 build/post090_live_20261030T234952/，未入库。未重放已受理作业，会话保持运行。
+
+## 2026-10-31 N10 离线：模型名修复与 oracle 定性（F3b）
+
+分支 codex/dev051-feedback070，基线 5018f02。**离线驱动侧修复，未实机、未构建、未改 `native/` 或任何生产代码。**
+
+### 1. 模型名超长（中断原因）
+
+`tools/test_native_countersink.py` 原用 `unique_name(f"t12_{case_key}")` 生成模型名，`unique_name` 再追加 `_` + 6 位十六进制。`direction_side_normal` 因此拼出 `t12_direction_side_normal_193146`（32 字符），超出 `bridge.py` 的 `MODEL_NAME = [a-z0-9][a-z0-9_]{0,30}`（最多 31 字符），该作业被入口拒绝，方向用例及其后的翻向守卫、尺寸编辑均未执行。
+
+修复：新增 `MODEL_NAME_TAGS` 短标签表与 `model_name_for(case_key)`。每个用例一个 ≤21 字符标签，`unique_name` 后总长 ≤28（`MODEL_NAME_MAX_LENGTH`）；未注册用例键直接 `ValueError`，不再静默生成长名。单元锁定 `tests/unit/test_native_countersink.py::ModelNameTests`（3 例）：生成名长度与字符集、标签 + 7 ≤ 28、未注册键被拒。
+
+### 2. Oracle 定性结论：**真实缺陷**（生产侧语义与冻结契约矛盾），不是 oracle 写错
+
+> **结论：契约「盲孔 depth 为 overall（自放置面到最深点）」与原生实测矛盾，属生产侧真实缺陷。按本卡「命中备选不通过……须带报告回改口径，不静默采用」的规则，本次只记录证据与结论交编排方决策，不修生产。**
+
+#### 2.1 三种盲孔的实测数值（2026-10-30 runid 20261030T234952，板 50×50×10）
+
+| 用例 | 参数 | 实测去料 (mm³) | `contract_flat_overall` | 差值 | `matched_variant` |
+| --- | --- | --- | --- | --- | --- |
+| `blind_straight` | Ø6，depth 7 | 197.92033717615413 | 197.92033717615698 | **2.8e−12** | `contract_flat_overall` ✓ |
+| `blind_counterbore` | Ø6 depth 8 + Ø10×2 | 343.7145697324486 | 326.7256359733385 | **+16.98893375911** | `drill_tip_118_below_depth` |
+| `blind_countersink` | Ø6 depth 8 + Ø10@90° | 289.26029707022826 | 272.2713633111154 | **+16.98893375911** | `drill_tip_118_below_depth` |
+
+差值恰为 Ø6 的 118° 钻尖锥体：
+
+```
+tip_height = r / tan(59°) = 3 / tan(59°) = 1.8025818570826808 mm
+tip_volume = π·r²·h/3    = π·9·1.8025818570826808/3 = 16.98893375911559 mm³
+
+343.7145697324486 − 326.7256359733385 = 16.98893375911007   (残差 5.5e−12)
+289.26029707022826 − 272.2713633111154 = 16.988933759112854 (残差 2.7e−12)
+```
+
+第三备选 `shoulder_measured_drilldepth`（沉孔钻深自沉台底计，383.274303737955）与实测残差 39.56 mm³，已排除。**主备选公式没有标反**：`contract_flat_overall` 是"平底、depth 自放置面"，`drill_tip_118_below_depth` 是"平底 + 118° 钻尖"，两者定义与本卡的冻结契约一致。
+
+#### 2.2 面数与几何证据（与"肩深 + 钻尖超出"一致）
+
+以 6 面板为基准：
+
+| 用例 | 实测面数 | 实测面增量 | 旧预期面增量 | 旧预期错在哪 |
+| --- | --- | --- | --- | --- |
+| `blind_straight` | 9 | **+3** | +2 | 回转面沿过孔轴的缝裂成两个半面；旧预期按"回转面 = 1 面"计 |
+| `blind_counterbore` | 13 | **+7** | +4 | 同上，另漏 118° 钻尖的两个半锥面 |
+| `blind_countersink` | 12 | **+6** | +3 | 同上 |
+
+沉孔例实测 surface 拓扑（job `3d425e823e1f450ba2ee03b0d8d17541`）：Ø6 孔壁两半 z∈[2,8]、Ø10 沉台壁两半 z∈[8,10]、沉台底平面 z=8、118° 锥面两半（type 37）z∈[0.19741814291731785, 2]。
+
+```
+锥顶 z = 0.19741814291731785
+总深   = 10 − 0.19741814291731785 = 9.802581857082682 mm = 8 (请求 depth) + 1.8025818570826808 (钻尖)
+孔轴向 = z 10 → z 2，即 8 mm = 请求的 depth
+```
+
+即请求的 depth 8 对应**沉台底（肩面）**所在深度，钻尖再往下 1.8026 mm。
+
+#### 2.3 与原生实现、SDK 的对应
+
+`native/generic.cpp:2296` 在 custom hole 分支写入 `PRO_E_HLE_DEPTH_DIM_TYPE = PRO_HLE_DEP_SHOULDER_DIM_SCHEME`。Creo 12.4 `ProHole.h:1040-1041`：
+
+```
+PRO_HLE_DEP_SHOULDER_DIM_SCHEME = -1, /* Dimension till shoulder */
+PRO_HLE_DEP_TIP_DIM_SCHEME      = 18  /* Dimension till tip */
+```
+
+`ProHole.h:589-595` 说明该元素在 `PRO_E_HLE_DEPTH == PRO_HLE_STD_VAR_DEPTH` 时保存盲钻深度标注方案，**默认即 till-shoulder**。原生明确选了"自肩面量"，与冻结契约"depth 为 overall（自放置面到最深点）"相反。
+
+两条分支须分开看：custom 分支（沉孔/沉头）走 `PRO_HLE_CUSTOM_TYPE` + `PRO_E_HLE_DEPTH`/`PRO_E_HLE_DRILLDEPTH`，带钻尖；plain 分支（直孔）走 `PRO_HLE_NEW_TYPE_STRAIGHT` 的旧直孔语义，实测平底、深度自放置面起算，与 overall 一致（残差 2.8e−12）——但 plain 分支并不是本卡 custom hole 契约所描述的对象。
+
+#### 2.4 判定与待决事项（交编排方）
+
+- 若契约 "depth = overall" 保持不变 → 需改生产：custom 分支改用 `PRO_HLE_DEP_TIP_DIM_SCHEME`，或明确 depth 的计法。
+- 若生产行为保持不变 → 需改契约文档与主 oracle：depth 语义改为"肩深"，主 oracle 改为钻尖变体。
+- **本次两者都不改**：驱动仍以 `contract_flat_overall` 为唯一判定基准，`matched_variant` **不放松**；`drill_tip_118_below_depth` 只作诊断上报。实机重跑时这三例仍会判失败——这是有意的，等口径决策。
+
+### 3. 配套的驱动/夹具修正（不改判定语义）
+
+- **面数 oracle 拆分**：`oracle_faces`（契约形状，平底）与 `oracle_faces_native`（原生形状，钻尖两半锥面）分开。判定用 native 形状，因为面数是**实测拓扑**而非契约语义；契约形状保留在离线报告中作对照。
+- **圆柱几何改用并集 bbox**：原生把每个回转面沿过孔轴的缝裂成两个半面，单个半面的 bbox 中心并不在孔轴上（旧驱动因此误报 "center axis1 26.5 != 25.0"）。新增 `cylinder_groups`，按（半径，轴向符号无关）分组后取**并集 bbox**，才是真正框住孔的盒子。
+- **新增深度语义探针**：`hole_depth_evidence` / `depth_semantics` 从实测 surface 的 bbox 直接算孔深（bore 深、锥深、总深），并判定读法为 `overall_flat` / `shoulder_plus_tip` / `other`，写入报告的 `depth_evidence` / `depth_semantics` 字段。实机重跑可直接看到口径结论，不必再手工反推。
+- 六例保留，`matched_variant` 判定与体积判定分开且均未放松。
+
+### 4. 离线证据
+
+| 命令 | 结果 |
+| --- | --- |
+| `.venv\Scripts\python.exe -m unittest tests.unit.test_native_countersink -v` | 29/29 OK，退出码 0 |
+| `.venv\Scripts\python.exe tools\test_native_countersink.py` | 退出码 0；离线报告 `build/native_countersink/<runid>/report.json`（含 `faces_added_over_plate.contract` / `.native`、`depth_semantics_measured_2026_10_30`） |
+
+### 5. 实机重跑命令与预期判定
+
+```powershell
+# 默认：6 例余项全跑
+.\.venv\Scripts\python.exe tools\test_native_countersink.py --live --confirm-session-usable --output build\post090_live_<runid>\n10_countersink\report.json
+
+# 分段（可选）
+.\.venv\Scripts\python.exe tools\test_native_countersink.py --live --confirm-session-usable --case blind_counterbore --output build\post090_live_<runid>\n10_countersink\cbore\report.json
+```
+
+预期：
+
+- 模型名不再超长，方向、翻向守卫、尺寸编辑三例**首次获得执行机会**（此前被入口拒绝阻断）。
+- `blind_straight`：`matched_variant=contract_flat_overall`、`depth_semantics=overall_flat`、面增量 +3、Ø6 并集 bbox z∈[3,10] 且中心 (25,25) —— **预期通过**。
+- `blind_counterbore` / `blind_countersink`：`matched_variant=drill_tip_118_below_depth`、`depth_semantics=shoulder_plus_tip`、面增量 +7 / +6、Ø6 并集 bbox z∈[2,8]、Ø10 z∈[8,10] —— **体积与 `matched_variant` 两项预期仍判失败**（契约口径未定，按卡规则不静默采用备选）；面数与轴/中心项预期通过。
+- `direction_side_normal`：轴平行 +X，Ø6 并集 bbox x∈[0,7]、中心 (25,5)。
+- `direction_flip_guard`：作业级失败 + `rollback_succeeded=true` + 模型体积/面数不变 + 恢复孔通过。
+- `edit_dimension_values`：真实 dimension ID 编辑直径 6→7、沉台深 2→3，编辑后 revision 变化；**注意**该例同为 custom 分支，其 create/edit 两阶段的体积与 `matched_variant` 项预期同样受第 2 节口径影响。
+
+**未实机**：本次未连接 Creo，未提交任何 Toolkit 作业。
