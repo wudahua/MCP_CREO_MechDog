@@ -372,3 +372,11 @@ GUI 控制接口不可用，无法确认菜单、视图和对话框可操作；�
 
 本轮没有 trim 量测，`end_trim_mm` 语义仍仅有 10/30 首跑的 `trim_ignored` 观察；修复后的 `ny_first`、`px_then_ny`、`px_nx_then_ny` 均未执行，181.46 mm 与 232 mm 板顶边选择、触发条件复现、`FLANGE_FAILURE_EVIDENCE`、回滚和保存重载均未复验。**给 N06 的机理结论：**无新增附着边端部/邻接折弯、截面越界或相邻料重叠证据，内部机理仍未定；不据本次预检推断角部方案。会话保持运行；Creo 9/10、WorkBuddy 黑盒及四壁能力未验。
 
+## 2026-10-31：N05 单次重启后正式重跑（追加，更新当前实测口径）
+
+分支 `codex/dev051-feedback070`，执行前提交 `794ad07`，执行器 `build/source.sha256=19036d6467e69320e3d10a999c06fd68a2e26aef824c8021399aae18dbb27ac6`；其他工作区内容未触碰。按本次授权以 `creo_startup.py` 的 Explorer/PSF 路径只请求一次启动，新四进程出现；正式驱动确认 `startup=ready/connected=true`、`session.connected=true` 后提交。唯一命令 `.\.venv\Scripts\python.exe tools\test_sheetmetal_box_live.py --live --confirm-session-usable --output build\post090_n05_live_20261031T114634_restart\report.json`，run_id `20261031T114635_d85e4c3e`，exit 0；报告 SHA256 `F39DBCC161F18398FB2F8B62BC1DBAB876833079D964326C14B8D2F69A87346F`。此前 R1 连接失败与编排方旧进程处置见 BUG-091；本次没有再次重启、清保护或重提。
+
+trim 先行：无 trim / `end_trim_mm=20` 的 fresh +X 折边均 succeeded、rev 1→2、增量同为 18025.291234051932 mm³、保存重载 true，故仍判 **`trim_ignored`**，`trimmed_20` 对照冻结。`ny_first` 的 −Y 自由顶边 185 mm，job `61a584f8a0b0413aaaa718cc846c90da` 成功、Z 增长 80 mm、重载 true。`px_then_ny` 的 `f_ny` job `36defb2ad3ca400abd7b65f5ef839cc7` 确实选中 181.46 mm 板顶 edge 197（此前的 1 mm rim 选边缺陷已排除），rev 2→2 failed、体积恢复、回滚 true；`px_nx_then_ny` 的 `f_nx` job `000c1f474c94415c96509afcf82e82b9` 确定性选中 232 mm 顶边并成功，随后 `f_ny` job `1e8f8ed96f6e4719874393a9f56f82d0` 选中 177.92 mm 板顶边，rev 3→3 failed、体积恢复、回滚 true。两组均为真实提交后的 `trigger_reproduced`，不是 `driver_edge_selection_error`；没有 busy、新 unknown 或 180 s 未终态。失败墙无成功保存重载，成功墙重载 true，`four_walls_complete=false`。
+
+原生日志两处 `FLANGE_FAILURE_EVIDENCE` 均记录 `stage=after_regenerate`、`feature_status=6`、`geometry_item_count=0`，边长/端点与驱动检查一致，相邻面型 1 SIDE / 2 FACE-green；但报告汇总的 `native_failure_evidence=null`、`stage_feature_state.line_found=false` 漏取了这些原始行。给 N06 的结论仅到**真实板顶边上的端部邻接折弯触发特征未再生**；截面越界或相邻料重叠仍不能区分，角部方案不能据此定型。逐组 model/job ID、revision、体积、取证字段、原始日志 SHA256 与重启证据见 [N05 实机记录](DEV052-N05-LIVE-2026-10-30.md#2026-10-31单次重启后的-n05-修复复验追加)。本次 `passed=true` 表示探针完成且诊断成立，不表示四壁能力完成；新会话留在运行。
+
