@@ -46,33 +46,78 @@ def oracle_removed(diameter: float, depth: float, option: dict) -> float:
     return base
 
 
+def oracle_tip_height(diameter: float, angle: float = 118.0) -> float:
+    """Height of the conical drill point below the flat bottom of the bore."""
+    radius = diameter / 2.0
+    return radius / math.tan(math.radians(angle / 2.0))
+
+
 def oracle_tip_extra(diameter: float, angle: float = 118.0) -> float:
     """Volume below the flat depth if the drill end is a conical tip."""
     radius = diameter / 2.0
-    height = radius / math.tan(math.radians(angle / 2.0))
+    height = oracle_tip_height(diameter, angle)
     return math.pi * radius * radius * height / 3.0
 
 
 def oracle_faces(option: dict, blind: bool) -> int:
-    """Faces added over a 6-face plate: bore wall, flat bottom, seat, sink cone."""
-    delta = 1
+    """Faces the contract hole adds to the plate.
+
+    Every revolved surface of a native hole arrives as two seam-split half
+    faces (the seam lies in the plane through the hole axis), so the bore
+    wall, the seat wall and the sink cone each count twice. A flat bottom
+    and a seat floor are one plane each.
+
+    The contract blind hole ends in a flat bottom at the requested overall
+    depth. The native custom hole instead ends in a 118 degree drill point
+    (two half-cone faces), which is the visible signature of its till-shoulder
+    depth reading; see :func:`oracle_faces_native`.
+
+    Measured on Creo 12.4.0.0: the plain blind hole +3, the through
+    counterbore +5 and the through countersink +4 match this count, while
+    the blind counterbore measures +7 and the blind countersink +6 because
+    the drill point replaces the flat bottom.
+    """
+    faces = 2  # the bore wall, two half-cylinder faces
     if blind:
-        delta += 1
+        faces += 1  # the flat bottom plane
     if "counterbore" in option:
-        delta += 2
+        faces += 3  # the seat wall halves and the seat floor plane
     if "countersink" in option:
-        delta += 1
-    return delta
+        faces += 2  # the countersink cone halves
+    return faces
+
+
+def oracle_faces_native(option: dict, blind: bool) -> int:
+    """Faces the native hole adds, with its drill point instead of a flat bottom.
+
+    The custom branch builds a 118 degree drill point below the bore, so its
+    blind hole carries two half-cone faces where the contract expects the one
+    flat bottom plane. The plain branch is the legacy straight hole and keeps
+    its flat bottom.
+    """
+    faces = oracle_faces(option, blind)
+    if blind and ("counterbore" in option or "countersink" in option):
+        faces += 1
+    return faces
 
 
 def oracle_variants(diameter: float, depth: float, option: dict) -> dict:
     """Named removable-volume references; the contract one is judged.
 
     ``contract_flat_overall`` is the frozen contract (flat bottom, ``depth``
-    overall from the placement face). The others diagnose native semantics
-    that are not yet verified and never pass a case on their own: a 118-degree
-    drill tip below the flat depth, or a counterbore whose drill depth is
-    counted from the seat ("till shoulder") instead of the placement face.
+    overall from the placement face). The others diagnose native semantics:
+    a 118-degree drill tip below the flat depth, or a counterbore whose drill
+    depth is counted from the seat ("till shoulder") instead of the placement
+    face.
+
+    Measured on Creo 12.4.0.0 (2026-10-30 live run, N10): the custom hole
+    path removes exactly ``contract_flat_overall + drill_tip_118_below_depth``
+    (residual 5.5e-12 mm3 for the counterbore case), so the native reads
+    ``depth`` as the depth to the shoulder plus a 118-degree drill point
+    beyond it. The plain branch (no counterbore, no countersink) is the
+    legacy straight hole, which has a flat bottom and no drill point, and it
+    matches the contract oracle to 2.8e-12 mm3. The variant is reported,
+    never silently adopted: the frozen contract stays the judged reference.
     """
     flat = oracle_removed(diameter, depth, option)
     variants = {
@@ -108,6 +153,111 @@ def cylinder_surfaces(snapshot: dict, radius: float, tol: float = 1e-3) -> list:
             if abs(item["radius"] - radius) <= tol:
                 found.append(item)
     return found
+
+
+def _canonical_axis(axis) -> tuple:
+    """A sign-independent key for a direction, so antiparallel halves group."""
+    if not (isinstance(axis, list) and len(axis) == 3):
+        return ()
+    values = [round(float(value), 6) for value in axis]
+    for value in values:
+        if abs(value) > 1e-9:
+            return tuple(-item if value < 0 else item for item in values)
+    return tuple(values)
+
+
+def cylinder_groups(snapshot: dict, radius: float, tol: float = 1e-3) -> list:
+    """The cylinders of one radius, one entry per hole axis.
+
+    The native splits every revolved surface into two seam-split half faces,
+    so a single hole appears as two cylinder records whose own bounding
+    boxes each cover only half of the bore and whose centres sit off the
+    hole axis. The union of the halves frames the hole, so the group carries
+    the union bounding box and the faces it was merged from.
+    """
+    groups: dict[tuple, dict] = {}
+    for item in cylinder_surfaces(snapshot, radius, tol):
+        group = groups.setdefault(
+            (radius, _canonical_axis(item.get("axis"))),
+            {"radius": radius, "axis": item.get("axis"), "faces": [], "bbox": None},
+        )
+        group["faces"].append(item)
+        bbox = item.get("bbox")
+        if not (isinstance(bbox, list) and len(bbox) == 2):
+            continue
+        if not all(isinstance(corner, list) and len(corner) == 3 for corner in bbox):
+            continue
+        if group["bbox"] is None:
+            group["bbox"] = [list(bbox[0]), list(bbox[1])]
+            continue
+        for index in range(3):
+            group["bbox"][0][index] = min(group["bbox"][0][index], bbox[0][index])
+            group["bbox"][1][index] = max(group["bbox"][1][index], bbox[1][index])
+    return list(groups.values())
+
+
+def cone_surfaces(snapshot: dict) -> list:
+    """Inspection surface records that are cones (a drill point or a sink)."""
+    inspection = snapshot.get("inspection") if isinstance(snapshot.get("inspection"), dict) else {}
+    found = []
+    for item in inspection.get("surfaces") or []:
+        if isinstance(item, dict) and item.get("type") == 37:
+            found.append(item)
+    return found
+
+
+def hole_depth_evidence(
+    snapshot: dict, placement_value: float, axis_index: int = 2, direction: int = -1
+) -> dict:
+    """The measured depth of the hole, in millimetres from its placement face.
+
+    ``direction`` is the drilling direction along ``axis_index``: ``-1`` for a
+    hole that goes down (the placement face is the high end), ``+1`` for one
+    that goes up. A blind hole that carries a 118 degree drill point reaches
+    deeper than its cylindrical walls, so the deepest cone and the deepest
+    cylinder are reported separately.
+    """
+    inspection = snapshot.get("inspection") if isinstance(snapshot.get("inspection"), dict) else {}
+    surfaces = [item for item in (inspection.get("surfaces") or []) if isinstance(item, dict)]
+    bore_depths = []
+    cone_depths = []
+    for item in surfaces:
+        bbox = item.get("bbox")
+        if not (isinstance(bbox, list) and len(bbox) == 2):
+            continue
+        if not all(isinstance(corner, list) and len(corner) == 3 for corner in bbox):
+            continue
+        is_cylinder = isinstance(item.get("radius"), (int, float))
+        if not (is_cylinder or item.get("type") == 37):
+            continue
+        depth = (
+            placement_value - float(bbox[0][axis_index])
+            if direction < 0
+            else float(bbox[1][axis_index]) - placement_value
+        )
+        (bore_depths if is_cylinder else cone_depths).append(depth)
+    return {
+        "bore_depth_max": max(bore_depths) if bore_depths else None,
+        "cone_depth_max": max(cone_depths) if cone_depths else None,
+        "total_depth": max(bore_depths + cone_depths) if bore_depths or cone_depths else None,
+    }
+
+
+def depth_semantics(evidence: dict, expected_depth: float, tip_height: float) -> str:
+    """Which depth reading the measured hole follows.
+
+    ``overall_flat`` places the deepest point of the hole exactly
+    ``expected_depth`` below the placement face; ``shoulder_plus_tip`` places
+    the cylindrical walls there and the drill point ``tip_height`` below it.
+    """
+    total = evidence.get("total_depth")
+    if total is None:
+        return "unknown"
+    if abs(total - expected_depth) <= 0.05:
+        return "overall_flat"
+    if tip_height and abs(total - (expected_depth + tip_height)) <= 0.05:
+        return "shoulder_plus_tip"
+    return "other"
 
 
 def axis_is_parallel(vector, normal, tol: float = 1e-3) -> bool:
@@ -221,12 +371,21 @@ class NativeCountersinkTest(unittest.TestCase):
         self.assertAlmostEqual(edited, 428.0419990516093, places=6)
 
     def test_face_deltas_and_variants(self):
-        self.assertEqual(oracle_faces({}, blind=False), 1)
-        self.assertEqual(oracle_faces({}, blind=True), 2)
-        self.assertEqual(oracle_faces({"counterbore": {"diameter": 10, "depth": 2}}, False), 3)
-        self.assertEqual(oracle_faces({"counterbore": {"diameter": 10, "depth": 2}}, True), 4)
-        self.assertEqual(oracle_faces({"countersink": {"diameter": 10, "angle": 90}}, False), 2)
-        self.assertEqual(oracle_faces({"countersink": {"diameter": 10, "angle": 90}}, True), 3)
+        # The contract shape keeps its flat bottom; the native custom hole
+        # replaces it with a 118 degree drill point (two half-cone faces).
+        self.assertEqual(oracle_faces({}, blind=False), 2)
+        self.assertEqual(oracle_faces({}, blind=True), 3)
+        self.assertEqual(oracle_faces({"counterbore": {"diameter": 10, "depth": 2}}, False), 5)
+        self.assertEqual(oracle_faces({"counterbore": {"diameter": 10, "depth": 2}}, True), 6)
+        self.assertEqual(oracle_faces({"countersink": {"diameter": 10, "angle": 90}}, False), 4)
+        self.assertEqual(oracle_faces({"countersink": {"diameter": 10, "angle": 90}}, True), 5)
+        self.assertEqual(oracle_faces_native({}, blind=True), 3)
+        self.assertEqual(
+            oracle_faces_native({"counterbore": {"diameter": 10, "depth": 2}}, True), 7
+        )
+        self.assertEqual(
+            oracle_faces_native({"countersink": {"diameter": 10, "angle": 90}}, True), 6
+        )
         option = {"counterbore": {"diameter": 10, "depth": 2}}
         variants = oracle_variants(6, 8, option)
         self.assertEqual(
@@ -278,10 +437,14 @@ class NativeCountersinkTest(unittest.TestCase):
         from tools.test_native_countersink import judge_geometry
 
         removed = oracle_removed(6, 7, {})
+        # The measured native topology of a blind straight hole: the bore
+        # arrives as two seam-split half faces and the bottom is one plane.
         surfaces = [
-            {"id": 1, "radius": 3.0, "axis": [0, 0, -1], "bbox": [[22, 22, 3], [28, 28, 10]]}
+            {"id": 1, "radius": 3.0, "axis": [0, 0, -1], "bbox": [[22, 25, 3], [28, 28, 10]]},
+            {"id": 2, "radius": 3.0, "axis": [0, 0, -1], "bbox": [[22, 22, 3], [28, 25, 10]]},
+            {"id": 3, "normal": [0, 0, -1], "bbox": [[22, 22, 3], [28, 28, 3]]},
         ]
-        surfaces += [{"id": 10 + i, "normal": [0, 0, 1]} for i in range(7)]
+        surfaces += [{"id": 10 + i, "normal": [0, 0, 1]} for i in range(6)]
         after = {
             "aliases": {"blind_hole": {"feature_id": 9}},
             "inspection": {
@@ -447,15 +610,149 @@ class RemainderExpectationTests(unittest.TestCase):
         )
 
     def test_the_face_deltas_match_the_three_blind_variants(self):
-        self.assertEqual(oracle_faces({}, blind=True), 2)
-        self.assertEqual(oracle_faces({"counterbore": {"diameter": 10, "depth": 2}}, blind=True), 4)
+        # Measured on Creo 12.4.0.0: each revolved surface arrives as two
+        # seam-split half faces, and the blind custom hole ends in a 118
+        # degree drill point (two half-cone faces) instead of a flat bottom.
+        self.assertEqual(oracle_faces_native({}, blind=True), 3)
         self.assertEqual(
-            oracle_faces({"countersink": {"diameter": 10, "angle": 90}}, blind=True), 3
+            oracle_faces_native({"counterbore": {"diameter": 10, "depth": 2}}, blind=True), 7
+        )
+        self.assertEqual(
+            oracle_faces_native({"countersink": {"diameter": 10, "angle": 90}}, blind=True), 6
+        )
+        # The contract shape keeps its flat bottom, one face less than the
+        # native drill point on the custom branch.
+        self.assertEqual(oracle_faces({}, blind=True), 3)
+        self.assertEqual(oracle_faces({"counterbore": {"diameter": 10, "depth": 2}}, blind=True), 6)
+        self.assertEqual(
+            oracle_faces({"countersink": {"diameter": 10, "angle": 90}}, blind=True), 5
         )
 
     def test_the_edit_case_keeps_its_post_edit_oracle(self):
         edited = oracle_removed(7, 8, {"counterbore": {"diameter": 10, "depth": 3}})
         self.assertAlmostEqual(edited, 428.0419990516093, places=6)
+
+
+class ModelNameTests(unittest.TestCase):
+    """The generated model names must stay inside the repository name rule.
+
+    The 31 character rule of the live harness aborted the 2026-10-30 run on
+    ``t12_direction_side_normal_193146``, so the name is built from a short
+    per-case tag and the length is locked here.
+    """
+
+    def test_every_case_name_fits_the_name_rule(self):
+        from tools.test_native_countersink import (
+            MODEL_NAME_MAX_LENGTH,
+            MODEL_NAME_TAGS,
+            REMAINDER_CASES,
+            model_name_for,
+        )
+
+        for case_key in [*REMAINDER_CASES, *MODEL_NAME_TAGS]:
+            with self.subTest(case=case_key):
+                name = model_name_for(case_key)
+                self.assertLessEqual(len(name), MODEL_NAME_MAX_LENGTH)
+                self.assertRegex(name, r"^[a-z][a-z0-9_]*$")
+
+    def test_every_registered_case_has_a_short_tag(self):
+        from tools.test_native_countersink import MODEL_NAME_TAGS, REMAINDER_CASES
+
+        for case_key in REMAINDER_CASES:
+            with self.subTest(case=case_key):
+                self.assertIn(case_key, MODEL_NAME_TAGS)
+                # tag + "_" + six hex digits must stay within 28 characters.
+                self.assertLessEqual(len(MODEL_NAME_TAGS[case_key]) + 7, 28)
+
+    def test_an_unregistered_case_is_refused(self):
+        from tools.test_native_countersink import model_name_for
+
+        with self.assertRaises(ValueError):
+            model_name_for("not_a_case")
+
+
+class NativeTopologyTests(unittest.TestCase):
+    """The seam-split native topology and the measured depth reading."""
+
+    def snapshot(self, surfaces: list) -> dict:
+        return {"inspection": {"surfaces": surfaces}}
+
+    def test_the_seam_halves_frame_the_hole_only_together(self):
+        # Measured on Creo 12.4.0.0: one bore arrives as two half faces whose
+        # own boxes are off the hole axis; only the union frames the hole.
+        surfaces = [
+            {"id": 1, "radius": 3.0, "axis": [0, 0, 1], "bbox": [[22, 25, 2], [28, 28, 8]]},
+            {"id": 2, "radius": 3.0, "axis": [0, 0, 1], "bbox": [[22, 22, 2], [28, 25, 8]]},
+        ]
+        groups = cylinder_groups(self.snapshot(surfaces), 3.0)
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0]["bbox"], [[22, 22, 2], [28, 28, 8]])
+        self.assertEqual(len(groups[0]["faces"]), 2)
+
+    def test_two_holes_of_one_radius_stay_separate(self):
+        surfaces = [
+            {"id": 1, "radius": 3.0, "axis": [0, 0, 1], "bbox": [[0, 0, 0], [6, 6, 6]]},
+            {"id": 2, "radius": 3.0, "axis": [0, 1, 0], "bbox": [[10, 0, 0], [16, 6, 6]]},
+        ]
+        self.assertEqual(len(cylinder_groups(self.snapshot(surfaces), 3.0)), 2)
+
+    def test_the_depth_reading_of_a_flat_bottom_hole(self):
+        surfaces = [
+            {"id": 1, "radius": 3.0, "axis": [0, 0, -1], "bbox": [[22, 22, 3], [28, 28, 10]]},
+        ]
+        evidence = hole_depth_evidence(self.snapshot(surfaces), 10.0, 2, -1)
+        self.assertAlmostEqual(evidence["bore_depth_max"], 7.0, places=9)
+        self.assertIsNone(evidence["cone_depth_max"])
+        self.assertAlmostEqual(evidence["total_depth"], 7.0, places=9)
+        self.assertEqual(depth_semantics(evidence, 7.0, oracle_tip_height(6)), "overall_flat")
+
+    def test_the_depth_reading_of_a_drill_point_hole(self):
+        # The measured 2026-10-30 custom hole: the bore reaches the requested
+        # depth and the 118 degree drill point extends 1.802582 mm below it.
+        surfaces = [
+            {"id": 1, "radius": 3.0, "axis": [0, 0, 1], "bbox": [[22, 22, 2], [28, 28, 8]]},
+            {"id": 2, "type": 37, "bbox": [[22, 22, 0.19741814291731785], [28, 28, 2]]},
+        ]
+        evidence = hole_depth_evidence(self.snapshot(surfaces), 10.0, 2, -1)
+        self.assertAlmostEqual(evidence["bore_depth_max"], 8.0, places=9)
+        self.assertAlmostEqual(evidence["cone_depth_max"], 9.802581857082682, places=9)
+        self.assertEqual(depth_semantics(evidence, 8.0, oracle_tip_height(6)), "shoulder_plus_tip")
+
+    def test_the_tip_height_is_the_measured_drill_point(self):
+        self.assertAlmostEqual(oracle_tip_height(6), 1.8025818570826808, places=9)
+        self.assertAlmostEqual(oracle_tip_extra(6), 16.98893375911559, places=9)
+
+
+class LiveEvidenceTests(unittest.TestCase):
+    """The oracle characterization must stay locked to the measured numbers.
+
+    The 2026-10-30 live run (build/post090_live_20261030T234952/n10) is the
+    evidence behind the characterization: the custom hole path removes the
+    contract flat-bottom volume plus exactly one 118 degree drill point.
+    """
+
+    def test_the_measured_custom_removals_hit_the_drill_point_variant(self):
+        counterbore = oracle_variants(6, 8, {"counterbore": {"diameter": 10, "depth": 2}})
+        countersink = oracle_variants(6, 8, {"countersink": {"diameter": 10, "angle": 90}})
+        self.assertEqual(
+            closest_variant(343.7145697324486, counterbore),
+            "drill_tip_118_below_depth",
+        )
+        self.assertEqual(
+            closest_variant(289.26029707022826, countersink),
+            "drill_tip_118_below_depth",
+        )
+
+    def test_the_measured_plain_removal_hits_the_contract_variant(self):
+        variants = oracle_variants(6, 7, {})
+        self.assertEqual(closest_variant(197.92033717615413, variants), "contract_flat_overall")
+
+    def test_the_seat_measured_drill_depth_is_excluded(self):
+        # The blind counterbore does not measure its drill depth from the seat.
+        variants = oracle_variants(6, 8, {"counterbore": {"diameter": 10, "depth": 2}})
+        self.assertNotEqual(
+            closest_variant(343.7145697324486, variants), "shoulder_measured_drilldepth"
+        )
 
 
 if __name__ == "__main__":

@@ -38,6 +38,7 @@ from tools.sheetmetal_live import (  # noqa: E402
 
 HANG_BUDGET_SECONDS = 180.0
 PLATE_VOLUME_MM3 = 50.0 * 50.0 * 10.0
+PLATE_TOP_Z = 10.0
 PLATE_PLAN = [
     {
         "op": "sketch",
@@ -172,6 +173,34 @@ REMAINDER_CASES = (
     EDIT_CASE,
 )
 
+# Model-name tags per case. The repository caps a name at 28 characters and
+# the live harness appends "_" plus six hex digits, so a tag must stay at 21
+# characters or less. The case names themselves are too long for that, which
+# is why the tag is shortened instead of the case key.
+MODEL_NAME_TAGS = {
+    "blind_straight": "t12_blind_straight",
+    "blind_counterbore": "t12_blind_cbore",
+    "blind_countersink": "t12_blind_csink",
+    "direction_side_normal": "t12_side_normal",
+    "direction_flip_guard": "t12_flip_guard",
+    "edit_dimension_values": "t12_edit_dims",
+    "cbore_flat_seat": "t12_cbore_seat",
+    "csink_90": "t12_csink_90",
+    "countersink_180_contract": "t12_angle180",
+}
+MODEL_NAME_MAX_LENGTH = 28
+
+
+def model_name_for(case_key: str) -> str:
+    """A fresh model name for one case, inside the 28 character rule."""
+    tag = MODEL_NAME_TAGS.get(case_key)
+    if tag is None:
+        raise ValueError(f"no model-name tag registered for case {case_key!r}")
+    name = unique_name(tag)
+    if len(name) > MODEL_NAME_MAX_LENGTH:
+        raise ValueError(f"model name {name!r} exceeds the {MODEL_NAME_MAX_LENGTH} character rule")
+    return name
+
 
 def resolve_case_selection(requested: list[str] | None) -> list[str]:
     """Resolve a --case selection against the remainder cases.
@@ -197,6 +226,15 @@ def resolve_case_selection(requested: list[str] | None) -> list[str]:
 
 
 # Independent cylinder-face expectations (radius, axis, trimmed bbox).
+#
+# The native splits every revolved surface into two seam-split half faces,
+# so these describe the union of the halves: the box that frames the hole.
+#
+# The plain branch (no counterbore, no countersink) is the legacy straight
+# hole: its bore runs from the placement face down to a flat bottom exactly
+# `depth` below it. The custom branch instead ends in a 118 degree drill
+# point, so its bore stops `depth` below the placement face and the cone
+# reaches one drill-point height further (measured 2026-10-30, N10).
 BLIND_CYLINDERS = {
     "blind_straight": [
         {
@@ -252,6 +290,19 @@ def reload_flag(terminal: dict | None) -> bool | None:
     return block.get("saved_file_reloaded_and_verified")
 
 
+def depth_probe(
+    placement_value: float, axis_index: int, direction: int, expected_depth: float, diameter: float
+) -> dict:
+    """The depth reading a case expects, for the measured depth comparison."""
+    return {
+        "placement_value": placement_value,
+        "axis_index": axis_index,
+        "direction": direction,
+        "expected_depth": expected_depth,
+        "tip_height": fixture.oracle_tip_height(diameter),
+    }
+
+
 def judge_geometry(
     entry: dict,
     terminal: dict,
@@ -263,6 +314,7 @@ def judge_geometry(
     expected_dims: dict,
     variants: dict,
     cylinder_expectations: list | None = None,
+    probe: dict | None = None,
 ) -> tuple[dict, list]:
     """Independent checks: volume, face delta, dimension readback, cylinder face."""
     after_volume = LiveRunner.volume(after)
@@ -275,6 +327,13 @@ def judge_geometry(
     result = terminal.get("result") if isinstance(terminal.get("result"), dict) else {}
     operations = result.get("operations") or []
     problems: list[str] = []
+    evidence = None
+    semantics = None
+    if probe is not None:
+        evidence = fixture.hole_depth_evidence(
+            after, probe["placement_value"], probe["axis_index"], probe["direction"]
+        )
+        semantics = fixture.depth_semantics(evidence, probe["expected_depth"], probe["tip_height"])
     fields = {
         "revision": after.get("revision"),
         "volume_mm3": after_volume,
@@ -295,13 +354,18 @@ def judge_geometry(
         "missing_dimensions": fixture.missing_dimension_values(dims, expected_dims),
         "operation_result": operations[0] if operations else None,
         "saved_file_reloaded_and_verified": reload_flag(terminal),
+        "depth_evidence": evidence,
+        "depth_semantics": semantics,
     }
     if fields["abs_error_mm3"] is None or fields["abs_error_mm3"] > 1.0:
+        excess = None if removed is None else removed - expected_removed
         problems.append(
             f"removed {removed!r} outside 1 mm3 of the contract oracle {expected_removed!r}"
+            f" (excess {excess!r} mm3)"
         )
     if matched != "contract_flat_overall":
-        problems.append(f"removal matches {matched!r}, not the contract flat-bottom oracle")
+        detail = "" if semantics is None else f" (measured depth semantics {semantics!r})"
+        problems.append(f"removal matches {matched!r}, not the contract flat-bottom oracle{detail}")
     if fields["feature_delta"].get("hole", 0) != 1:
         problems.append(f"hole feature delta={fields['feature_delta'].get('hole')!r}")
     if fields["base_faces"] is not None and faces is not None:
@@ -313,17 +377,17 @@ def judge_geometry(
         problems.append("saved_file_reloaded_and_verified is not true")
     for expectation in cylinder_expectations or []:
         radius = expectation["radius"]
-        candidates = fixture.cylinder_surfaces(after, radius)
-        if not candidates:
+        groups = fixture.cylinder_groups(after, radius)
+        if not groups:
             problems.append(f"no cylinder face of radius {radius}")
             continue
-        for cylinder in candidates:
+        for group in groups:
             normal = expectation.get("axis_normal")
-            if normal is not None and not fixture.axis_is_parallel(cylinder.get("axis"), normal):
+            if normal is not None and not fixture.axis_is_parallel(group.get("axis"), normal):
                 problems.append(
-                    f"radius {radius} cylinder axis {cylinder.get('axis')} not parallel to {normal}"
+                    f"radius {radius} cylinder axis {group.get('axis')} not parallel to {normal}"
                 )
-            bbox = cylinder.get("bbox")
+            bbox = group.get("bbox")
             if not (isinstance(bbox, list) and len(bbox) == 2):
                 problems.append(f"radius {radius} cylinder has no bbox")
                 continue
@@ -353,7 +417,7 @@ def judge_geometry(
 
 async def make_plate(runner: LiveRunner, case_key: str) -> tuple | None:
     """Create the 50x50x10 plate; record a failed case and return None on failure."""
-    name = unique_name(f"t12_{case_key}")
+    name = model_name_for(case_key)
     made = await runner.submit(
         f"{case_key}:create",
         "creo_execute_plan",
@@ -423,10 +487,17 @@ async def case_blind(runner: LiveRunner, case_key: str, option: dict) -> None:
         after,
         label="blind_hole",
         expected_removed=fixture.oracle_removed(6.0, option["depth"], option),
-        expected_face_delta=fixture.oracle_faces(option, blind=True),
+        expected_face_delta=fixture.oracle_faces_native(option, blind=True),
         expected_dims=expected_dims,
         variants=fixture.oracle_variants(6.0, option["depth"], option),
         cylinder_expectations=BLIND_CYLINDERS[case_key],
+        probe=depth_probe(
+            placement_value=PLATE_TOP_Z,
+            axis_index=2,
+            direction=-1,
+            expected_depth=option["depth"],
+            diameter=6.0,
+        ),
     )
     entry.update(fields)
     entry["problems"] = problems
@@ -481,7 +552,7 @@ async def case_direction_side(runner: LiveRunner) -> None:
         after,
         label="side_hole",
         expected_removed=fixture.oracle_removed(6.0, 7.0, {}),
-        expected_face_delta=fixture.oracle_faces({}, blind=True),
+        expected_face_delta=fixture.oracle_faces_native({}, blind=True),
         expected_dims={"diameter": 6.0, "depth": 7.0},
         variants=fixture.oracle_variants(6.0, 7.0, {}),
         cylinder_expectations=[
@@ -493,6 +564,13 @@ async def case_direction_side(runner: LiveRunner) -> None:
                 "bbox_center": {1: 25.0, 2: 5.0},
             },
         ],
+        probe=depth_probe(
+            placement_value=0.0,
+            axis_index=0,
+            direction=1,
+            expected_depth=7.0,
+            diameter=6.0,
+        ),
     )
     entry.update(fields)
     entry["problems"] = problems
@@ -562,10 +640,17 @@ async def case_flip_guard(runner: LiveRunner) -> None:
             final,
             label="recovery_hole",
             expected_removed=fixture.oracle_removed(6.0, 7.0, {}),
-            expected_face_delta=fixture.oracle_faces({}, blind=True),
+            expected_face_delta=fixture.oracle_faces_native({}, blind=True),
             expected_dims={"diameter": 6.0, "depth": 7.0},
             variants=fixture.oracle_variants(6.0, 7.0, {}),
             cylinder_expectations=[],
+            probe=depth_probe(
+                placement_value=PLATE_TOP_Z,
+                axis_index=2,
+                direction=-1,
+                expected_depth=7.0,
+                diameter=6.0,
+            ),
         )
         entry["recovery"] = fields
         problems.extend(f"recovery: {item}" for item in recovery_problems)
@@ -606,7 +691,7 @@ async def case_edit_dimensions(runner: LiveRunner) -> None:
         after,
         label="edit_hole",
         expected_removed=fixture.oracle_removed(6.0, 8.0, option),
-        expected_face_delta=fixture.oracle_faces(option, blind=True),
+        expected_face_delta=fixture.oracle_faces_native(option, blind=True),
         expected_dims={
             "diameter": 6.0,
             "depth": 8.0,
@@ -615,6 +700,13 @@ async def case_edit_dimensions(runner: LiveRunner) -> None:
         },
         variants=fixture.oracle_variants(6.0, 8.0, option),
         cylinder_expectations=BLIND_CYLINDERS["blind_counterbore"],
+        probe=depth_probe(
+            placement_value=PLATE_TOP_Z,
+            axis_index=2,
+            direction=-1,
+            expected_depth=8.0,
+            diameter=6.0,
+        ),
     )
     entry["create_stage"] = fields
     problems.extend(f"create: {item}" for item in create_problems)
@@ -663,7 +755,7 @@ async def case_edit_dimensions(runner: LiveRunner) -> None:
         final,
         label="edit_hole",
         expected_removed=fixture.oracle_removed(7.0, 8.0, edited),
-        expected_face_delta=fixture.oracle_faces(edited, blind=True),
+        expected_face_delta=fixture.oracle_faces_native(edited, blind=True),
         expected_dims={
             "diameter": 7.0,
             "depth": 8.0,
@@ -687,6 +779,13 @@ async def case_edit_dimensions(runner: LiveRunner) -> None:
                 "bbox_center": {0: 25.0, 1: 25.0},
             },
         ],
+        probe=depth_probe(
+            placement_value=PLATE_TOP_Z,
+            axis_index=2,
+            direction=-1,
+            expected_depth=8.0,
+            diameter=7.0,
+        ),
     )
     entry["edit_stage"] = fields
     problems.extend(f"edit: {item}" for item in edit_problems)
@@ -700,7 +799,7 @@ async def case_edit_dimensions(runner: LiveRunner) -> None:
 async def run_passed_cases(runner: LiveRunner) -> None:
     """The three cases accepted on 2026-10-29; only with --include-passed-cases."""
     for case, option in CASES.items():
-        name = unique_name(f"t12_{case}")
+        name = model_name_for(case)
         made = await runner.submit(
             f"{case}:create",
             "creo_execute_plan",
@@ -785,7 +884,7 @@ async def run_passed_cases(runner: LiveRunner) -> None:
     reject = await runner.probe(
         "creo_execute_plan",
         {
-            "model_name": unique_name("t12_angle180"),
+            "model_name": model_name_for(PASSED_REJECTION_CASE),
             "model_type": "part",
             "operations": [
                 {
@@ -971,7 +1070,31 @@ def main(argv: list[str] | None = None) -> int:
             "drill depth variants are reported for diagnosis and never pass a case",
         },
         "faces_added_over_plate": {
-            key: fixture.oracle_faces(option, blind=True) for key, option in BLIND_CASES.items()
+            "contract": {
+                key: fixture.oracle_faces(option, blind=True) for key, option in BLIND_CASES.items()
+            },
+            "native": {
+                key: fixture.oracle_faces_native(option, blind=True)
+                for key, option in BLIND_CASES.items()
+            },
+            "note": "the native splits every revolved surface into two seam-split half "
+            "faces, and the blind custom hole ends in a 118 degree drill point (two "
+            "half-cone faces) where the contract shape has one flat bottom plane",
+        },
+        "depth_semantics_measured_2026_10_30": {
+            "plain_branch": "depth is the overall depth from the placement face and the "
+            "hole ends in a flat bottom (measured removal matched the flat oracle to "
+            "2.8e-12 mm3)",
+            "custom_branch": "depth is the depth to the shoulder; a 118 degree drill point "
+            "reaches one tip height (1.802582 mm at diameter 6) further, so the removed "
+            "volume exceeds the flat oracle by exactly one drill point cone",
+            "measured_removals_mm3": {
+                "blind_straight": 197.92033717615413,
+                "blind_counterbore": 343.7145697324486,
+                "blind_countersink": 289.26029707022826,
+            },
+            "drill_point_tip_height_mm": fixture.oracle_tip_height(6.0),
+            "drill_point_cone_mm3": fixture.oracle_tip_extra(6.0),
         },
         "pending_live": [
             "blind straight / blind counterbore / blind countersink: volume, face delta, "
