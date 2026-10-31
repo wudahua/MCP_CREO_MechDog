@@ -11,6 +11,7 @@
 2026-10-30 的十个离线提交（分支 `codex/dev051-feedback070`，HEAD `768c673`）**未合 main、未发布、无实机验收**，因此不改变上述已发布范围，只预告下一版的接口增量与环境前提：
 
 - **新增公开参数**：`creo_sheetmetal_flange` 的可选 `end_trim_mm`（正数、模型单位，两侧链端各缩短该长度；缺省元素树不变）。**Creo 把它读作链端 setback 还是截面起算的壁长尚未实机确认**，属诊断参数；其版本影响按 MINOR 判定留待 T10。
+- **行为边界（离线，待实机）**：`creo_sheetmetal_flange` 在附着边端部邻接既有折弯时于建模前明确拒绝（`failure_reason=adjacent_bend_ends`，附端点邻接取证 `flange_failure_evidence`）；自由边与 T03 首壁行为不变。四壁/角部能力仍开放（FEAT-014）；`end_trim_mm` 两轮实机实测为 `trim_ignored`，不能用于角部让位。
 - **行为修正（离线）**：`revolve_axis.resolution.section_centerline_count` 改为只计用户中心线（一条用户线此前被计成 3）；`creo_list_components` 的组件身份投影补保存重载与删除重插回归锁定（生产零改动）。
 - **新增写入路径（离线）**：`sheetmetal_wall` 在首壁转换后写零件级板厚维度并回读验证（此前零件级板厚保留模板/会话默认 3.71 mm，与 1 mm 几何不同步）。
 - **环境前提不变**：本机 Windows x64 / Creo 12.4.0.0 / 匹配 SDK；Creo 9 本机无 SDK、实机编译与建模运行时仍未验收；Creo 10 独立复测不作为门槛。WorkBuddy 本批未执行。

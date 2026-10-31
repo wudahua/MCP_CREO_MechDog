@@ -27,7 +27,14 @@ This driver turns that one-off probe capability into the formal N05 entry:
    post-flange body bbox, whose top is the wall top), thickness-scale rim
    edges are never candidates, and a selection that is ambiguous or
    unqualified is recorded as driver_edge_selection_error -- a driver failure,
-   never a Creo failure and never a trigger reproduction.
+   never a Creo failure and never a trigger reproduction;
+6. the N06 adjacent-bend-ends boundary: the native pre-check now refuses a
+   wall whose attachment-edge end abuts an existing bend before any feature
+   exists (failure_reason=adjacent_bend_ends). Since the trigger condition is
+   proven (2026-10-30/31), that rejection is the expected known boundary and
+   the group verdict records adjacent_bend_ends_rejected; the
+   trigger_reproduced label is reserved for the unexpected shape -- a
+   regeneration failure without the adjacency marker.
 
 Default is strictly offline: no MCP client, no Toolkit connection, no job.
 --live --confirm-session-usable together start the formal live probes on the
@@ -208,8 +215,13 @@ def check_live_probe_plan() -> dict:
         "capability_claim": {
             "four_walls_complete": False,
             "statement": (
-                "this live entry is a diagnostic; the proven trigger condition keeps the "
-                "full box unreachable until N06 changes the mechanism on evidence"
+                "this live entry is a diagnostic; the proven trigger condition is enforced "
+                "by the N06 native pre-check, which rejects a wall whose edge end abuts an "
+                "existing bend before create (failure_reason=adjacent_bend_ends). That "
+                "rejection is the expected boundary outcome (adjacent_bend_ends_rejected); "
+                "trigger_reproduced is reserved for an unmarked regeneration failure. "
+                "Corner relief/miter stays unimplemented and four-wall boxes are not "
+                "supported"
             ),
         },
     }
@@ -232,16 +244,23 @@ def check_failure_forensics_contract() -> dict:
         "native_forensics_assertions": guard,
         "driver_fields": {
             "flange_failure_evidence": (
-                "staged into the failed operation record by the native forensics: "
-                "stage, feature_status(_name), feature_id, geometry_visit_code, "
-                "geometry_item_count, edge_forensics {id, length_mm, end0_mm, end1_mm, "
-                "neighbors_code, adjacent_faces[{id,smt_type,type_code}], "
-                "adjacent_edges[{id,id_code}]}, section_leg_sketch; every query failure "
-                "is null, never guessed"
+                "staged into the failed operation record by the native forensics under "
+                "operations[].flange_failure_evidence (N06 propagation fix: the block is "
+                "nested, never flattened): stage (before_create for pre-check rejections "
+                "or after_regenerate for unhealthy features), failure_reason "
+                "(adjacent_bend_ends on pre-check rejections), feature_status(_name), "
+                "feature_id, geometry_visit_code, geometry_item_count, edge_forensics "
+                "{id, length_mm, end0_mm, end1_mm, neighbors_code, "
+                "adjacent_faces[{id,smt_type,type_code}], adjacent_edges[{id,id_code}]}, "
+                "adjacency ends[{end, point_mm, neighbor_edge_id, neighbor_arc, "
+                "neighbor_radius_mm, radius_bound_mm, bend_face_ids, "
+                "adjacent_bend_end}], section_leg_sketch; every query failure is null, "
+                "never guessed"
             ),
             "stage_feature_state": (
                 "the failing wall's status/geometry from the native log's "
-                "UNHEALTHY_FEATURES dump (third_wall_stage_record)"
+                "UNHEALTHY_FEATURES dump (third_wall_stage_record); the log tail now "
+                "covers the full dump (10841-char row in the 2026-10-31 rerun)"
             ),
             "rollback": "revision and volume before/after from the post-failure snapshot",
             "trim_classification": (
@@ -254,7 +273,10 @@ def check_failure_forensics_contract() -> dict:
             "points; adjacent_faces carries Creo's sheetmetal typing of the two faces "
             "sharing the edge; feature_status 6 = PRO_FEAT_UNREGENERATED (created but "
             "not regenerated); geometry_item_count 0 with status 6 is the round-six "
-            "shape. All of it is evidence, not a corner rule."
+            "shape. A pre-check rejection (failure_reason=adjacent_bend_ends, "
+            "stage=before_create) carries the per-end adjacency evidence instead: no "
+            "feature exists, so there is no feature status. All of it is evidence, "
+            "not a corner rule."
         ),
         "synthetic_check": {"failed_wall": synthetic, "unknown_measurement": unknown},
     }
@@ -402,8 +424,15 @@ def native_failure_evidence(terminal: dict) -> dict | None:
     return None
 
 
-def read_native_log(job_id: str | None, limit: int = 6000) -> str | None:
-    """A bounded tail of the job's native log, for the UNHEALTHY_FEATURES dump."""
+def read_native_log(job_id: str | None, limit: int = 65_536) -> str | None:
+    """A bounded tail of the job's native log, for the UNHEALTHY_FEATURES dump.
+
+    The 2026-10-31 rerun: the failing job's UNHEALTHY_FEATURES line is one
+    10841-char JSON row starting about 16.6k chars before EOF, so the old
+    6000-char tail cut the line prefix off and stage_feature_state reported
+    line_found=false even though the dump was there. 64 KiB keeps the whole
+    dump and the staged evidence reachable while staying bounded.
+    """
     if not job_id:
         return None
     path = ROOT / "jobs" / job_id / "native.log"
@@ -676,6 +705,12 @@ async def run_wall_group(runner: LiveRunner, group: str) -> dict:
             # A failed wall on a thickness-scale rim edge is the selector's
             # defect (2026-10-30), never a trigger reproduction.
             record["outcome"] = "driver_edge_selection_error"
+        elif record["outcome"] == "failed" and box.adjacency_rejection(record):
+            # DEV-052 N06: the native adjacent-bend-ends pre-check refused the
+            # wall before any feature was created. The trigger condition is
+            # proven (2026-10-30/31), so this explicit rejection is the known
+            # boundary working as designed -- not a trigger reproduction.
+            record["outcome"] = "adjacent_bend_ends_rejected"
         records.append(record)
         if terminal.get("status") == "succeeded":
             revision = record["revision_after"]
@@ -703,11 +738,14 @@ async def live_box(output: Path, run_id: str) -> int:
         runner = LiveRunner(
             client,
             output,
-            "FEAT-014 / BUG-047 / DEV-052 N05",
+            "FEAT-014 / BUG-047 / DEV-052 N05/N06",
             (
                 "formal third-wall probes: the proven trigger gradient (ny_first / "
                 "px_then_ny / px_nx_then_ny) plus the end_trim_mm measurement; every "
-                "wall keeps its real status and four_walls_complete stays false"
+                "wall keeps its real status and four_walls_complete stays false; since "
+                "N06 a wall whose edge end abuts an existing bend is explicitly rejected "
+                "before create (failure_reason=adjacent_bend_ends) and that rejection is "
+                "the expected boundary outcome"
             ),
             run_id,
         )
@@ -716,7 +754,9 @@ async def live_box(output: Path, run_id: str) -> int:
             "four_walls_complete": False,
             "statement": (
                 "a diagnostic run; a wall whose edge end is adjacent to an existing bend "
-                "fails (proven 2026-10-30) until N06 changes the mechanism on evidence"
+                "is rejected before create (failure_reason=adjacent_bend_ends, proven "
+                "2026-10-30/31, enforced by the N06 pre-check); corner relief/miter "
+                "remains unimplemented and four-wall boxes are not supported"
             ),
         }
         try:
@@ -766,6 +806,10 @@ def live_checklist() -> list[str]:
         "judge with the driver's verdicts: trim_probe_verdict names the semantics only "
         "from measured increments; probe_group_verdict keeps failed walls listed as "
         "failed and never sets four_walls_complete",
+        "a third wall the native pre-check refused (failure_reason=adjacent_bend_ends) "
+        "verdicts as adjacent_bend_ends_rejected with passed=true -- the expected known "
+        "boundary since 2026-10-31; an unmarked regeneration failure verdicts as "
+        "trigger_reproduced with passed=false and needs the native evidence investigated",
         "the trim classification is evidence only: without setback_from_ends confirmed, "
         "the trimmed third wall of the offline design stays unrunnable and nothing feeds "
         "a corner attribution",
@@ -885,7 +929,10 @@ def write_offline_report(output: Path, run_id: str, results: dict) -> dict:
             "production_change": (
                 "end_trim_mm: opt-in blind depth on both flange sides (advanced.cpp, "
                 "schema.py, server.py); the stock tree is unchanged without the field; "
-                "N05 adds bounded native failure forensics on the failing paths only"
+                "N05 adds bounded native failure forensics on the failing paths only; "
+                "N06 adds the adjacent-bend-ends pre-check, which explicitly rejects a "
+                "wall whose attachment-edge end abuts an existing bend before create "
+                "(failure_reason=adjacent_bend_ends); free-edge behaviour is unchanged"
             ),
             "statement": (
                 "Offline only: the designs, contracts, verdict locks and forensics guards "

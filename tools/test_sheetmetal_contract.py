@@ -327,11 +327,13 @@ def check_native_source() -> dict:
         "part_thickness_regen_recheck": "SHEETMETAL_WALL_PART_THICKNESS" in source,
         "part_thickness_mismatch_fails": "did not sync the part thickness parameter" in source,
         # BUG-090: SDK-missing APIs stay out of the compile unit behind the
-        # generated capability macros; all three reads share one model-read
-        # helper, an unreadable thickness fails the first wall explicitly and
-        # only the informational flange fields may degrade to null.
+        # generated capability macros; every read shares one model-read helper
+        # (definition, two first-wall checks, the relief record and the N06
+        # adjacent-bend-ends pre-check), an unreadable thickness fails the
+        # first wall explicitly and only the informational flange fields may
+        # degrade to null.
         "part_thickness_api_gated": not unguarded_sdk_calls(source),
-        "part_thickness_unified_read": source.count("part_thickness_read(") == 4,
+        "part_thickness_unified_read": source.count("part_thickness_read(") == 5,
         "part_thickness_parameter_fallback": "ProParameterValueWithUnitsGet" in source,
         "part_thickness_unknown_fails_wall": "could not read the part-level sheetmetal thickness"
         in source,

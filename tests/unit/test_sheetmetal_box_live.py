@@ -28,6 +28,12 @@ This module is the offline half of the T05 box driver. It freezes:
 
 Nothing here builds geometry. The volume oracles are the independent bent-wall
 increment model already validated against the measured 2026-10-29 walls.
+
+DEV-052 N06 addition: the trigger condition is proven and enforced by a native
+pre-check, so the driver verdicts separate the known boundary
+(adjacent_bend_ends_rejected, the pre-check refusing the wall before create)
+from the unexpected shape (trigger_reproduced, an unmarked regeneration
+failure). four_walls_complete stays False in every branch.
 """
 
 from __future__ import annotations
@@ -49,6 +55,14 @@ SERVER = REPO_ROOT / "server.py"
 
 # The mandated trim for the third-wall contrast: 20 mm short of both chain ends.
 TRIM_MM = 20.0
+
+# DEV-052 N06: the native adjacent-bend-ends pre-check refuses a wall whose
+# attachment-edge end abuts an existing bend before any feature is created.
+# The trigger condition is proven (2026-10-30/31 live probes), so this
+# structured rejection is the known boundary, not a reproduction; the token is
+# carried by both the staged failure evidence (flange_failure_evidence.
+# failure_reason) and the failure message.
+ADJACENT_BEND_ENDS = "adjacent_bend_ends"
 
 # DEV-051 live rule, same as the T11 driver: a job that is not terminal after
 # 180 s is a hang; the driver records the scene and stops without resubmitting.
@@ -581,23 +595,48 @@ def driver_selection_error(record: dict) -> bool:
     )
 
 
+def adjacency_rejection(record: dict) -> bool:
+    """A wall the native adjacent-bend-ends pre-check refused before create.
+
+    Identified positively only: the failed operation record carries
+    flange_failure_evidence.failure_reason == 'adjacent_bend_ends' (staged by
+    the native pre-check under the key the driver reads) or the failure message
+    names the reason. A wall that failed inside regeneration without this
+    marker is not an adjacency rejection; it keeps the unexpected
+    trigger_reproduced shape so the deviation stays visible.
+    """
+    evidence = record.get("native_failure_evidence")
+    if isinstance(evidence, dict) and evidence.get("failure_reason") == ADJACENT_BEND_ENDS:
+        return True
+    failure = record.get("failure")
+    message = failure.get("message") if isinstance(failure, dict) else None
+    return bool(message and ADJACENT_BEND_ENDS in message)
+
+
 def probe_group_verdict(group: str, outcomes: dict) -> dict:
     """Map one live wall group's per-wall outcomes to a diagnostic verdict.
 
     Locks the live run must keep: missing or unknown wall outcomes leave the
-    group incomplete; a failing wall keeps the status 'failed' and is listed in
-    failed_walls instead of being absorbed into a pass; and
-    four_walls_complete is False in every branch, because the proven trigger
-    condition (an edge end adjacent to an existing bend fails) keeps the full
-    box unreachable until N06 changes the mechanism on evidence.
+    group incomplete; a failing wall keeps its failed status and is listed in
+    failed_walls instead of being absorbed into a pass; and four_walls_complete
+    is False in every branch, because adjacent-bend ends keep the full box
+    unsupported (the N06 pre-check explicitly rejects that shape; corner
+    relief/miter is unimplemented). Since 2026-10-31 the trigger condition is
+    proven, so a third wall the native pre-check refused before create is the
+    expected known boundary (adjacent_bend_ends_rejected, passed) while an
+    unmarked regeneration failure is the unexpected shape (trigger_reproduced,
+    not passed, native evidence needs investigation).
     """
     if group not in LIVE_PROBE_GROUPS:
         raise ValueError(f"unknown probe group {group!r}")
     if LIVE_PROBE_GROUPS[group]["verdict"] != "wall_statuses":
         raise ValueError(f"group {group!r} is judged by {LIVE_PROBE_GROUPS[group]['verdict']}")
     labels = LIVE_PROBE_GROUPS[group]["walls"]
-    missing = [label for label in labels if outcomes.get(label) not in ("succeeded", "failed")]
-    failed_walls = [label for label in labels if outcomes.get(label) == "failed"]
+    failed_walls = [
+        label
+        for label in labels
+        if outcomes.get(label) in ("failed", "adjacent_bend_ends_rejected")
+    ]
     selection_errors = [
         label for label in labels if outcomes.get(label) == "driver_edge_selection_error"
     ]
@@ -618,6 +657,25 @@ def probe_group_verdict(group: str, outcomes: dict) -> dict:
                 "failure and never a reproduction of the proven trigger condition"
             ),
         }
+    last = labels[-1]
+    third = outcomes.get(last)
+    if group != "ny_first" and third == "adjacent_bend_ends_rejected":
+        return {
+            "group": group,
+            "third_wall_status": "failed",
+            "outcome": "adjacent_bend_ends_rejected",
+            "passed": True,
+            "failed_walls": failed_walls,
+            "four_walls_complete": False,
+            "note": (
+                "the native adjacent-bend-ends pre-check refused the third wall before "
+                "any feature was created (failure_reason=adjacent_bend_ends). The trigger "
+                "condition is proven (2026-10-30/31), so this is the known boundary "
+                "working as designed -- not a trigger reproduction and not a four-wall "
+                "capability"
+            ),
+        }
+    missing = [label for label in labels if outcomes.get(label) not in ("succeeded", "failed")]
     if missing:
         return {
             "group": group,
@@ -627,7 +685,6 @@ def probe_group_verdict(group: str, outcomes: dict) -> dict:
             "failed_walls": failed_walls,
             "four_walls_complete": False,
         }
-    last = labels[-1]
     if group == "ny_first":
         return {
             "group": group,
@@ -636,16 +693,27 @@ def probe_group_verdict(group: str, outcomes: dict) -> dict:
             "failed_walls": failed_walls,
             "four_walls_complete": False,
         }
+    if third == "failed":
+        return {
+            "group": group,
+            "third_wall_status": third,
+            "outcome": "trigger_reproduced",
+            "passed": False,
+            "failed_walls": failed_walls,
+            "four_walls_complete": False,
+            "note": (
+                "unexpected shape since 2026-10-31: the wall failed inside regeneration "
+                "without the adjacent_bend_ends marker, so the pre-check did not "
+                "recognise this geometry or a different mechanism fired; investigate the "
+                "native failure evidence instead of counting a reproduction"
+            ),
+        }
     return {
         "group": group,
         "third_wall_status": outcomes[last],
-        "outcome": (
-            "trigger_reproduced"
-            if outcomes[last] == "failed"
-            else "third_wall_built_not_reproduced"
-        ),
-        # Either terminal observation is a valid diagnostic result: the run's
-        # job is to observe, and the per-wall statuses above stay faithful.
+        "outcome": "third_wall_built_not_reproduced",
+        # A built wall stays a faithful observation; it still says nothing about
+        # four-wall capability.
         "passed": True,
         "failed_walls": failed_walls,
         "four_walls_complete": False,
@@ -732,6 +800,21 @@ def native_source() -> dict:
         "no_edge_rip": "PRO_E_SMT_EDGE_RIP" not in flange,
         "no_to_ref_depth": "PRO_WALL_LEN_TYPE_TO_REF" not in flange,
         "no_blind_sym_depth": "PRO_WALL_LEN_TYPE_BLIND_SYM" not in flange,
+        # DEV-052 N06 adjacent-bend-ends pre-check: the confirmed trigger shape
+        # is refused before any feature exists, with a structured reason and
+        # per-end adjacency evidence; the check never fires on a silent query.
+        "adjacency_precheck_present": "flange_adjacent_bend_end_evidence" in source,
+        "adjacency_precheck_called_before_create": 0
+        <= flange.index("flange_adjacent_bend_end_evidence(op)")
+        < flange.index("ProSection2DAlloc"),
+        "adjacency_rejection_reason": "failure_reason=adjacent_bend_ends" in flange,
+        "adjacency_arc_measured": "ProArcdataGet" in source and "ProEdgeDataGet" in source,
+        "adjacency_bend_face_checked": "PRO_SRF_CYL" in source,
+        "adjacency_radius_bound": "radius_bound_mm" in source,
+        "adjacency_evidence_staged_nested": source.count(
+            'stage_operation_result({{"flange_failure_evidence"'
+        )
+        == 3,
     }
     # DEV-052 N05 failure forensics: the failing paths must record the measured
     # facts N06 needs, bounded, with unknowns left null.
@@ -760,7 +843,10 @@ def native_source() -> dict:
             "end_trim_mm switches both flange depth sides from TO_END to blind with the "
             "requested offset and touches nothing else; the stock tree is unchanged for "
             "calls without the field; the failing paths record bounded edge, feature and "
-            "tree forensics with unknowns null"
+            "tree forensics with unknowns null under operations[].flange_failure_evidence; "
+            "the N06 pre-check refuses the adjacent-bend-ends trigger shape before create "
+            "with failure_reason=adjacent_bend_ends and leaves every silent query on the "
+            "stock path"
         ),
         "live_uncertainty": (
             "ProSmtFlangeWall.h documents DEPTH_OFFSET only as a double; whether it is a "
@@ -1093,7 +1179,9 @@ class ProbeGroupVerdictTest(unittest.TestCase):
                 reproduced = probe_group_verdict(
                     group, {"f_px": "succeeded", "f_nx": "succeeded", "f_ny": "failed"}
                 )
-                self.assertTrue(reproduced["passed"])
+                # Since 2026-10-31 an unmarked regeneration failure is the
+                # unexpected shape: the run must not go green on it.
+                self.assertFalse(reproduced["passed"])
                 self.assertEqual(reproduced["outcome"], "trigger_reproduced")
                 self.assertEqual(reproduced["third_wall_status"], "failed")
                 self.assertEqual(reproduced["failed_walls"], ["f_ny"])
@@ -1102,8 +1190,49 @@ class ProbeGroupVerdictTest(unittest.TestCase):
                     group, {"f_px": "succeeded", "f_nx": "succeeded", "f_ny": "succeeded"}
                 )
                 self.assertEqual(built["outcome"], "third_wall_built_not_reproduced")
+                self.assertTrue(built["passed"])
                 self.assertEqual(built["third_wall_status"], "succeeded")
                 self.assertFalse(built["four_walls_complete"])
+
+    def test_adjacent_bend_ends_rejection_is_the_expected_known_boundary(self):
+        for group, outcomes in (
+            ("px_then_ny", {"f_px": "succeeded", "f_ny": "adjacent_bend_ends_rejected"}),
+            (
+                "px_nx_then_ny",
+                {
+                    "f_px": "succeeded",
+                    "f_nx": "succeeded",
+                    "f_ny": "adjacent_bend_ends_rejected",
+                },
+            ),
+        ):
+            with self.subTest(group=group):
+                verdict = probe_group_verdict(group, outcomes)
+                self.assertEqual(verdict["outcome"], "adjacent_bend_ends_rejected")
+                self.assertNotEqual(verdict["outcome"], "trigger_reproduced")
+                self.assertTrue(verdict["passed"])
+                self.assertEqual(verdict["third_wall_status"], "failed")
+                self.assertEqual(verdict["failed_walls"], ["f_ny"])
+                self.assertFalse(verdict["four_walls_complete"])
+                self.assertIn("failure_reason=adjacent_bend_ends", verdict["note"])
+
+    def test_adjacency_rejection_on_a_free_wall_stays_an_anomaly(self):
+        # ny_first expects the free edge to build; a pre-check rejection there
+        # would be a false positive and must not read as a pass.
+        verdict = probe_group_verdict("ny_first", {"f_ny": "adjacent_bend_ends_rejected"})
+        self.assertEqual(verdict["outcome"], "incomplete_unknown_measurements")
+        self.assertFalse(verdict["passed"])
+        self.assertEqual(verdict["failed_walls"], ["f_ny"])
+        self.assertFalse(verdict["four_walls_complete"])
+
+    def test_intermediate_wall_rejection_keeps_the_group_incomplete(self):
+        verdict = probe_group_verdict(
+            "px_nx_then_ny", {"f_px": "succeeded", "f_nx": "adjacent_bend_ends_rejected"}
+        )
+        self.assertEqual(verdict["outcome"], "incomplete_unknown_measurements")
+        self.assertFalse(verdict["passed"])
+        self.assertIn("f_nx", verdict["failed_walls"])
+        self.assertFalse(verdict["four_walls_complete"])
 
     def test_incomplete_group_stays_incomplete_and_never_passes(self):
         for group in ("ny_first", "px_then_ny", "px_nx_then_ny"):
@@ -1174,6 +1303,69 @@ class DriverSelectionErrorVerdictTest(unittest.TestCase):
         self.assertFalse(verdict["passed"])
         self.assertIn("f_nx", verdict["selection_error_walls"])
         self.assertFalse(verdict["four_walls_complete"])
+
+
+class AdjacencyRejectionTest(unittest.TestCase):
+    """DEV-052 N06: the pre-check rejection is identified positively only."""
+
+    def _failed(self, **extra):
+        record = {
+            "terminal_status": "failed",
+            "edge_span_mm": 181.46,
+            "revision_after": 2,
+            "volume_after_mm3": 60_945.29,
+        }
+        record.update(extra)
+        return record
+
+    def test_structured_evidence_reason_is_recognised(self):
+        record = self._failed(
+            native_failure_evidence={
+                "stage": "before_create",
+                "failure_reason": ADJACENT_BEND_ENDS,
+                "edge_id": 197,
+            }
+        )
+        self.assertTrue(adjacency_rejection(record))
+
+    def test_failure_message_token_is_recognised(self):
+        record = self._failed(
+            failure={
+                "message": (
+                    "sheetmetal_flange rejected before create "
+                    "(failure_reason=adjacent_bend_ends): attachment edge 197 ..."
+                )
+            }
+        )
+        self.assertTrue(adjacency_rejection(record))
+
+    def test_unmarked_regeneration_failure_is_not_an_adjacency_rejection(self):
+        record = self._failed(
+            failure={"message": "Regeneration produced a failed, suppressed or incomplete feature"}
+        )
+        self.assertFalse(adjacency_rejection(record))
+
+    def test_other_reasons_and_successes_are_not_adjacency_rejections(self):
+        self.assertFalse(
+            adjacency_rejection(
+                self._failed(
+                    native_failure_evidence={
+                        "stage": "after_regenerate",
+                        "feature_status": 6,
+                    },
+                    failure={"message": "Regeneration produced a failed feature"},
+                )
+            )
+        )
+        self.assertFalse(adjacency_rejection({"terminal_status": "succeeded"}))
+        self.assertFalse(adjacency_rejection({}))
+
+    def test_evidence_reason_wins_even_with_an_unrelated_message(self):
+        record = self._failed(
+            native_failure_evidence={"failure_reason": ADJACENT_BEND_ENDS},
+            failure={"message": "Regeneration produced a failed feature"},
+        )
+        self.assertTrue(adjacency_rejection(record))
 
 
 class TrimProbeVerdictTest(unittest.TestCase):
@@ -1285,6 +1477,46 @@ class LiveEntryGuardTest(unittest.TestCase):
 
         self.assertIsNone(driver.read_native_log(None))
         self.assertIsNone(driver.read_native_log("no-such-job-id"))
+
+    def test_native_log_tail_covers_the_long_unhealthy_dump(self):
+        # The 2026-10-31 rerun: the failing job's UNHEALTHY_FEATURES row is one
+        # 10841-char JSON line starting about 16.6k chars before EOF, so the old
+        # 6000-char tail cut the line prefix off and stage_feature_state reported
+        # line_found=false. The tail must cover the whole dump line.
+        import tempfile
+        from unittest import mock
+
+        import tools.test_sheetmetal_box_live as driver
+
+        feature = {
+            "name": "f_ny",
+            "status": 6,
+            "geometry_items": [],
+            "id": 9,
+            "parent_ids": list(range(2000)),
+        }
+        dump = json.dumps([feature])
+        text = (
+            "PHASE=connect\n"
+            + ("FLANGE_BODY_SURFACE id=1 smt_type=2 code=0\n" * 320)
+            + f"UNHEALTHY_FEATURES={dump}\n"
+            + "PHASE=rollback_to_saved_checkpoint\n"
+        )
+        self.assertGreater(text.index("UNHEALTHY_FEATURES="), 6000)
+        # The old 6000-char tail starts inside the dump line and loses the prefix.
+        self.assertNotIn("UNHEALTHY_FEATURES=", text[-6000:])
+        with tempfile.TemporaryDirectory() as tmp:
+            job = Path(tmp) / "jobs" / "job-long-dump"
+            job.mkdir(parents=True)
+            (job / "native.log").write_text(text, encoding="utf-8")
+            with mock.patch.object(driver, "ROOT", Path(tmp)):
+                tail = driver.read_native_log("job-long-dump")
+        self.assertIsNotNone(tail)
+        state = extract_unhealthy_feature(tail, "f_ny")
+        self.assertEqual(
+            state,
+            {"line_found": True, "status": 6, "geometry_item_count": 0, "incomplete": None},
+        )
 
 
 class NativeSourceGuardTest(unittest.TestCase):

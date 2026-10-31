@@ -943,7 +943,11 @@ static void flange_tree_evidence(ProElement attempted, const J &op) {
         if (probe)
             ProElementFree(&probe);
     }
-    stage_operation_result(evidence);
+    // DEV-052 N06: stage the evidence under the key the drivers read
+    // (operations[].flange_failure_evidence). Staging the bare block flat made
+    // the 2026-10-31 rerun report native_failure_evidence=null even though the
+    // native log carried FLANGE_FAILURE_EVIDENCE.
+    stage_operation_result({{"flange_failure_evidence", evidence}});
 }
 
 // DEV-052 N05 (2026-10-30): third-wall failure forensics. The 2026-10-30 live
@@ -1055,7 +1059,203 @@ static void flange_created_feature_evidence(const J &op, const ProFeature &creat
         evidence["edge_forensics"] = J();
     }
     log("FLANGE_FAILURE_EVIDENCE=%s\n", evidence.dump().c_str());
-    stage_operation_result(evidence);
+    // DEV-052 N06: nested under the key the drivers read; see the note in
+    // flange_tree_evidence about the flat-staging propagation gap.
+    stage_operation_result({{"flange_failure_evidence", evidence}});
+}
+
+// DEV-052 N06 (FEAT-014): the 2026-10-31 N05 rerun proved, on real plate-top
+// edges, that a flange whose attachment-edge end abuts an existing bend fails
+// inside regeneration (feature_status=6, geometry_item_count=0) while the free
+// edge builds, and the failure evidence cannot separate section overrun from
+// neighbouring-material overlap - the SDK offers no proven corner relief/miter
+// API for this create path. This pre-check therefore repairs nothing. Before
+// any element tree exists it looks for the confirmed trigger shape at each end
+// of the attachment edge and requires BOTH positive signals:
+//   1. adjacency - the contour-neighbour edge at that end is an arc that
+//      borders a cylindrical face (the bend region's boundary);
+//   2. consumption - the arc radius stays within the bend-setback bound
+//      radius <= 2*(radius + thickness) + tolerance, so the end was consumed by
+//      a bend and not by unrelated curvature. The confirmed 2026-10-31 walls
+//      consumed exactly radius+thickness = 3.54 mm of flat per end against the
+//      2*(2.54+1) = 7.08 mm bound; for bends up to 90 degrees the flat setback
+//      never exceeds the outside arc radius, so the radius bound implements the
+//      prescribed "edge shortening <= 2*(R+t) + tolerance" conservatively.
+// One end suffices: the live contrast showed a single adjacent end already
+// fails the wall. Every query failure, a missing part thickness (read through
+// part_thickness_read, which BUG-032 notes can be the part-level default rather
+// than the wall thickness - the bound is deliberately generous) or a straight
+// neighbour leaves the check silent and returns an empty object, so free-edge
+// walls (the T03 first-wall contract included) keep the old behaviour exactly.
+// The rejection itself happens in generic_sheetmetal_flange, which stages this
+// evidence under flange_failure_evidence and fails the job with
+// failure_reason=adjacent_bend_ends before any feature is created.
+static const double FLANGE_ADJACENT_BEND_TOLERANCE_MM = 1e-3;
+static const double FLANGE_ADJACENT_END_MATCH_MM = 1e-4;
+
+static J flange_adjacent_bend_end_evidence(const J &op) {
+    J evidence = J::object();
+    try {
+        double radius = op["radius"].get<double>();
+        double thickness = 0;
+        bool thickness_known = part_thickness_read(&thickness);
+        if (!thickness_known) {
+            log("FLANGE_ADJACENT_BEND skip=thickness_unknown\n");
+            return J::object();
+        }
+        double bound = 2 * (radius + thickness) + FLANGE_ADJACENT_BEND_TOLERANCE_MM;
+        ProSelection sel = resolve(op["edge"]);
+        ProModelitem item;
+        CK(ProSelectionModelitemGet(sel, &item));
+        ProSelectionFree(&sel);
+        ProEdge edge;
+        CK(ProEdgeInit((ProSolid)board, item.id, &edge));
+        double length = 0;
+        ProError length_code = ProEdgeLengthEval(edge, &length);
+        ProVector end0, d0a, d0b, d0c, end1, d1a, d1b, d1c;
+        ProError end0_code = ProEdgeXyzdataEval(edge, 0.0, end0, d0a, d0b, d0c);
+        ProError end1_code = ProEdgeXyzdataEval(edge, 1.0, end1, d1a, d1b, d1c);
+        auto near_end = [](const ProVector &a, const ProVector &b) {
+            double dx = a[0] - b[0], dy = a[1] - b[1], dz = a[2] - b[2];
+            return std::sqrt(dx * dx + dy * dy + dz * dz) <= FLANGE_ADJACENT_END_MATCH_MM;
+        };
+        J ends = J::array({{{"end", 0},
+                            {"point_mm", flange_point_json(end0, end0_code)},
+                            {"adjacent_bend_end", false}},
+                           {{"end", 1},
+                            {"point_mm", flange_point_json(end1, end1_code)},
+                            {"adjacent_bend_end", false}}});
+        ProEdge nb1 = nullptr, nb2 = nullptr;
+        ProSurface shared1 = nullptr, shared2 = nullptr;
+        ProError neighbours_code = ProEdgeNeighborsGet(edge, &nb1, &nb2, &shared1, &shared2);
+        if (neighbours_code) {
+            log("FLANGE_ADJACENT_BEND skip=neighbors_code=%d\n", neighbours_code);
+            return J::object();
+        }
+        bool any_hit = false;
+        J unmatched = J::array();
+        for (ProEdge nb : {nb1, nb2}) {
+            if (!nb)
+                continue;
+            int nb_id = -1;
+            ProEdgeIdGet(nb, &nb_id);
+            ProGeomitemdata *data = nullptr;
+            ProError data_code = ProEdgeDataGet(nb, &data);
+            ProCurvedata *curve = data ? PRO_CURVE_DATA(data) : nullptr;
+            int curve_type = curve ? curve->type : -1;
+            double arc_radius = 0;
+            ProVector arc_v1, arc_v2, arc_origin;
+            double arc_start = 0, arc_end = 0;
+            bool is_arc = !data_code && curve && curve_type == PRO_ENT_ARC &&
+                          ProArcdataGet(curve, arc_v1, arc_v2, arc_origin, &arc_start, &arc_end,
+                                        &arc_radius) == PRO_TK_NO_ERROR;
+            J bend_faces = J::array();
+            if (is_arc) {
+                ProEdge fa1 = nullptr, fa2 = nullptr;
+                ProSurface sfa = nullptr, sfb = nullptr;
+                if (ProEdgeNeighborsGet(nb, &fa1, &fa2, &sfa, &sfb) == PRO_TK_NO_ERROR) {
+                    for (ProSurface face : {sfa, sfb}) {
+                        if (!face)
+                            continue;
+                        ProGeomitemdata *sdata = nullptr;
+                        if (ProSurfaceDataGet(face, &sdata) == PRO_TK_NO_ERROR && sdata) {
+                            ProSurfacedata *surf = PRO_SURF_DATA(sdata);
+                            if (surf && surf->type == PRO_SRF_CYL) {
+                                int face_id = -1;
+                                ProSurfaceIdGet(face, &face_id);
+                                bend_faces.push_back(face_id);
+                            }
+                            ProGeomitemdataFree(&sdata);
+                        }
+                    }
+                }
+            }
+            if (data)
+                ProGeomitemdataFree(&data);
+            bool adjacent = is_arc && !bend_faces.empty() && arc_radius <= bound;
+            int which = -1;
+            if (!end0_code && !end1_code) {
+                ProVector pa, pa1, pa2, pad, pb, pb1, pb2, pbd;
+                if (ProEdgeXyzdataEval(nb, 0.0, pa, pa1, pa2, pad) == PRO_TK_NO_ERROR) {
+                    if (near_end(pa, end0))
+                        which = 0;
+                    else if (near_end(pa, end1))
+                        which = 1;
+                }
+                if (which < 0 &&
+                    ProEdgeXyzdataEval(nb, 1.0, pb, pb1, pb2, pbd) == PRO_TK_NO_ERROR) {
+                    if (near_end(pb, end0))
+                        which = 0;
+                    else if (near_end(pb, end1))
+                        which = 1;
+                }
+            }
+            J row = {{"neighbor_edge_id", nb_id},
+                     {"neighbor_edge_type", curve_type},
+                     {"neighbor_arc", is_arc},
+                     {"neighbor_radius_mm", is_arc ? J(arc_radius) : J()},
+                     {"radius_bound_mm", bound},
+                     {"bend_face_ids", bend_faces},
+                     {"adjacent_bend_end", adjacent}};
+            if (which >= 0) {
+                row["point_mm"] = ends[which].at("point_mm");
+                ends[which].update(row);
+            } else {
+                unmatched.push_back(row);
+            }
+            if (adjacent)
+                any_hit = true;
+        }
+        log("FLANGE_ADJACENT_BEND edge=%d end0=%d end1=%d unmatched=%d\n", item.id,
+            ends[0].value("adjacent_bend_end", false) ? 1 : 0,
+            ends[1].value("adjacent_bend_end", false) ? 1 : 0, (int)unmatched.size());
+        if (!any_hit)
+            return J::object();
+        evidence["stage"] = "before_create";
+        evidence["edge_id"] = item.id;
+        evidence["edge_length_mm"] = length_code ? J() : J(length);
+        evidence["radius_mm"] = radius;
+        evidence["part_thickness_mm"] = thickness;
+        evidence["radius_bound_mm"] = bound;
+        evidence["tolerance_mm"] = FLANGE_ADJACENT_BEND_TOLERANCE_MM;
+        evidence["ends"] = ends;
+        if (!unmatched.empty())
+            evidence["unmatched_neighbor_edges"] = unmatched;
+        return evidence;
+    } catch (ProError code) {
+        log("FLANGE_ADJACENT_BEND_FAILED=%d\n", code);
+        return J::object();
+    } catch (...) {
+        log("FLANGE_ADJACENT_BEND_FAILED=exception\n");
+        return J::object();
+    }
+}
+
+static std::string flange_adjacent_ends_summary(const J &evidence) {
+    std::string summary;
+    // Copies, not pointers: value() returns temporaries that would dangle in a
+    // pointer initializer_list before the loop body runs.
+    for (const J &rows : {evidence.value("ends", J::array()),
+                          evidence.value("unmatched_neighbor_edges", J::array())}) {
+        for (const auto &row : rows) {
+            if (!row.value("adjacent_bend_end", false))
+                continue;
+            summary += (summary.empty() ? "" : "; ");
+            summary += "end";
+            summary += row.contains("end") && row["end"].is_number()
+                           ? std::to_string(row["end"].get<int>())
+                           : std::string("?");
+            summary += ": neighbour arc edge ";
+            summary += std::to_string(row["neighbor_edge_id"].get<int>());
+            summary += " radius ";
+            summary += std::to_string(row["neighbor_radius_mm"].get<double>());
+            summary += " mm within the bend-setback bound ";
+            summary += std::to_string(row["radius_bound_mm"].get<double>());
+            summary += " mm, bend faces ";
+            summary += row["bend_face_ids"].dump();
+        }
+    }
+    return summary;
 }
 
 static void generic_sheetmetal_flange(const J &op) {
@@ -1090,6 +1290,32 @@ static void generic_sheetmetal_flange(const J &op) {
                 "boundary: an edge shared by two side/rim surfaces cannot carry a flange. "
                 "Build the base with sheetmetal_wall(depth=plate size, thickness=sheet "
                 "thickness) so the wall faces are the ones the flange attaches to.");
+    }
+    // DEV-052 N06 (FEAT-014): the confirmed trigger shape - an attachment-edge
+    // end adjacent to an existing bend - is refused here, before any feature
+    // exists, instead of failing inside regeneration and rolling back. See
+    // flange_adjacent_bend_end_evidence for the dual-evidence criterion and its
+    // default compatibility: a silent check never blocks the stock path.
+    {
+        J adjacency = flange_adjacent_bend_end_evidence(op);
+        if (!adjacency.empty()) {
+            adjacency["failure_reason"] = "adjacent_bend_ends";
+            std::string summary = flange_adjacent_ends_summary(adjacency);
+            stage_operation_result({{"flange_failure_evidence", adjacency}});
+            log("FLANGE_ADJACENT_BEND_REJECT edge=%d %s\n", adjacency["edge_id"].get<int>(),
+                summary.c_str());
+            throw std::runtime_error(
+                "sheetmetal_flange rejected before create (failure_reason=adjacent_bend_ends): "
+                "attachment edge " +
+                std::to_string(adjacency["edge_id"].get<int>()) +
+                " has end(s) adjacent to existing bends: " + summary +
+                ". The 2026-10-31 live probes proved this shape fails inside regeneration "
+                "(feature_status=6, no geometry) and the failure evidence cannot separate "
+                "section overrun from neighbouring-material overlap; this build implements "
+                "no corner relief or miter, so the wall is refused before submission. Attach "
+                "the flange to an edge whose ends are clear of existing bends; four-wall "
+                "boxes are not supported yet (FEAT-014 stays open).");
+        }
     }
     ProSection section;
     CK(ProSection2DAlloc(&section));

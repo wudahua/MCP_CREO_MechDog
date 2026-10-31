@@ -1574,7 +1574,9 @@ async def creo_sheetmetal_flange(
 
     flip=false (the default) bends out of the face the edge belongs to; flip=true bends to
     the opposite, material side. The side is relative to the attachment face, not to a
-    global axis.
+    global axis. A wall whose attachment-edge end is adjacent to an existing bend is
+    rejected before creation (failure_reason=adjacent_bend_ends); four-wall boxes are not
+    supported yet.
 
     Optional relief adds a single rectangular notch to the selected bend end(s); without it
     both ends keep PRO_BEND_RLF_NONE exactly as before. Relief geometry is not verified
