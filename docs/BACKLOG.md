@@ -277,7 +277,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [FEAT-060](work-items/FEAT-060.md) | P2 | 待规划 | 未排期 | 骨架驱动首壁参数；依赖 FEAT-059 真实骨架，先冻结日志/依赖闭包与 revision 契约。 |
 | [FEAT-061](work-items/FEAT-061.md) | P2 | 待规划 | 未排期 | 单层受管装配配置切换/抑制恢复；保留身份、约束和位姿，尚未实施。 |
 | [FEAT-062](work-items/FEAT-062.md) | P2 | 待规划 | 未排期 | 独立零件 rename/derive；统一名称冲突、身份与检查点恢复，尚未实施。 |
-| [FEAT-065](work-items/FEAT-065.md) | P1 | 部分交付，剩余待规划 | 未排期 | M1（同方向 2—32 截面）已实机验收（2026-11-11 Creo 12.4）：三截面 40/60/40 实测 2101.25 mm²、开放 quilt、保存重载稳定、thicken 体积=面积×2，两截面 800 mm² 回归通过。实机证明 3 截面以上是单张光滑面而非分段直纹，故 `interpolation` 扩为 `straight|smooth`、3 截面以上强制 `smooth`、回执加 `section_count`/`piecewise_ruled`。2026-11-11 M2 导线（第二方向 2DIR）已实机验收：`surface_loft.guides` 2-8 条（单导线在校验层拒绝，实测单 2DIR 曲线不再生），直导线基线 800.0 mm²/x 止 40 mm（job `900fa9b3…`），曲线导线 600.0 mm²/包围盒 x 达 44.24 mm（job `4d0f3e10…`），两组均保存重载通过。仍开放：`ADV_VIA_CRV`、任意正交平面截面、端点收敛、G1/G2、导线形状未做可视化核对、Creo9/10 差异未裁定。 |
+| [FEAT-065](work-items/FEAT-065.md) | P1 | 部分交付（M1/M2 已随 0.21.0 发布），后续待规划 | 未排期 | M1（同方向 2—32 截面）已实机验收（2026-11-11 Creo 12.4）：三截面 40/60/40 实测 2101.25 mm²、开放 quilt、保存重载稳定、thicken 体积=面积×2，两截面 800 mm² 回归通过。实机证明 3 截面以上是单张光滑面而非分段直纹，故 `interpolation` 扩为 `straight|smooth`、3 截面以上强制 `smooth`、回执加 `section_count`/`piecewise_ruled`。2026-11-11 M2 导线（第二方向 2DIR）已实机验收并随 **0.21.0** 发布：`surface_loft.guides` 2-8 条（单导线在校验层拒绝，实测单 2DIR 曲线不再生），直导线基线 800.0 mm²/x 止 40 mm（job `900fa9b3…`），曲线导线 600.0 mm²/包围盒 x 达 44.24 mm（job `4d0f3e10…`），3 截面 + 直导线 1600.0 mm²（job `2fd4ab48…`，一次性探针），均保存重载通过；驱动 `tools/test_surface_loft_guides.py` 离线 10 项 + 实机 17 项全 PASS。仍开放：`ADV_VIA_CRV`、任意正交平面截面、端点收敛、G1/G2、导线形状未做可视化核对、驱动中 3 截面用例发布前未复跑、Creo9/10 差异未裁定。 |
 | [FEAT-064](work-items/FEAT-064.md) | P3 | 待规划 | 未排期 | 受管世代清理 inspect/apply；冻结证据/幂等与引用保护后实施，不自动删除。 |
 
 ## 历史资料

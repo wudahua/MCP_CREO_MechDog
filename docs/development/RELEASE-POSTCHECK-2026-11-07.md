@@ -130,6 +130,23 @@
 | `MCP_CREO_MechDog-0.19.1-seed-library.zip` | 493 442 | `a7d864271b2e188e1f2a51eeea2046d15cf8615b10fde9b87beb466e8350657f` | 2026-11-08T08:07:46Z |
 | `MCP_CREO_MechDog-0.19.1-seed-library.zip.sha256` | 107 | `16206fd52e2aa91f755bfc321beb02fa2403fd8049132d26d34f333befb161e2` | 2026-11-08T08:07:46Z |
 
+## v0.21.0（2026-11-11 本轮联网实测）
+
+- 核对时间：`2026-11-11T05:15:33Z` 发布后立即核对（本机 +08:00）。
+- 标签对象：`v0.21.0` → annotated tag `1932c03b7842f04603a979393ffb607db2beaa7a` → 提交 `990c88a`。
+- Release：[v0.21.0](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.21.0)，id `441266770`，非 draft、非 prerelease；`created_at=2026-11-11T05:14:44Z`，`published_at=2026-11-11T05:15:33Z`，`target_commitish=main`。
+- 核对命令：`tools/check_release_assets.py --tag v0.21.0` → exit 0，「v0.21.0: four assets downloaded and verified; both sidecars match」。
+- 四附件逐个列出（未用通配）；API `assets[].digest`、下载后本地实算 SHA256 与 sidecar 内容三者一致：
+
+| 附件 | 字节 | SHA256 | API 创建时间 |
+| --- | ---: | --- | --- |
+| `MCP_CREO_MechDog-0.21.0-source.zip` | 9 509 982 | `ff3ef09eb27409089375b61a61505c1a1fa359f16cd5507858325dcaac1be4ec` | 2026-11-11T05:15:30Z |
+| `MCP_CREO_MechDog-0.21.0-source.zip.sha256` | 101 | `f7b66d0158c79272291a66adda430ab46bca8f74c4222bce791bb8d67b6bcaf0` | 2026-11-11T05:15:30Z |
+| `MCP_CREO_MechDog-0.21.0-seed-library.zip` | 493 442 | `da2a2936afdc5c1afbc1c7ffd5c9d70390020ec41f3cdb2f086d2151259a0f46` | 2026-11-11T05:15:30Z |
+| `MCP_CREO_MechDog-0.21.0-seed-library.zip.sha256` | 107 | `9309ac3dd750d0f720963ddb9ab31f5fcbdcc8a3945e7103ed613873f6014bfe` | 2026-11-11T05:15:30Z |
+
+- 本记录只证明远端附件、两个 sidecar 与对应 ZIP 摘要一致；不重新验证包内功能、Creo 实机或安装结果。发布前本机四附件闸门（`tools/package.py`）同样通过，源码包解压单测的 MAX_PATH 例外见 [RELEASE-0.21.0](../validation/RELEASE-0.21.0.md)。
+
 ## v0.19.2（2026-11-08 本轮联网实测）
 
 - 核对时间：`2026-11-08T12:20Z` / `2026-11-08 20:20 +08:00`。

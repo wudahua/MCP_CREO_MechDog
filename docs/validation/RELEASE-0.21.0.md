@@ -39,4 +39,16 @@ Windows x64 / Python 3.12.14 / Creo 12.4.0.0（`release_numeric=44`）/ 匹配 T
 
 ## 发布核对
 
-发布后在此段回填：标签指向的主干提交、Release 链接、四附件清单与 `tools\check_release_assets.py --tag v0.21.0` 的核对结果。
+- 标签对象：`v0.21.0` → annotated tag `1932c03b7842f04603a979393ffb607db2beaa7a` → 提交 `990c88a155be37ccf7c75b5c6268fb6352318899`（`main`，`074ea67..990c88a` 推送）。
+- Release：[v0.21.0](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.21.0)，id `441266770`，非 draft、非 prerelease；`created_at=2026-11-11T05:14:44Z`，`published_at=2026-11-11T05:15:33Z`，`target_commitish=main`。
+- 核对命令：`tools\check_release_assets.py --tag v0.21.0` → exit 0，「v0.21.0: four assets downloaded and verified; both sidecars match」。
+- 四附件逐个列出（未用通配）；API `assets[].digest`、下载后本地实算 SHA256 与 sidecar 内容三者一致：
+
+| 附件 | 字节 | SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.21.0-source.zip` | 9 509 982 | `ff3ef09eb27409089375b61a61505c1a1fa359f16cd5507858325dcaac1be4ec` |
+| `MCP_CREO_MechDog-0.21.0-source.zip.sha256` | 101 | `f7b66d0158c79272291a66adda430ab46bca8f74c4222bce791bb8d67b6bcaf0` |
+| `MCP_CREO_MechDog-0.21.0-seed-library.zip` | 493 442 | `da2a2936afdc5c1afbc1c7ffd5c9d70390020ec41f3cdb2f086d2151259a0f46` |
+| `MCP_CREO_MechDog-0.21.0-seed-library.zip.sha256` | 107 | `9309ac3dd750d0f720963ddb9ab31f5fcbdcc8a3945e7103ed613873f6014bfe` |
+
+- 源码包解压门禁：解压后 `pip install --no-deps -e .` 并跑 `python -m unittest discover -s tests` → `Ran 3314 tests`，3313 通过、5 skipped、1 error。该 error 是解压路径过深触发 Windows MAX_PATH（`test_dev040_blackbox_fixture` 的 `.tmp` 重命名失败），把同一份解压内容放到短路径 `E:\u21` 复跑该模块 → 4 项 `OK`，确认与包内容无关。核完已把可编辑安装恢复回 `E:\Projects\MCP_CREO_MechDog`。
