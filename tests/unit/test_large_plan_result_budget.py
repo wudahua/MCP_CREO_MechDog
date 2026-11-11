@@ -346,6 +346,54 @@ class CompactBudgetTests(unittest.TestCase):
         self.assertEqual(failed[0]["message"], "failure reason at 55")
         self.assertIn("feature_errors", failed[0])
 
+    def test_a_trimmed_surface_receipt_keeps_its_measurements(self):
+        # BUG-118: measured 2026-11-11, the three-section guided loft in job
+        # 6510998c... was the last record of an over-budget summary, so the trim
+        # hit it first and left nothing but detail_truncated. The bulky per-sketch
+        # blocks are what the trim exists to cut; the measured scalars stay.
+        result = build_result(5)
+        for record in result["operations"]:
+            record["profile"] = {
+                "source": "input",
+                "categories": {f"bucket_{i:03d}": i for i in range(320)},
+            }
+        result["operations"].append(
+            {
+                "op": "surface_loft",
+                "index": 5,
+                "label": "guided_loft",
+                "succeeded": True,
+                "execution_status": "succeeded",
+                "effect_status": "committed",
+                "quilt_id": 77,
+                "quilt_count": 1,
+                "quilt_closed_native": "open",
+                "has_solid": False,
+                "surface_area_mm2": 1599.9999999999995,
+                "surface_area_status": "measured",
+                "section_count": 3,
+                "guide_count": 2,
+                "guide_curve_ids": [901, 902],
+            }
+        )
+        manifest = build_manifest(result, 6)
+        self.assertGreater(utf8_bytes(manifest), RESPONSE_BUDGET)
+        compact = bridge.compact_job(copy.deepcopy(manifest))
+        records = [
+            item for item in compact["result"]["operations"] if item.get("op") == "surface_loft"
+        ]
+        self.assertEqual(len(records), 1)
+        record = records[0]
+        self.assertTrue(record["detail_truncated"])
+        self.assertEqual(record["surface_area_mm2"], 1599.9999999999995)
+        self.assertEqual(record["surface_area_status"], "measured")
+        self.assertEqual(record["guide_count"], 2)
+        self.assertEqual(record["guide_curve_ids"], [901, 902])
+        self.assertEqual(record["section_count"], 3)
+        self.assertEqual(record["quilt_count"], 1)
+        self.assertEqual(record["quilt_closed_native"], "open")
+        self.assertFalse(record["has_solid"])
+
     def test_protected_outcome_evidence_is_never_cut(self):
         manifest = build_manifest(build_result(120, failed=True), 120)
         compact = bridge.compact_job(copy.deepcopy(manifest))

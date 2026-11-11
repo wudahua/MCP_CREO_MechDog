@@ -344,6 +344,32 @@ PROTECTED_OPERATION_KEYS = (
     "message",
 )
 
+#: BUG-118: measured outcome scalars that make a surface receipt readable at
+#: all. They are tiny next to the geometry blocks the trim exists to cut, so a
+#: compact poll keeps "what came out" (area, closure, counts, ids) even when the
+#: bulky ``surface_group``/``profile`` blocks are dropped. Measured 2026-11-11:
+#: a three-section guided loft lost every one of these to the trim, leaving a
+#: record that only said ``detail_truncated``.
+OUTCOME_OPERATION_KEYS = (
+    "quilt_id",
+    "quilt_ids",
+    "quilt_count",
+    "quilt_closed_native",
+    "has_solid",
+    "surface_area_mm2",
+    "surface_area_status",
+    "section_count",
+    "section_curve_ids",
+    "guide_count",
+    "guide_curve_ids",
+    "piecewise_ruled",
+    "interpolation",
+    "volume_mm3",
+    "curve_id",
+    "length_mm",
+    "surface_id",
+)
+
 #: Failure diagnostics kept in full on the failed record itself. A per-record
 #: ``failed_operation`` block is failure evidence too (FEAT-012/FEAT-008).
 #: B2/F11: the zero-material-cut geometry receipt is failure evidence as well,
@@ -416,7 +442,9 @@ def _execution_counts(operations: list) -> dict[str, int]:
 
 
 def _status_core(record: dict[str, Any], *, failed: bool) -> dict[str, Any]:
-    keys = PROTECTED_OPERATION_KEYS + (FAILED_EVIDENCE_KEYS if failed else ())
+    keys = (
+        PROTECTED_OPERATION_KEYS + OUTCOME_OPERATION_KEYS + (FAILED_EVIDENCE_KEYS if failed else ())
+    )
     core = {key: record[key] for key in keys if key in record}
     core["detail_truncated"] = True
     return core
@@ -435,9 +463,12 @@ def enforce_compact_budget(summary: dict[str, Any], *, budget: int | None = None
     2. optional detail fields are dropped from the kept records, the failed
        record last (``detail_truncated`` marks each stripped record).
 
-    Failure reasons, revision, rollback and save/reload evidence are never
-    cut. If that evidence alone still exceeds the budget the summary reports
-    the real sizes in ``result_budget`` instead of hiding it.
+    Failure reasons, revision, rollback, save/reload evidence and the measured
+    outcome scalars in ``OUTCOME_OPERATION_KEYS`` (area, closure, counts, ids)
+    are never cut: they are small, and without them a trimmed surface receipt
+    says nothing but ``detail_truncated``. If that evidence alone still exceeds
+    the budget the summary reports the real sizes in ``result_budget`` instead
+    of hiding it.
     """
     from creo_mechdog.model_queries import RESPONSE_BUDGET, serialized_size
 
