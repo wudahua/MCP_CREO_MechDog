@@ -105,6 +105,16 @@ def case_offline() -> dict:
     except ValueError as error:
         check("schema_accepts_two_section_surface_loft", False, {"error": str(error)})
 
+    # FEAT-065/M1 (0.21.0) published interpolation="smooth"; two sections accept
+    # it, so it is no longer a negative case of this two-section driver.
+    smooth = [dict(operation) for operation in valid]
+    smooth[-1]["interpolation"] = "smooth"
+    try:
+        validate_operations(smooth)
+        check("schema_accepts_two_section_smooth", True)
+    except ValueError as error:
+        check("schema_accepts_two_section_smooth", False, {"error": str(error)})
+
     rejected = {
         "three_sections": {
             "op": "surface_loft",
@@ -112,12 +122,6 @@ def case_offline() -> dict:
             "sections": ["a", "b", "c"],
         },
         "one_section": {"op": "surface_loft", "label": "loft_surface", "sections": ["a"]},
-        "smooth": {
-            "op": "surface_loft",
-            "label": "loft_surface",
-            "sections": ["a", "b"],
-            "interpolation": "smooth",
-        },
         "duplicate_sections": {
             "op": "surface_loft",
             "label": "loft_surface",
