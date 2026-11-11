@@ -42,6 +42,8 @@
 
 语义是在**当前模型中**按法向（`axis` 是 `x/y/z` 的简写，`normal` 是任意非零 3D 向量）和偏置匹配一张已有的平面支撑面；候选不唯一或不存在时明确失败。它**不是**"按法向创建新基准面"的输入，服务也没有按法向建面的入口；需要新基准面时用 `creo_datum_plane`（其 `reference` 内部的筛选 offset 与操作自身的 offset 是分开的两个值）。缺 `kind` 的引用、未知标签在入口即拒绝，不透出 JSON 缺键异常。字典 offset 旧摘要（0.9.0 反馈 F4 S6）指的就是该筛选器的 `offset` 字段：它是匹配条件，不是新建偏移距离。
 
+**两种平面形式的取舍（BUG-116，0.19.3 反馈）**：`{kind:"plane",normal,offset}` 按几何位置在**面集合**里找面，`{kind:"datum_plane",axis,offset}` 只在**基准面集合**里找。真实模型同一高度常有多张平行基准面（草图支撑面会被自动创建为 `no_name` 基准面），此时 `datum_plane` 形式会被拒绝。拔模 `neutral_plane` 等"取某个高度的平面"场景优先用几何形式，或直接用巡检返回的 `plane`/`surface` ID；被拒绝时回执会给出匹配到的候选数、候选 ID 列表，并用 `failed_reference field=...` 指名是哪个参数解析失败。
+
 ## 钣金展开固定面（fixed_surface，P05）
 
 `sheetmetal_unbend`/`sheetmetal_flat_pattern`/`sheetmetal_bend_back` 的 `fixed_surface` 是一个**裸面引用**（与其他引用同一解析语义），如：
@@ -142,9 +144,16 @@
 
 > surface_trim offset_mm is not published: the documented Thin tree (PRO_SURF_TRIM_THIN with PRO_E_THICKNESS/PRO_E_SRF_OFFS_METHOD) only removes a band of that thickness when the tool is a quilt, keeps both sides instead of the requested keep_side, and offset_side has no observable effect (2026-11-06 six direction variants all produced the same band; negative thickness fails regeneration)
 
-**loft 的表面模式仍不可用**：`creo_loft` 只接受 `mode="add"`；`mode="surface"`、`cut` 与 `new_body=true` 都在入队前拒绝。没有 `creo_surface_loft` 工具，也没有 `surface_loft` 已注册操作；多截面放样/边界混合曲面仍未发布。
+```json
+// creo_surface_loft：2—32 个截面草图，可选 2—8 条第二方向导线
+{"sections": ["sec_a", "sec_b"],
+ "interpolation": "straight",
+ "guides": ["guide_left", "guide_right"]}
+```
 
-`extrude(mode="surface")`、`revolve(mode="surface")`（含局部角度）以及曲面特征上的 `axis_pattern` 已有 Creo 10 报告方实机正证据；它们不替代多截面放样或 quilt 合并。`creo_quilt_merge` 虽有公开工具签名，仍在提交前门禁，文档中的结果字段仅是待验契约。修剪结果 quilt 通过特征标签再次引用、弯曲 quilt 的偏置距离读回与保留侧的几何判据仍未闭环；需要从当前模型的 `inspect_model(section="quilts")` 获取实际几何 ID，不能把请求值当成实测值。
+`creo_surface_loft`（`surface_loft`）自 0.18.3 起公开，**取代**了「多截面放样未发布」的旧说法：2—32 个截面草图按提交顺序建一张边界混合曲面，两截面为直纹（`interpolation="straight"`），三截面及以上由内核拟合成一张光滑面，必须显式 `interpolation="smooth"`。`guides` 是可选第二方向：2—8 个草图、每条恰好一条非复合曲线、不得与截面重复；只给一条导线在校验层直接拒绝（实测单条 2DIR 曲线能建特征但不再生）。导线是否穿过截面由内核判定，不穿过就再生失败而不是被忽略。`creo_loft` 本身仍只接受 `mode="add"`，`mode="surface"`、`cut` 与 `new_body=true` 都在入队前拒绝，实体放样与曲面放样是两条独立路线。
+
+`extrude(mode="surface")`、`revolve(mode="surface")`（含局部角度）以及曲面特征上的 `axis_pattern` 已有 Creo 10 报告方实机正证据；它们不替代多截面放样或 quilt 合并。`creo_quilt_merge` 自 0.19.0（FEAT-039 H03）起已公开：只支持两片相接/相交 quilt 的 JOIN，在 `target` 上原地重剪（`result_quilt_source="retrimmed_target_quilt"`）。**merge 的结果没有可独立引用的 quilt 标签**：下一次 merge、`solidify` 或 `thicken` 必须继续引用**原始 target** 的标签或几何 ID，用 merge 特征标签会得到 `ProFeatureGeomitemVisit -4`（2026-11-10 Creo 10 上报，同计划与跨计划均复现，见 [BUG-115](work-items/BUG-115.md)）。修剪结果 quilt 通过特征标签再次引用、弯曲 quilt 的偏置距离读回与保留侧的几何判据仍未闭环；需要从当前模型的 `inspect_model(section="quilts")` 获取实际几何 ID，不能把请求值当成实测值。
 
 ## 各工具的外层形状
 
@@ -156,7 +165,7 @@
 | datum_csys / datum_points.reference | 裸坐标系引用，如 `{"kind":"default_csys"}`、几何 csys ID 或 datum_csys_feature 标签 |
 | hole.placement/reference1/reference2 | 各自直接传入裸引用，placement 为放置面，reference1/2 为定位参考；平面定位参考可用 `datum_plane.id` 几何 ID |
 | hole.standard | `{"series":"ISO","size":"M6","thread_depth":8}`：按安装孔表建螺纹孔。此时 `diameter` 可省略（给了必须等于表内名义直径），`depth` 必填，`thread_depth` 必须严格小于钻尖深度且不超表内上限；回执给 `thread_metadata` 与 `thread_metadata_verified`（只有创建后特征树回读一致才为 true），非标准孔回执不变 |
-| draft.surfaces/neutral_plane/pull_direction | surfaces 是裸面引用数组；neutral_plane 和 pull_direction 分别是裸单引用，neutral_plane 可用 `datum_plane.id` 几何 ID |
+| draft.surfaces/neutral_plane/pull_direction | surfaces 是裸面引用数组；neutral_plane 和 pull_direction 分别是裸单引用。neutral_plane 优先用 `{kind:"plane",normal,offset}` 或巡检的 `plane`/`surface` 几何 ID；`datum_plane` 的 axis+offset 只在候选唯一时成立，多张平行面会被拒绝并列出候选（BUG-116）。`pull_direction` 省略或为 null 时取中性面法向 |
 | boolean_bodies.targets/tools | 裸 body 引用数组，须明确不同 body ID；不能传特征 ID。巡检可能返回负 body ID，但当前布尔入口不支持把负 ID 作为目标或工具；这不表示巡检记录无效。正 ID 也不保证能把独立实体并入钣金主体：报告方在 Creo 10 对钣金体与实体做双向 union 均遇到原生 `-1` 并回滚，当前未提供钣金体融合能力 |
 | 钣金模型的 extrude/revolve add | 普通 `extrude(mode="add", thin=null, new_body=false)` 在建模前以 `SHEETMETAL_SOLID_ADD_UNSUPPORTED` 拒绝；`new_body=true` 创建的是独立实体，不保证能与钣金主体融合。`thin` 增料与 `revolve` 增料未被该准入规则阻断，但目标 body 与合并结果尚无可靠契约，不能据此视为钣金主体增料 |
 | solidify.reference | 裸平面/曲面参考，可用已验证平面的 `plane.id` 几何 ID；平面裁剪示例使用 mode=cut，quilt 分支按既有能力限制验收 |

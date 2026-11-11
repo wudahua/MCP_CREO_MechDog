@@ -43,6 +43,12 @@ const char *mechdog_surface_loft_sdk_state() {
 // discarded when regeneration fails.
 static constexpr int SURFACE_LOFT_TREE_SAMPLE_LIMIT = 160;
 
+// FEAT-065/M1: an upper bound that keeps one element tree (and one receipt)
+// bounded; the kernel has no documented maximum of its own.
+static constexpr int SURFACE_LOFT_SECTION_LIMIT = 32;
+// FEAT-065/M2 experiment: the second direction (guides) is bounded the same way.
+static constexpr int SURFACE_LOFT_GUIDE_LIMIT = 8;
+
 static J loft_element_json(ProElement element, int depth, int &budget) {
     J record = J::object();
     if (!element || budget <= 0)
@@ -120,11 +126,12 @@ static J loft_tree_json(ProElement root) {
             {"elements_read", SURFACE_LOFT_TREE_SAMPLE_LIMIT - budget}};
 }
 
-// One section = one sketch feature holding exactly one non-composite curve.
-// This is the same admission blend_create.cpp already applies to a solid Blend;
-// a composite curve, zero curves or several curves are refused instead of
-// picking one.
-static int surface_loft_curve(const J &reference, const char *role) {
+// One section = one sketch feature. A section may be a single non-composite
+// curve, or the two curves that make one closed profile: Creo stores a closed
+// ellipse/circle as two arcs, and requiring one curve would make every closed
+// hull section unusable. Composite curves and three or more curves are still
+// refused instead of being stitched by guesswork.
+static std::vector<int> surface_loft_curves(const J &reference, const char *role) {
     int id = feature_id(reference);
     ProFeature sketch;
     CK(ProFeatureInit((ProSolid)board, id, &sketch));
@@ -145,25 +152,106 @@ static int surface_loft_curve(const J &reference, const char *role) {
         if (ProCurveTypeGet(curve, &kind) == PRO_TK_NO_ERROR && kind != PRO_ENT_CMP_CRV)
             simple.push_back(item["id"].get<int>());
     }
-    if (simple.size() != 1)
-        throw std::runtime_error(std::string("surface_loft ") + role +
-                                 " section must own exactly one non-composite curve; feature " +
-                                 std::to_string(id) + " owns " +
-                                 std::to_string((int)simple.size()));
-    return simple[0];
+    if (simple.size() != 1 && simple.size() != 2)
+        throw std::runtime_error(
+            std::string("surface_loft ") + role +
+            " section must own one curve, or two curves forming one closed profile; feature " +
+            std::to_string(id) + " owns " + std::to_string((int)simple.size()) +
+            " non-composite curves");
+    return simple;
 }
 
 static void generic_surface_loft(const J &op) {
     const J &sections = op.at("sections");
-    if (sections.size() != 2)
-        throw std::runtime_error("surface_loft requires exactly two sections");
-    if (op.value("interpolation", "straight") != "straight")
-        throw std::runtime_error("surface_loft supports interpolation 'straight' only");
+    // FEAT-065/M1 (2026-11-10): the same PRO_E_BNBLN_1DIR tree that carries two
+    // sections carries N — each section is one more chain holder — so the
+    // published single-direction straight blend now accepts 2..32 sections.
+    // FEAT-065/M2 adds the second direction (guides) beside it, never instead
+    // of it: a guided blend still needs at least two sections.
+    if (sections.size() < 2)
+        throw std::runtime_error("surface_loft requires at least two sections");
+    if (sections.size() > SURFACE_LOFT_SECTION_LIMIT)
+        throw std::runtime_error("surface_loft accepts at most " +
+                                 std::to_string(SURFACE_LOFT_SECTION_LIMIT) +
+                                 " sections; split the plan instead");
+    const std::string interpolation = op.value("interpolation", "straight");
+    if (interpolation != "straight" && interpolation != "smooth")
+        throw std::runtime_error(
+            "surface_loft interpolation must be 'straight' (exactly two sections) or 'smooth' "
+            "(three or more sections)");
+    // Measured 2026-11-11 on Creo 12.4.0.0: >2 holders produce one blend through
+    // every section, not piecewise ruled patches, so "straight" would be a lie.
+    if (sections.size() > 2 && interpolation != "smooth")
+        throw std::runtime_error(
+            "surface_loft with more than two sections is a smooth blend through every section; "
+            "pass interpolation=\"smooth\"");
 
-    int first_curve = surface_loft_curve(sections[0], "first");
-    int second_curve = surface_loft_curve(sections[1], "second");
-    if (first_curve == second_curve)
-        throw std::runtime_error("surface_loft sections must be two different curves");
+    std::vector<std::vector<int>> section_curves;
+    std::vector<int> curve_ids;
+    std::set<int> seen_curves;
+    for (size_t index = 0; index < sections.size(); index++) {
+        std::string role = "section " + std::to_string((int)index + 1);
+        std::vector<int> curves = surface_loft_curves(sections[index], role.c_str());
+        for (int curve : curves) {
+            if (!seen_curves.insert(curve).second)
+                throw std::runtime_error("surface_loft " + role + " repeats curve " +
+                                         std::to_string(curve) +
+                                         "; every section must name a different sketch");
+            curve_ids.push_back(curve);
+        }
+        section_curves.push_back(curves);
+    }
+
+    // FEAT-065/M2: guides are the second direction. Probbl.h lists
+    // PRO_E_BNBLN_2DIR as an array of chain holders exactly like 1DIR, so each
+    // guide is one sketch and one holder; whether the curves actually cross
+    // every section is the kernel's decision, not a guess made here. Measured
+    // 2026-11-11 on Creo 12.4.0.0: one holder creates but never regenerates,
+    // two holders build a quilt whose geometry follows the guide curves.
+    std::vector<std::vector<int>> guide_curves;
+    std::vector<int> guide_curve_ids;
+    std::set<int> seen_guides;
+    // An empty list is the schema default, i.e. "no second direction"; it must
+    // stay a plain single-direction blend rather than a one-guide request.
+    const bool has_guides = op.contains("guides") && !op["guides"].is_null() &&
+                            (!op["guides"].is_array() || !op["guides"].empty());
+    if (has_guides) {
+        const J &guides = op["guides"];
+        if (!guides.is_array())
+            throw std::runtime_error("surface_loft guides must be a list of sketch labels or ids");
+        if (guides.size() < 2)
+            throw std::runtime_error(
+                "surface_loft guides are a second direction and need at least two guide "
+                "sketches; a single 2DIR curve creates a feature that does not regenerate");
+        if (guides.size() > SURFACE_LOFT_GUIDE_LIMIT)
+            throw std::runtime_error("surface_loft accepts at most " +
+                                     std::to_string(SURFACE_LOFT_GUIDE_LIMIT) +
+                                     " guides; a second direction is meant to be a few curves");
+        for (size_t index = 0; index < guides.size(); index++) {
+            std::string role = "guide " + std::to_string((int)index + 1);
+            if (!seen_guides.insert(feature_id(guides[index])).second)
+                throw std::runtime_error("surface_loft " + role +
+                                         " repeats a guide sketch; every guide must be a "
+                                         "different sketch");
+            std::vector<int> curves = surface_loft_curves(guides[index], role.c_str());
+            // One guide is one direction curve: a two-curve closed profile is a
+            // section shape, not a longitudinal guide, and is refused rather
+            // than handed to the kernel as an unproved chain.
+            if (curves.size() != 1)
+                throw std::runtime_error(
+                    "surface_loft " + role +
+                    " must own exactly one non-composite curve; a guide is one curve "
+                    "crossing the sections, not a closed profile");
+            for (int curve : curves) {
+                if (curve_ids.end() != std::find(curve_ids.begin(), curve_ids.end(), curve))
+                    throw std::runtime_error("surface_loft " + role + " reuses curve " +
+                                             std::to_string(curve) +
+                                             " as a section; a guide must be its own curve");
+                guide_curve_ids.push_back(curve);
+            }
+            guide_curves.push_back(curves);
+        }
+    }
 
     ProElement root = node(nullptr, PRO_E_FEATURE_TREE);
     integer(root, PRO_E_FEATURE_TYPE, PRO_FEAT_DATUM_SURF);
@@ -173,16 +261,40 @@ static void generic_surface_loft(const J &op) {
     ProElement curves = node(root, PRO_E_BNBLN_CURVES);
     ProElement direction = node(curves, PRO_E_BNBLN_1DIR);
     ProElement holders = node(direction, PRO_E_BNBLN_DIR_CURVES);
-    for (int curve_id : {first_curve, second_curve}) {
+    for (auto &curves : section_curves) {
         ProElement holder = node(holders, PRO_E_STD_CHAIN_HOLDER);
-        curve_collection(node(holder, PRO_E_STD_CURVE_COLLECTION_APPL),
-                         J::array({{{"kind", "curve"}, {"id", curve_id}}}));
+        J refs = J::array();
+        for (int curve_id : curves)
+            refs.push_back({{"kind", "curve"}, {"id", curve_id}});
+        curve_collection(node(holder, PRO_E_STD_CURVE_COLLECTION_APPL), refs);
+    }
+    if (!guide_curves.empty()) {
+        ProElement direction2 = node(curves, PRO_E_BNBLN_2DIR);
+        ProElement gholders = node(direction2, PRO_E_BNBLN_DIR_CURVES);
+        for (auto &guide : guide_curves) {
+            ProElement holder = node(gholders, PRO_E_STD_CHAIN_HOLDER);
+            J refs = J::array();
+            for (int curve_id : guide)
+                refs.push_back({{"kind", "curve"}, {"id", curve_id}});
+            curve_collection(node(holder, PRO_E_STD_CURVE_COLLECTION_APPL), refs);
+        }
     }
 
+    J curve_json = J::array();
+    for (int curve_id : curve_ids)
+        curve_json.push_back(curve_id);
+    J guide_json = J::array();
+    for (int curve_id : guide_curve_ids)
+        guide_json.push_back(curve_id);
     J details = {{"op", "surface_loft"},
                  {"sections", sections},
-                 {"section_curve_ids", J::array({first_curve, second_curve})},
-                 {"interpolation", "straight"},
+                 {"section_count", (int)section_curves.size()},
+                 {"section_curve_ids", curve_json},
+                 {"piecewise_ruled", section_curves.size() == 2},
+                 {"interpolation", interpolation},
+                 {"guides", has_guides ? op["guides"] : J::array()},
+                 {"guide_count", (int)guide_curves.size()},
+                 {"guide_curve_ids", guide_json},
                  {"route", "probbl_boundary_blend"}};
 
     // INCOMPLETE lets the kernel fill the defaults it owns; the extracted tree
@@ -217,10 +329,13 @@ static void generic_surface_loft(const J &op) {
         last_feature_error_report =
             feature_error_report("ProFeatureWithoptionsCreate", created, "surface_loft_create");
         stage_operation_result(details);
+        std::string listed;
+        for (size_t index = 0; index < curve_ids.size(); index++)
+            listed += (index ? ", " : "") + std::to_string(curve_ids[index]);
         throw std::runtime_error("surface_loft boundary blend create failed (code " +
                                  std::to_string((int)created) +
-                                 ", first_curve=" + std::to_string(first_curve) +
-                                 ", second_curve=" + std::to_string(second_curve) + ")");
+                                 ", sections=" + std::to_string((int)curve_ids.size()) +
+                                 ", section_curve_ids=[" + listed + "])");
     }
     ProElementFree(&root);
 
@@ -338,9 +453,7 @@ static void generic_surface_loft(const J &op) {
             "surface_loft result must be an open quilt; ProQuiltVolumeEval reported " +
             std::string(closure) + " (code " + std::to_string((int)closed.query_code) + ")");
 
-    remember(
-        op, feature,
-        {{"quilt_id", quilt_id}, {"section_curve_ids", J::array({first_curve, second_curve})}});
+    remember(op, feature, {{"quilt_id", quilt_id}, {"section_curve_ids", curve_json}});
 }
 #else
 static void generic_surface_loft(const J &op) {

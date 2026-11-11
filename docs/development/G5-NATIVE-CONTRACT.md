@@ -190,6 +190,22 @@ PRO_E_FEATURE_TREE
 
 **2026-11-07 实测回填（H02）：** 上述裸骨架可以创建。流程为 `ProFeatureWithoptionsCreate(..., PRO_FEAT_CR_INCOMPLETE_FEAT)` → `ProFeatureElemtreeExtract` → `ProFeatureWithoptionsRedefine` → ACTIVE。内核在抽取树中自行补齐 `PRO_E_EXT_SURF_CUT_SOLID_TYPE=942` 与 `PRO_E_BNBLN_TAN_COND`（`TAN_COND_TYPE`=1,1,0,0、`TAN_FLD_TYPE`=-1,-1,0,0），所以实现**不需要也不得**在创建前写这些值。细节、job 与面积/闭合读数见 §9.4。`PRO_E_CTRL_PTS`/`PRO_E_BLEND_TYPE` 仍不需要。
 
+**2026-11-11 第二方向实测回填（FEAT-065/M2）：** `PRO_E_BNBLN_2DIR` 与 `1DIR` 并列挂在 `PRO_E_BNBLN_CURVES` 下，结构完全同构（`PRO_E_BNBLN_2DIR` → `PRO_E_BNBLN_DIR_CURVES` → 每条曲线一个 `PRO_E_STD_CHAIN_HOLDER` → `PRO_E_STD_CURVE_COLLECTION_APPL`）：
+
+```
+PRO_E_BNBLN_CURVES
+ ├─ PRO_E_BNBLN_1DIR → PRO_E_BNBLN_DIR_CURVES → PRO_E_STD_CHAIN_HOLDER …/每截面一个
+ └─ PRO_E_BNBLN_2DIR → PRO_E_BNBLN_DIR_CURVES → PRO_E_STD_CHAIN_HOLDER …/每导线一个
+```
+
+实测结论（Creo 12.4.0.0，同 §9.4 的 INCOMPLETE→Extract→Redefine 流程）：
+
+- 2DIR 至少 2 条曲线：单条导线的特征能创建，但再生失败（`feature_status=6`、无 quilt），与 `Probbl.h:178-186` 一致，校验层必须先拒绝。
+- 导线必须横穿截面：端点与截面相交但切线平行时再生失败；端点相交、切线成 45° 时成功。是否真的相交由内核判定，Python/原生都不猜。
+- 抽取树保留 `2DIR` 节点（`1DIR`/`2DIR` 各一、`DIR_CURVES` 三个、每条曲线一组链元素），`PRO_E_BBL_ADD_CLOSED` 由内核补齐 3 个，因此实现依旧不写它。
+- 2DIR 明显改变几何：两截面 40 mm、间距 20 mm，直导线给出 800.0 mm²、包围盒 x = 0…40；半径 14.1421 mm 的半圆导线给出 600.0 mm²、包围盒 x 达 44.24。两组都通过保存重载校验。曲面的实际形状未做可视化核对，契约只声明可测数值。
+- 仍未定：`PRO_E_BNBLN_ADV_VIA_CRV`、`PRO_E_CTRL_PTS`/`PRO_E_BLEND_TYPE`、连续性元素与导线草图内含 2 条曲线的合法形态。
+
 ### 2.2 project_curve：实测定论与实际实现树（S04 回填，2026-11-04）
 
 #### 2.2.1 两族投影元素都不可用（实测，P2 结论）

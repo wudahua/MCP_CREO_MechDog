@@ -301,6 +301,11 @@ RevolveAxis = Annotated[
 def reference_capabilities() -> dict[str, Any]:
     """Keep the legacy example keys while spelling out each parameter's full shape."""
     plane = {"kind": "datum_plane", "axis": "z", "offset": 0}
+    # BUG-116 (0.19.3 feedback): a draft neutral plane is resolved by geometry
+    # position, so the safe example is the geometric form. The datum_plane form
+    # only works while exactly one datum plane sits at that offset; on a model
+    # with several parallel planes at the same height it is refused.
+    neutral_plane = {"kind": "plane", "normal": [0, 0, 1], "offset": 0}
     datum_plane_id = {"kind": "datum_plane", "id": 163}
     plane_id = {"kind": "plane", "id": 163}
     face = {"kind": "surface", "id": 11}
@@ -325,6 +330,7 @@ def reference_capabilities() -> dict[str, Any]:
             "datum_feature": "Normally a datum plane label; axis_pattern.axis accepts it as an axis-label compatibility alias",
             "example_ids": "IDs below are illustrative. Inspect the actual model and replace them; labels must exist in that model",
             "collection_vs_selection": "Round/chamfer sets and sketch supports contain selections; they are not interchangeable with a single selection",
+            "plane_by_position": "kind:'plane' resolves by geometric position and is the safe form for a neutral/support plane: {kind:'plane',normal:[0,0,1],offset:N}. kind:'datum_plane' resolves by axis+offset and is refused when several parallel datum planes sit at that offset; pass an explicit plane/surface id when the position is ambiguous",
         },
         "by_tool": {
             "creo_axis_pattern": {
@@ -360,7 +366,13 @@ def reference_capabilities() -> dict[str, Any]:
                 "reference1": {"kind": "datum_plane", "axis": "x"},
                 "reference2": {"kind": "datum_plane", "axis": "y"},
             },
-            "creo_draft": {"surfaces": [face], "neutral_plane": plane, "pull_direction": axis},
+            # BUG-116: parameter keys only. The datum_plane variant and its
+            # single-face requirement are documented in syntax.plane_by_position.
+            "creo_draft": {
+                "surfaces": [face],
+                "neutral_plane": neutral_plane,
+                "pull_direction": axis,
+            },
             "creo_boolean_bodies": {
                 "targets": [{"kind": "body", "id": 1}],
                 "tools": [{"kind": "body", "id": 2}],
@@ -548,10 +560,16 @@ def reference_capabilities() -> dict[str, Any]:
                 "sections": ["section_a", 42],
                 "mode": {"values": ["add"], "meaning": "cut and surface are refused before a job"},
                 "surface_mode": (
-                    "not available: mode='surface' is refused together with 'cut' and "
-                    "new_body=true by capabilities.require_available; there is no "
-                    "creo_surface_loft tool and no surface_loft registered operation, and "
-                    "multi-section/boundary-blend surfaces stay unpublished"
+                    "not available on creo_loft: mode='surface' is refused together with 'cut' "
+                    "and new_body=true by capabilities.require_available. Curved ruled surfaces "
+                    "use the separate creo_surface_loft tool / surface_loft operation, which "
+                    "accepts 2-32 single-curve sections: exactly two are ruled "
+                    '(interpolation="straight"), three or more are one smooth blend through '
+                    'every section (interpolation="smooth" is required). An optional guides '
+                    "list of 2-8 single-curve guide sketches adds a second direction that bends "
+                    "the surface (a single guide never regenerates). Closed surfaces stay "
+                    "unpublished, and the operation is conditional on Probbl.h in the worker "
+                    "build SDK"
                 ),
                 "requires": (
                     "sketch labels or integer feature IDs ordered by increasing Z, plus the "

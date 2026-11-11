@@ -101,40 +101,115 @@ class SurfaceTrimOp(StrictModel):
         return self
 
 
-class SurfaceLoftOp(StrictModel):
-    """Minimal two-section boundary blend (FEAT-009/H02).
+def _normalize_feature_refs(values: Any, what: str) -> Any:
+    """FEAT-009/H02: accepted section/guide references, normalized once.
 
-    Exactly two sections, each one MCP-owned sketch that owns one
-    non-composite curve, and straight interpolation only. Multi-section,
-    smooth, closed and continuity requests are refused before a job exists; the
-    operator never falls back to a solid Blend.
+    Same public-client tolerance as LoftOp: digit-only strings are integer
+    feature IDs, because a label must start with a letter. Booleans and
+    out-of-range integers are refused instead of being coerced.
+    """
+    if isinstance(values, list):
+        values = [
+            int(value) if isinstance(value, str) and re.fullmatch(r"[0-9]+", value) else value
+            for value in values
+        ]
+        if any(type(value) is int and not 0 <= value <= 2147483647 for value in values):
+            raise ValueError(f"Surface loft {what} IDs must be nonnegative 32-bit integers")
+        if any(isinstance(value, bool) for value in values):
+            raise ValueError(f"Surface loft {what} IDs cannot be booleans")
+    return values
+
+
+class SurfaceLoftOp(StrictModel):
+    """Boundary blend with one or two directions (FEAT-009/H02, FEAT-065 M1/M2).
+
+    Two to 32 sections, each one MCP-owned sketch that owns one non-composite
+    curve. The sections feed the same PRO_E_BNBLN_1DIR tree the two-section
+    release used, so a third (or more) section is one more chain holder rather
+    than a new feature family.
+
+    Interpolation follows what the kernel actually builds, measured on
+    2026-11-11 (Creo 12.4.0.0): exactly two sections are ruled, so
+    ``interpolation="straight"`` is exact there; three or more sections are
+    fitted as one blend through every section instead of piecewise ruled
+    patches (40/60/40 mm measured 2101.25 mm2 where piecewise linear would be
+    2000.00), so ``"smooth"`` is required and ``"straight"`` is refused.
+
+    ``guides`` is the optional second direction (``PRO_E_BNBLN_2DIR``): two to
+    eight sketches, each holding one curve, that the surface is built through
+    as well. Whether a guide actually crosses every section is left to the
+    kernel; the measured shape follows the guides (2026-11-11: semicircular
+    guides widened the quilt to x = 44.24 mm on a 40 mm section). Closed
+    surfaces, continuity requests and solid output are still refused before a
+    job exists, and the operator never falls back to a solid Blend.
     """
 
     op: Literal["surface_loft"]
     label: Label
-    sections: Annotated[list[str | int], Field(min_length=2, max_length=2)]
-    interpolation: Literal["straight"] = "straight"
+    # 32 keeps one element tree and one receipt bounded; the kernel publishes no
+    # maximum of its own (native/surface_loft.cpp enforces the same number).
+    sections: Annotated[list[str | int], Field(min_length=2, max_length=32)]
+    interpolation: Literal["straight", "smooth"] = "straight"
+    # FEAT-065/M2: guides are the second direction (PRO_E_BNBLN_2DIR). Each one
+    # is an MCP-owned sketch holding one curve; every guide must cross every
+    # section, and that crossing is the kernel's call, not a check here.
+    guides: Annotated[list[str | int], Field(max_length=8)] = []
 
     @field_validator("sections", mode="before")
     @classmethod
     def normalize_section_ids(cls, values: Any) -> Any:
-        # Same public-client tolerance as LoftOp: digit-only strings are
-        # integer feature IDs, because a label must start with a letter.
-        if isinstance(values, list):
-            values = [
-                int(value) if isinstance(value, str) and re.fullmatch(r"[0-9]+", value) else value
-                for value in values
-            ]
-            if any(type(value) is int and not 0 <= value <= 2147483647 for value in values):
-                raise ValueError("Surface loft section IDs must be nonnegative 32-bit integers")
-            if any(isinstance(value, bool) for value in values):
-                raise ValueError("Surface loft section IDs cannot be booleans")
-        return values
+        return _normalize_feature_refs(values, "section")
+
+    @field_validator("guides", mode="before")
+    @classmethod
+    def normalize_guide_ids(cls, values: Any) -> Any:
+        return _normalize_feature_refs(values, "guide")
 
     @model_validator(mode="after")
-    def two_distinct_sections(self):
+    def distinct_sections(self):
         if len(self.sections) != len(set(self.sections)):
-            raise ValueError("Surface loft sections must be two distinct sketches")
+            raise ValueError("Surface loft sections must be distinct sketches")
+        return self
+
+    @model_validator(mode="after")
+    def guides_form_a_second_direction(self):
+        # Measured 2026-11-11 on Creo 12.4.0.0: a PRO_E_BNBLN_2DIR list with a
+        # single holder is created but never regenerates (feature stays
+        # PRO_FEAT_UNREGENERATED with no quilt); two holders build the surface
+        # and its geometry follows them. Probbl.h states the same minimum, so a
+        # one-guide request is refused here instead of failing after a job.
+        if not self.guides:
+            return self
+        if len(self.guides) < 2:
+            raise ValueError(
+                "surface_loft guides are a second direction: give at least two guide "
+                "sketches. A single guide is created but does not regenerate (2DIR needs "
+                "two curves), and one guide cannot define a direction"
+            )
+        if len(self.guides) != len(set(self.guides)):
+            raise ValueError("Surface loft guides must be distinct sketches")
+        shared = sorted(
+            {str(value) for value in self.sections} & {str(value) for value in self.guides}
+        )
+        if shared:
+            raise ValueError(
+                "surface_loft guides must not repeat a section sketch; one sketch cannot be "
+                "both a section and a guide: " + ", ".join(shared)
+            )
+        return self
+
+    @model_validator(mode="after")
+    def section_count_matches_interpolation(self):
+        # Measured 2026-11-11 on Creo 12.4.0.0: with three or more sections the
+        # kernel fits one blend through all of them, so calling that "straight"
+        # would promise a piecewise ruled surface the operator never builds.
+        if len(self.sections) > 2 and self.interpolation != "smooth":
+            raise ValueError(
+                "surface_loft with "
+                f"{len(self.sections)} sections is a smooth blend through every section, not "
+                'piecewise ruled patches; pass interpolation="smooth" (straight is exact only '
+                "with exactly two sections)"
+            )
         return self
 
 
@@ -338,12 +413,12 @@ class SurfaceBoundaryFillOp(StrictModel):
         if not self.closed:
             raise ValueError(
                 "surface_boundary_fill only builds a closed boundary; an open chain cannot be "
-                "filled - use surface_loft for a surface between two sections"
+                "filled - use surface_loft for a surface through two or more sections"
             )
         if len(self.boundary) != BOUNDARY_FILL_MIN_CURVES:
             raise ValueError(
                 "surface_boundary_fill needs exactly 4 ordered perimeter curves; "
-                "use surface_loft for two sections"
+                "use surface_loft for two or more sections"
             )
         ids: list[int] = []
         for index, reference in enumerate(self.boundary):

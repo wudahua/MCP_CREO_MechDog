@@ -1,0 +1,75 @@
+{
+  "operations": [
+    {
+      "op": "sketch",
+      "label": "sec_a",
+      "plane": "XY",
+      "offset": 0,
+      "entities": [
+        {
+          "type": "line",
+          "name": "a",
+          "start": [0, 0],
+          "end": [40, 0]
+        }
+      ]
+    },
+    {
+      "op": "sketch",
+      "label": "sec_b",
+      "plane": "XY",
+      "offset": 20,
+      "entities": [
+        {
+          "type": "line",
+          "name": "b",
+          "start": [0, 0],
+          "end": [40, 0]
+        }
+      ]
+    },
+    {
+      "op": "sketch",
+      "label": "guide_left",
+      "plane": "XZ",
+      "offset": 0,
+      "entities": [
+        {
+          "type": "arc",
+          "name": "g",
+          "center": [-10, 10],
+          "radius": 14.142135623730951,
+          "start_angle": 315,
+          "end_angle": 45,
+          "dir": 1
+        }
+      ]
+    },
+    {
+      "op": "sketch",
+      "label": "guide_right",
+      "plane": "XZ",
+      "offset": 0,
+      "entities": [
+        {
+          "type": "arc",
+          "name": "g",
+          "center": [30, 10],
+          "radius": 14.142135623730951,
+          "start_angle": 315,
+          "end_angle": 45,
+          "dir": 1
+        }
+      ]
+    },
+    {
+      "op": "surface_loft",
+      "label": "guided_loft",
+      "sections": ["sec_a", "sec_b"],
+      "guides": ["guide_left", "guide_right"]
+    }
+  ],
+  "assertions": {
+    "require_solid": false
+  }
+}

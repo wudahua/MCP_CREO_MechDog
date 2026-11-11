@@ -20,8 +20,8 @@ class CompactLoftLimitsTests(unittest.TestCase):
         compact = pages.capabilities_response(self._payload)
         self.assertIn("limits_note", compact["families"]["surface_loft"])
         note = compact["families"]["surface_loft"]["limits_note"]
-        self.assertIn("two sections only", note)
-        self.assertIn("no smooth", note)
+        self.assertIn("2-32 sections", note)
+        self.assertIn("straight is exact only with two sections", note)
         self.assertLessEqual(len(note), 160)
 
     def test_full_families_limits_unchanged(self):

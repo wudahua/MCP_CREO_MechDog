@@ -857,9 +857,17 @@ async def creo_execute_plan(
     expected_revision: int | None = None,
     assertions: dict[str, Any] | None = None,
     model_type: Literal["part", "sheetmetal", "assembly", "drawing"] = "part",
+    timeout_seconds: int | None = None,
 ) -> dict[str, Any]:
     """Execute an ordered general feature plan. Omit model_id to create a new model of
     model_type ("part" by default).
+
+    timeout_seconds optionally raises this job's executor budget above the
+    server default (generic_timeout_seconds, normally 600) for large models;
+    accepted range 60-7200, omitted = server default and unchanged behaviour. The
+    job report echoes the effective budget and whether it came from the job or
+    the server. A longer budget is an upper bound only: a job stops when it
+    finishes, and it is still only one serial Toolkit channel.
 
     Sheetmetal work must first create the model with creo_new_sheetmetal and wait for its
     terminal job state, then submit wall/flange operations with model_id and
@@ -896,6 +904,7 @@ async def creo_execute_plan(
         expected_revision,
         assertions,
         model_type=model_type,
+        timeout_seconds=timeout_seconds,
     )
 
 
@@ -2879,24 +2888,37 @@ async def creo_surface_loft(
     model_id: str,
     expected_revision: int,
     label: str,
-    sections: list[str | int],
-    interpolation: Literal["straight"] = "straight",
+    sections: Annotated[list[str | int], Field(min_length=2, max_length=32)],
+    interpolation: Literal["straight", "smooth"] = "straight",
+    guides: Annotated[list[str | int], Field(max_length=8)] | None = None,
 ) -> dict[str, Any]:
-    """Create a native boundary-blend surface quilt from exactly two sketch sections.
+    """Create a native boundary-blend surface quilt through section sketches.
 
     Requires a Toolkit SDK with Probbl.h. Missing boundary-blend support returns
     SURFACE_LOFT_SDK_UNAVAILABLE and creates no loft feature.
 
-    sections accepts sketch labels or integer feature IDs in loft order (index 0 is
-    the start section); each sketch must own exactly one non-composite curve, and the
-    two sections must be distinct. interpolation is 'straight' only. The result is one
-    open datum-surface quilt (quilt_id, surface_area_mm2, quilt_closed_native); no
-    solid material is created. Multi-section, smooth, closed and continuity requests
-    are refused before a job is queued.
+    sections accepts 2-32 sketch labels or integer feature IDs in loft order
+    (index 0 is the start section); each sketch must own one non-composite curve
+    (two curves only as one closed profile) and no sketch may repeat. Two sections
+    are ruled, so interpolation='straight' is exact there; three or more are one
+    smooth blend through every section and require 'smooth'.
+
+    guides is the optional second direction: 2-8 distinct sketches, each owning
+    exactly one curve, that the surface is built through as well (a single guide
+    never regenerates). Whether a guide crosses every section is the kernel's
+    decision, so a non-crossing guide fails regeneration instead of being ignored.
+    The result is one open datum-surface quilt (quilt_id, surface_area_mm2,
+    quilt_closed_native, guide_count); no solid material is created. Closed surfaces
+    and continuity requests are refused before a job is queued.
     """
+    operation: dict[str, Any] = dict(
+        op="surface_loft", label=label, sections=sections, interpolation=interpolation
+    )
+    if guides:
+        operation["guides"] = guides
     return await invoke(
         general.submit,
-        [dict(op="surface_loft", label=label, sections=sections, interpolation=interpolation)],
+        [operation],
         model_id,
         None,
         expected_revision,

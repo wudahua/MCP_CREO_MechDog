@@ -120,8 +120,13 @@ PROJECT_CURVE_KEYS = (
 #: failed boundary-blend regeneration needs.
 SURFACE_LOFT_KEYS = (
     "sections",
+    "section_count",
     "section_curve_ids",
+    "piecewise_ruled",
     "interpolation",
+    "guides",
+    "guide_count",
+    "guide_curve_ids",
     "route",
     "create_code",
     "create_element_errors",

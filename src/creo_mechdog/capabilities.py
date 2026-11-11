@@ -919,12 +919,18 @@ def families() -> dict:
                 "inspect_model still enumerates kernel residue of a consumed quilt rather "
                 "than filtering it; the consumed tool quilt is no longer measurable, "
                 "intersect, three or more participants, chained merges and closed shells are "
-                "not published; the closed non-planar boundary fill stays gated "
+                "not published; a merge result has no separately referenceable quilt label: "
+                "keep referencing the original target quilt (its label or its geometry id) in "
+                "the next merge, solidify or thicken, because resolving the merge feature label "
+                "fails with ProFeatureGeomitemVisit -4 (2026-11-10 Creo 10 report, reproduced "
+                "in-plan and across plans); the closed non-planar boundary fill stays gated "
                 "(UNAVAILABLE_OPERATIONS; the former single-direction candidate "
                 "regenerated to no quilt; DEV-078's four-boundary two-direction route "
-                "is offline only and rejects unsupported parameter reversals); surface_loft is two "
-                "single-curve sections with straight interpolation only (no smooth, closed, "
-                "continuity, multi-section or solid output), conditional on Probbl.h in the "
+                "is offline only and rejects unsupported parameter reversals); surface_loft is "
+                "2-32 single-curve sections (two = ruled straight, three or more = one smooth "
+                "blend through every section) with an optional second direction of 2-8 guide "
+                "sketches that bend the surface; one guide alone does not regenerate; no "
+                "closed, continuity or solid output; conditional on Probbl.h in the "
                 "worker build SDK; intersection with a trim tool does not by itself prove "
                 "that it partitions a removable region (a closed loop or connections to "
                 "target boundaries may be needed); intersection curves are not measured; "
@@ -1005,15 +1011,25 @@ def families() -> dict:
             "tool": "creo_surface_loft",
             "sdk_requirement": "Probbl.h boundary-blend tree; missing headers return SURFACE_LOFT_SDK_UNAVAILABLE",
             "scope": (
-                "one boundary-blend quilt from exactly two MCP-owned sketches, in the "
-                "submitted order, straight interpolation"
+                "one boundary-blend quilt from 2-32 MCP-owned section sketches, in the "
+                "submitted order, optionally guided by a second direction of 2-8 guide "
+                "sketches: exactly two sections are ruled (interpolation=straight), three or "
+                "more are one smooth blend through every section (interpolation=smooth), and "
+                "guides bend the surface through their curves"
             ),
             "limits": (
-                "two sections only; each section must own exactly one non-composite curve; "
-                "no smooth interpolation, closed surface, continuity/tangency, multi-section "
-                "or solid output; section order is the loft direction; measured closure comes "
-                "from ProQuiltVolumeEval, so an open quilt is reported as open instead of "
-                "being assumed"
+                "2-32 sections and, optionally, 2-8 guides (PRO_E_BNBLN_2DIR); straight is "
+                "exact only with two sections and is refused above two (the kernel fits one "
+                "smooth blend through 3+ sections: 40/60/40 mm measured 2101.25 mm2, not the "
+                "2000.00 a piecewise ruled surface would give); each section and each guide "
+                "must own exactly one non-composite curve (two curves are accepted for a "
+                "closed section profile only), no sketch may be repeated across sections and "
+                "guides, and one guide alone never regenerates (2DIR needs two curves; "
+                "measured 2026-11-11); whether a guide crosses every section is the kernel's "
+                "decision and a non-crossing guide fails regeneration instead of being "
+                "silently dropped; no closed surface, continuity/tangency, control points or "
+                "solid output; section order is the loft direction; closure comes from "
+                "ProQuiltVolumeEval, so an open quilt is reported open instead of assumed"
             ),
         },
         "surface_round": {
@@ -1088,7 +1104,7 @@ def families() -> dict:
             "scope": "direct native solid Blend from independent MCP-owned XY sketches ordered by increasing Z; create in a feature plan or append to an owned part",
             "interpolation": ["straight", "smooth"],
             "native_test": "3/4/6 straight and smooth factory cases; append 3/smooth to an existing saved base, preserve native IDs, edit dimensions, verify all-section STL, save/erase/reload and failed-append rollback with a live refresh",
-            "limits": "solid add into the default body only; no cut/surface/new_body, nonparallel sections or endpoint tangency/curvature controls; surface output belongs to creo_surface_loft (two sections, straight only), and mode='surface' is refused before a job; native reports support Chinese/English Creo; requires explicit resident callback initialization before modeling under every loader policy, otherwise rejects before DLL load; modeling never loads DLLs or changes security policy",
+            "limits": "solid add into the default body only; no cut/surface/new_body, nonparallel sections or endpoint tangency/curvature controls; surface output belongs to creo_surface_loft (2-32 sections plus optional guides), and mode='surface' is refused before a job; native reports support Chinese/English Creo; requires explicit resident callback initialization before modeling under every loader policy, otherwise rejects before DLL load; modeling never loads DLLs or changes security policy",
             "callback_setup": "creo_capabilities.direct_blend_callback lists the generated registry_file; load/start it via Creo Auxiliary Applications and review the DLL prompt before modeling",
         },
         "loft_seed": {
