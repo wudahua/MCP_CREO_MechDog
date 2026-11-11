@@ -1,0 +1,1130 @@
+{
+ "work_item": "FEAT-065 T2b",
+ "date": "2026-11-11",
+ "environment": "Windows x64, Creo 12.4.0.0 + matching Toolkit SDK, user-confirmed live session",
+ "executor": "commit 7b5c4ff native/surface_loft.cpp plus a temporary MECHDOG_EXPERIMENT_TAN_COND hook (not committed; see EVIDENCE.md)",
+ "trials": [
+  {
+   "round": "20261111-201057",
+   "spec": null,
+   "reverse_strip_a": false,
+   "job_id": "d15519a5563746d2adc8d8296f194fca",
+   "model_id": "f3cd2ea4198a4abe9c59e163371e0d8f",
+   "status": "succeeded",
+   "saved_file_reloaded_and_verified": true,
+   "surface_area_mm2": 800.0,
+   "bbox_mm": [
+    [
+     0.0,
+     0.0,
+     10.0
+    ],
+    [
+     40.0,
+     20.0,
+     10.0
+    ]
+   ],
+   "section_edges": [
+    53,
+    85
+   ],
+   "seam_strip": null,
+   "seam_g1_max_angle_deg": null,
+   "seam_within_g1": null,
+   "boundary_conditions_echo": null
+  },
+  {
+   "round": "20261111-201057",
+   "spec": "v=2;first_section=0;last_section=1",
+   "reverse_strip_a": false,
+   "job_id": "7d8f6027db064f86b6938485957de1f8",
+   "model_id": "b3783a5dbc0e4322849cee5fe0423f6f",
+   "status": "succeeded",
+   "saved_file_reloaded_and_verified": true,
+   "surface_area_mm2": 800.0000000000007,
+   "bbox_mm": [
+    [
+     -0.12000480019200767,
+     -0.12000480019200767,
+     9.879995199807988
+    ],
+    [
+     40.12000480019206,
+     20.120004800192017,
+     10.120004800192026
+    ]
+   ],
+   "section_edges": [
+    53,
+    85
+   ],
+   "seam_strip": null,
+   "seam_g1_max_angle_deg": null,
+   "seam_within_g1": null,
+   "boundary_conditions_echo": [
+    {
+     "boundary": "first_section",
+     "condition": "tangent",
+     "edge_id": 53,
+     "index": 0,
+     "status": "written",
+     "surf_chain_method": null,
+     "surface_id": 55,
+     "tan_cond_type": 2,
+     "tnc_index": 0
+    },
+    {
+     "boundary": "last_section",
+     "condition": "tangent",
+     "edge_id": 85,
+     "index": 1,
+     "status": "written",
+     "surf_chain_method": null,
+     "surface_id": 87,
+     "tan_cond_type": 2,
+     "tnc_index": 1
+    }
+   ]
+  },
+  {
+   "round": "20261111-201057",
+   "spec": "v=3;first_section=0;last_section=1",
+   "reverse_strip_a": false,
+   "job_id": "118b13002d974f5db87aea580e4ceaa8",
+   "model_id": "69fb1d747e744704b69c9413ce46f561",
+   "status": "succeeded",
+   "saved_file_reloaded_and_verified": true,
+   "surface_area_mm2": 800.0000000000007,
+   "bbox_mm": [
+    [
+     -0.12000480019200767,
+     -0.12000480019200767,
+     9.879995199807988
+    ],
+    [
+     40.12000480019206,
+     20.120004800192017,
+     10.120004800192026
+    ]
+   ],
+   "section_edges": [
+    53,
+    85
+   ],
+   "seam_strip": null,
+   "seam_g1_max_angle_deg": null,
+   "seam_within_g1": null,
+   "boundary_conditions_echo": [
+    {
+     "boundary": "first_section",
+     "condition": "tangent",
+     "edge_id": 53,
+     "index": 0,
+     "status": "written",
+     "surf_chain_method": null,
+     "surface_id": 55,
+     "tan_cond_type": 3,
+     "tnc_index": 0
+    },
+    {
+     "boundary": "last_section",
+     "condition": "tangent",
+     "edge_id": 85,
+     "index": 1,
+     "status": "written",
+     "surf_chain_method": null,
+     "surface_id": 87,
+     "tan_cond_type": 3,
+     "tnc_index": 1
+    }
+   ]
+  },
+  {
+   "round": "20261111-201057",
+   "spec": "v=0;first_section=0;last_section=1",
+   "reverse_strip_a": false,
+   "job_id": "c4bcd61f921b4027af25bcc92dc1cf9f",
+   "model_id": "fda3542184ef4e99b94a071800c99c49",
+   "status": "succeeded",
+   "saved_file_reloaded_and_verified": true,
+   "surface_area_mm2": 800.0,
+   "bbox_mm": [
+    [
+     0.0,
+     0.0,
+     10.0
+    ],
+    [
+     40.0,
+     20.0,
+     10.0
+    ]
+   ],
+   "section_edges": [
+    53,
+    85
+   ],
+   "seam_strip": null,
+   "seam_g1_max_angle_deg": null,
+   "seam_within_g1": null,
+   "boundary_conditions_echo": [
+    {
+     "boundary": "first_section",
+     "condition": "tangent",
+     "edge_id": 53,
+     "index": 0,
+     "status": "written",
+     "surf_chain_method": null,
+     "surface_id": 55,
+     "tan_cond_type": 0,
+     "tnc_index": 0
+    },
+    {
+     "boundary": "last_section",
+     "condition": "tangent",
+     "edge_id": 85,
+     "index": 1,
+     "status": "written",
+     "surf_chain_method": null,
+     "surface_id": 87,
+     "tan_cond_type": 0,
+     "tnc_index": 1
+    }
+   ]
+  },
+  {
+   "round": "20261111-201522",
+   "spec": "v=2;first_section=0;last_section=1;k=1",
+   "reverse_strip_a": false,
+   "job_id": "98d22d548f8648e2a8b60c7cdab14aa2",
+   "model_id": "9dc7b0c52e55434580eba9e27a065899",
+   "status": "succeeded",
+   "saved_file_reloaded_and_verified": true,
+   "surface_area_mm2": 800.0000000000007,
+   "bbox_mm": [
+    [
+     -0.12000480019200767,
+     -0.12000480019200767,
+     9.879995199807988
+    ],
+    [
+     40.12000480019206,
+     20.120004800192017,
+     10.120004800192026
+    ]
+   ],
+   "section_edges": [
+    53,
+    85
+   ],
+   "seam_strip": null,
+   "seam_g1_max_angle_deg": null,
+   "seam_within_g1": null,
+   "boundary_conditions_echo": [
+    {
+     "boundary": "first_section",
+     "condition": "tangent",
+     "edge_id": 53,
+     "experiment_keep_chain": true,
+     "index": 0,
+     "status": "written",
+     "surface_id": 55,
+     "tan_cond_type": 2,
+     "tnc_index": 0
+    },
+    {
+     "boundary": "last_section",
+     "condition": "tangent",
+     "edge_id": 85,
+     "experiment_keep_chain": true,
+     "index": 1,
+     "status": "written",
+     "surface_id": 87,
+     "tan_cond_type": 2,
+     "tnc_index": 1
+    }
+   ]
+  },
+  {
+   "round": "20261111-201522",
+   "spec": "v=2;first_section=0;last_section=1;k=1;s=1",
+   "reverse_strip_a": false,
+   "job_id": "80c8faec39004379ba926bcdeb5826df",
+   "model_id": "14ab8ef1f0e141629463b8430a19a418",
+   "status": "succeeded",
+   "saved_file_reloaded_and_verified": true,
+   "surface_area_mm2": 926.6230554725121,
+   "bbox_mm": [
+    [
+     -0.1200048001920106,
+     -0.12000480019200767,
+     7.801173800631034
+    ],
+    [
+     40.12000480019203,
+     20.120004800192007,
+     12.198826199368966
+    ]
+   ],
+   "section_edges": [
+    53,
+    85
+   ],
+   "seam_strip": null,
+   "seam_g1_max_angle_deg": null,
+   "seam_within_g1": null,
+   "boundary_conditions_echo": [
+    {
+     "boundary": "first_section",
+     "condition": "tangent",
+     "edge_id": 53,
+     "experiment_keep_chain": true,
+     "experiment_stretch": 1.0,
+     "index": 0,
+     "status": "written",
+     "surface_id": 55,
+     "tan_cond_type": 2,
+     "tnc_index": 0
+    },
+    {
+     "boundary": "last_section",
+     "condition": "tangent",
+     "edge_id": 85,
+     "experiment_keep_chain": true,
+     "experiment_stretch": 1.0,
+     "index": 1,
+     "status": "written",
+     "surface_id": 87,
+     "tan_cond_type": 2,
+     "tnc_index": 1
+    }
+   ]
+  },
+  {
+   "round": "20261111-201522",
+   "spec": "v=3;first_section=0;last_section=1;k=1;s=1",
+   "reverse_strip_a": false,
+   "job_id": "ab4c5e1994e34915aa679d008d6f6a9a",
+   "model_id": "f74efb9e8f8541ab81988afb49009382",
+   "status": "succeeded",
+   "saved_file_reloaded_and_verified": true,
+   "surface_area_mm2": 800.0000000000005,
+   "bbox_mm": [
+    [
+     -0.12000480019200767,
+     -0.12000480019200767,
+     9.879995199807992
+    ],
+    [
+     40.12000480019206,
+     20.120004800192007,
+     10.120004800192023
+    ]
+   ],
+   "section_edges": [
+    53,
+    85
+   ],
+   "seam_strip": null,
+   "seam_g1_max_angle_deg": null,
+   "seam_within_g1": null,
+   "boundary_conditions_echo": [
+    {
+     "boundary": "first_section",
+     "condition": "tangent",
+     "edge_id": 53,
+     "experiment_keep_chain": true,
+     "experiment_stretch": 1.0,
+     "index": 0,
+     "status": "written",
+     "surface_id": 55,
+     "tan_cond_type": 3,
+     "tnc_index": 0
+    },
+    {
+     "boundary": "last_section",
+     "condition": "tangent",
+     "edge_id": 85,
+     "experiment_keep_chain": true,
+     "experiment_stretch": 1.0,
+     "index": 1,
+     "status": "written",
+     "surface_id": 87,
+     "tan_cond_type": 3,
+     "tnc_index": 1
+    }
+   ]
+  },
+  {
+   "round": "20261111-201522",
+   "spec": "v=2;first_section=0;last_section=1;m=1;s=1",
+   "reverse_strip_a": false,
+   "job_id": "9bef0648358d42919a3a103560275299",
+   "model_id": "46db7edd2b224554ae6a0b4c2112f002",
+   "status": "succeeded",
+   "saved_file_reloaded_and_verified": true,
+   "surface_area_mm2": 926.6230554725121,
+   "bbox_mm": [
+    [
+     -0.1200048001920106,
+     -0.12000480019200767,
+     7.801173800631034
+    ],
+    [
+     40.12000480019203,
+     20.120004800192007,
+     12.198826199368966
+    ]
+   ],
+   "section_edges": [
+    53,
+    85
+   ],
+   "seam_strip": null,
+   "seam_g1_max_angle_deg": null,
+   "seam_within_g1": null,
+   "boundary_conditions_echo": [
+    {
+     "boundary": "first_section",
+     "condition": "tangent",
+     "edge_id": 53,
+     "experiment_stretch": 1.0,
+     "index": 0,
+     "status": "written",
+     "surf_chain_method": 1,
+     "surface_id": 55,
+     "tan_cond_type": 2,
+     "tnc_index": 0
+    },
+    {
+     "boundary": "last_section",
+     "condition": "tangent",
+     "edge_id": 85,
+     "experiment_stretch": 1.0,
+     "index": 1,
+     "status": "written",
+     "surf_chain_method": 1,
+     "surface_id": 87,
+     "tan_cond_type": 2,
+     "tnc_index": 1
+    }
+   ]
+  },
+  {
+   "round": "20261111-201522",
+   "spec": "v=4;first_section=0;last_section=1;k=1;s=1",
+   "reverse_strip_a": false,
+   "job_id": "50c24454a2854b60801f41446373dc8b",
+   "model_id": "984c229f4b3b4c54a90ce0e1d418c73b",
+   "status": "succeeded",
+   "saved_file_reloaded_and_verified": true,
+   "surface_area_mm2": 800.0,
+   "bbox_mm": [
+    [
+     0.0,
+     0.0,
+     10.0
+    ],
+    [
+     40.0,
+     20.0,
+     10.0
+    ]
+   ],
+   "section_edges": [
+    53,
+    85
+   ],
+   "seam_strip": null,
+   "seam_g1_max_angle_deg": null,
+   "seam_within_g1": null,
+   "boundary_conditions_echo": [
+    {
+     "boundary": "first_section",
+     "condition": "tangent",
+     "edge_id": 53,
+     "experiment_keep_chain": true,
+     "experiment_stretch": 1.0,
+     "index": 0,
+     "status": "written",
+     "surface_id": 55,
+     "tan_cond_type": 4,
+     "tnc_index": 0
+    },
+    {
+     "boundary": "last_section",
+     "condition": "tangent",
+     "edge_id": 85,
+     "experiment_keep_chain": true,
+     "experiment_stretch": 1.0,
+     "index": 1,
+     "status": "written",
+     "surface_id": 87,
+     "tan_cond_type": 4,
+     "tnc_index": 1
+    }
+   ]
+  },
+  {
+   "round": "20261111-201943",
+   "spec": null,
+   "reverse_strip_a": false,
+   "job_id": "d8d9c89016544da8ae687146da3818cf",
+   "model_id": "95af5daa4d25478cb64bc027f72e4849",
+   "status": "succeeded",
+   "saved_file_reloaded_and_verified": true,
+   "surface_area_mm2": 800.0,
+   "bbox_mm": [
+    [
+     0.0,
+     0.0,
+     10.0
+    ],
+    [
+     40.0,
+     20.0,
+     10.0
+    ]
+   ],
+   "section_edges": [
+    53,
+    85
+   ],
+   "seam_strip": null,
+   "seam_g1_max_angle_deg": null,
+   "seam_within_g1": null,
+   "boundary_conditions_echo": null
+  },
+  {
+   "round": "20261111-201943",
+   "spec": "v=2;first_section=0;last_section=1;k=1;s=1",
+   "reverse_strip_a": false,
+   "job_id": "fce8ec8da743415c851c3d15cefa27e3",
+   "model_id": "8931134fc411499a9925cf52aca480df",
+   "status": "succeeded",
+   "saved_file_reloaded_and_verified": true,
+   "surface_area_mm2": 926.6230554725121,
+   "bbox_mm": [
+    [
+     -0.1200048001920106,
+     -0.12000480019200767,
+     7.801173800631034
+    ],
+    [
+     40.12000480019203,
+     20.120004800192007,
+     12.198826199368966
+    ]
+   ],
+   "section_edges": [
+    53,
+    85
+   ],
+   "seam_strip": null,
+   "seam_g1_max_angle_deg": null,
+   "seam_within_g1": null,
+   "boundary_conditions_echo": [
+    {
+     "boundary": "first_section",
+     "condition": "tangent",
+     "edge_id": 53,
+     "experiment_keep_chain": true,
+     "experiment_stretch": 1.0,
+     "index": 0,
+     "status": "written",
+     "surface_id": 55,
+     "tan_cond_type": 2,
+     "tnc_index": 0
+    },
+    {
+     "boundary": "last_section",
+     "condition": "tangent",
+     "edge_id": 85,
+     "experiment_keep_chain": true,
+     "experiment_stretch": 1.0,
+     "index": 1,
+     "status": "written",
+     "surface_id": 87,
+     "tan_cond_type": 2,
+     "tnc_index": 1
+    }
+   ]
+  },
+  {
+   "round": "20261111-201943",
+   "spec": "v=2;first_section=0;k=1;s=1",
+   "reverse_strip_a": false,
+   "job_id": "9a6646b09b5e4706b22cd4dbc92c34f7",
+   "model_id": "49d98db9408c4498861162a08b39fb7f",
+   "status": "succeeded",
+   "saved_file_reloaded_and_verified": true,
+   "surface_area_mm2": 961.7265011494972,
+   "bbox_mm": [
+    [
+     -0.12000480019200767,
+     -0.12000480019200767,
+     4.879995199807986
+    ],
+    [
+     40.12000480019203,
+     20.120004800192003,
+     10.120004800192008
+    ]
+   ],
+   "section_edges": [
+    53,
+    85
+   ],
+   "seam_strip": null,
+   "seam_g1_max_angle_deg": null,
+   "seam_within_g1": null,
+   "boundary_conditions_echo": [
+    {
+     "boundary": "first_section",
+     "condition": "tangent",
+     "edge_id": 53,
+     "experiment_keep_chain": true,
+     "experiment_stretch": 1.0,
+     "index": 0,
+     "status": "written",
+     "surface_id": 55,
+     "tan_cond_type": 2,
+     "tnc_index": 0
+    }
+   ]
+  },
+  {
+   "round": "20261111-201943",
+   "spec": "v=2;first_section=1;k=1;s=1",
+   "reverse_strip_a": false,
+   "job_id": "deeb45d0746344708fae01c0ca57ef76",
+   "model_id": "d28904af761f40b5bb3ac76c89af7023",
+   "status": "succeeded",
+   "saved_file_reloaded_and_verified": true,
+   "surface_area_mm2": 961.7264949195473,
+   "bbox_mm": [
+    [
+     -0.12000480019200767,
+     -0.12000480019200767,
+     9.879995199807992
+    ],
+    [
+     40.12000480019203,
+     20.120004800192007,
+     15.120004800192012
+    ]
+   ],
+   "section_edges": [
+    53,
+    85
+   ],
+   "seam_strip": null,
+   "seam_g1_max_angle_deg": null,
+   "seam_within_g1": null,
+   "boundary_conditions_echo": [
+    {
+     "boundary": "first_section",
+     "condition": "tangent",
+     "edge_id": 53,
+     "experiment_keep_chain": true,
+     "experiment_stretch": 1.0,
+     "index": 0,
+     "status": "written",
+     "surface_id": 55,
+     "tan_cond_type": 2,
+     "tnc_index": 1
+    }
+   ]
+  },
+  {
+   "round": "20261111-202928",
+   "spec": null,
+   "reverse_strip_a": false,
+   "job_id": "827bdb40abd047c59d9741b1d695c88b",
+   "model_id": "c701e12f26b74563979b479514752656",
+   "status": "succeeded",
+   "saved_file_reloaded_and_verified": true,
+   "surface_area_mm2": 800.0,
+   "bbox_mm": [
+    [
+     0.0,
+     0.0,
+     10.0
+    ],
+    [
+     40.0,
+     20.0,
+     10.0
+    ]
+   ],
+   "section_edges": [
+    53,
+    85
+   ],
+   "seam_strip": "strip_a",
+   "seam_g1_max_angle_deg": 90.0,
+   "seam_within_g1": false,
+   "boundary_conditions_echo": null
+  },
+  {
+   "round": "20261111-202928",
+   "spec": "v=2;first_section=0;k=1;s=1",
+   "reverse_strip_a": false,
+   "job_id": "21c8815730da402c9de67cda476e3aee",
+   "model_id": "7db64a78cd3d4b93929a8f393ca72d59",
+   "status": "succeeded",
+   "saved_file_reloaded_and_verified": true,
+   "surface_area_mm2": 961.7265011494972,
+   "bbox_mm": [
+    [
+     -0.12000480019200767,
+     -0.12000480019200767,
+     4.879995199807986
+    ],
+    [
+     40.12000480019203,
+     20.120004800192003,
+     10.120004800192008
+    ]
+   ],
+   "section_edges": [
+    53,
+    85
+   ],
+   "seam_strip": "strip_a",
+   "seam_g1_max_angle_deg": 180.0,
+   "seam_within_g1": false,
+   "boundary_conditions_echo": [
+    {
+     "boundary": "first_section",
+     "condition": "tangent",
+     "edge_id": 53,
+     "experiment_keep_chain": true,
+     "experiment_stretch": 1.0,
+     "index": 0,
+     "status": "written",
+     "surface_id": 55,
+     "tan_cond_type": 2,
+     "tnc_index": 0
+    }
+   ]
+  },
+  {
+   "round": "20261111-202928",
+   "spec": "v=2;first_section=1;k=1;s=1",
+   "reverse_strip_a": false,
+   "job_id": "64d4889bb4a24fcb81cfcfbbc14a863b",
+   "model_id": "906a037cc57146ca95ee3d24f073c458",
+   "status": "succeeded",
+   "saved_file_reloaded_and_verified": true,
+   "surface_area_mm2": 961.7264949195473,
+   "bbox_mm": [
+    [
+     -0.12000480019200767,
+     -0.12000480019200767,
+     9.879995199807992
+    ],
+    [
+     40.12000480019203,
+     20.120004800192007,
+     15.120004800192012
+    ]
+   ],
+   "section_edges": [
+    53,
+    85
+   ],
+   "seam_strip": "strip_a",
+   "seam_g1_max_angle_deg": 63.43494882292201,
+   "seam_within_g1": false,
+   "boundary_conditions_echo": [
+    {
+     "boundary": "first_section",
+     "condition": "tangent",
+     "edge_id": 53,
+     "experiment_keep_chain": true,
+     "experiment_stretch": 1.0,
+     "index": 0,
+     "status": "written",
+     "surface_id": 55,
+     "tan_cond_type": 2,
+     "tnc_index": 1
+    }
+   ]
+  },
+  {
+   "round": "20261111-202928",
+   "spec": "v=2;first_section=0;k=1;s=-1",
+   "reverse_strip_a": false,
+   "job_id": "98fafc55fb5d4e9b8794da6e4f492893",
+   "model_id": "ec3e5e4cbe7148858b4150ccc919fd01",
+   "status": "succeeded",
+   "saved_file_reloaded_and_verified": true,
+   "surface_area_mm2": 961.7265011494973,
+   "bbox_mm": [
+    [
+     -0.12000480019200957,
+     -0.12000480019200767,
+     9.879995199807992
+    ],
+    [
+     40.12000480019203,
+     20.120004800192003,
+     15.120004800192012
+    ]
+   ],
+   "section_edges": [
+    53,
+    85
+   ],
+   "seam_strip": "strip_a",
+   "seam_g1_max_angle_deg": 0.0,
+   "seam_within_g1": true,
+   "boundary_conditions_echo": [
+    {
+     "boundary": "first_section",
+     "condition": "tangent",
+     "edge_id": 53,
+     "experiment_keep_chain": true,
+     "experiment_stretch": -1.0,
+     "index": 0,
+     "status": "written",
+     "surface_id": 55,
+     "tan_cond_type": 2,
+     "tnc_index": 0
+    }
+   ]
+  },
+  {
+   "round": "20261111-202928",
+   "spec": "v=2;first_section=0;last_section=1;k=1;s0=-1;s1=1",
+   "reverse_strip_a": false,
+   "job_id": "1ac36850ffff459abaa2d2ef284aa7a1",
+   "model_id": "b21dcf69022f44e78ce7aabc704f065b",
+   "status": "succeeded",
+   "saved_file_reloaded_and_verified": true,
+   "surface_area_mm2": 982.5887974169791,
+   "bbox_mm": [
+    [
+     -0.12000480019201759,
+     -0.12000480019200767,
+     9.879995199807992
+    ],
+    [
+     40.12000480019203,
+     20.120004800192007,
+     15.120004800192012
+    ]
+   ],
+   "section_edges": [
+    53,
+    85
+   ],
+   "seam_strip": "strip_a",
+   "seam_g1_max_angle_deg": 0.0,
+   "seam_within_g1": true,
+   "boundary_conditions_echo": [
+    {
+     "boundary": "first_section",
+     "condition": "tangent",
+     "edge_id": 53,
+     "experiment_keep_chain": true,
+     "experiment_stretch": -1.0,
+     "index": 0,
+     "status": "written",
+     "surface_id": 55,
+     "tan_cond_type": 2,
+     "tnc_index": 0
+    },
+    {
+     "boundary": "last_section",
+     "condition": "tangent",
+     "edge_id": 85,
+     "experiment_keep_chain": true,
+     "experiment_stretch": 1.0,
+     "index": 1,
+     "status": "written",
+     "surface_id": 87,
+     "tan_cond_type": 2,
+     "tnc_index": 1
+    }
+   ]
+  },
+  {
+   "round": "20261111-202928",
+   "spec": "v=2;first_section=0;last_section=1;k=1;s0=-1;s1=1",
+   "reverse_strip_a": false,
+   "job_id": "3d6caf98ca8542dd995c7f085a9ae48c",
+   "model_id": "ff406446978b4906a53eb4fbc2069239",
+   "status": "succeeded",
+   "saved_file_reloaded_and_verified": true,
+   "surface_area_mm2": 982.5887974169791,
+   "bbox_mm": [
+    [
+     -0.12000480019201759,
+     -0.12000480019200767,
+     9.879995199807992
+    ],
+    [
+     40.12000480019203,
+     20.120004800192007,
+     15.120004800192012
+    ]
+   ],
+   "section_edges": [
+    53,
+    85
+   ],
+   "seam_strip": "strip_b",
+   "seam_g1_max_angle_deg": 0.0,
+   "seam_within_g1": true,
+   "boundary_conditions_echo": [
+    {
+     "boundary": "first_section",
+     "condition": "tangent",
+     "edge_id": 53,
+     "experiment_keep_chain": true,
+     "experiment_stretch": -1.0,
+     "index": 0,
+     "status": "written",
+     "surface_id": 55,
+     "tan_cond_type": 2,
+     "tnc_index": 0
+    },
+    {
+     "boundary": "last_section",
+     "condition": "tangent",
+     "edge_id": 85,
+     "experiment_keep_chain": true,
+     "experiment_stretch": 1.0,
+     "index": 1,
+     "status": "written",
+     "surface_id": 87,
+     "tan_cond_type": 2,
+     "tnc_index": 1
+    }
+   ]
+  },
+  {
+   "round": "20261111-203407",
+   "spec": "v=2;first_section=0;last_section=1;k=1;s0=-1;s1=1",
+   "reverse_strip_a": true,
+   "job_id": "9a5c807b40bb465384e0429a56ad2014",
+   "model_id": "ea100f8ced394fd7bf6bf85aba6cc3a4",
+   "status": "succeeded",
+   "saved_file_reloaded_and_verified": true,
+   "surface_area_mm2": 982.5887974169791,
+   "bbox_mm": [
+    [
+     -0.12000480019201759,
+     -0.12000480019200767,
+     9.879995199807992
+    ],
+    [
+     40.12000480019203,
+     20.120004800192007,
+     15.120004800192012
+    ]
+   ],
+   "section_edges": [
+    53,
+    85
+   ],
+   "seam_strip": "strip_a",
+   "seam_g1_max_angle_deg": 0.0,
+   "seam_within_g1": true,
+   "boundary_conditions_echo": [
+    {
+     "boundary": "first_section",
+     "condition": "tangent",
+     "edge_id": 53,
+     "experiment_keep_chain": true,
+     "experiment_stretch": -1.0,
+     "index": 0,
+     "status": "written",
+     "surface_id": 55,
+     "tan_cond_type": 2,
+     "tnc_index": 0
+    },
+    {
+     "boundary": "last_section",
+     "condition": "tangent",
+     "edge_id": 85,
+     "experiment_keep_chain": true,
+     "experiment_stretch": 1.0,
+     "index": 1,
+     "status": "written",
+     "surface_id": 87,
+     "tan_cond_type": 2,
+     "tnc_index": 1
+    }
+   ]
+  },
+  {
+   "round": "20261111-203407",
+   "spec": "v=2;first_section=0;last_section=1;k=1;s0=-1;s1=1",
+   "reverse_strip_a": true,
+   "job_id": "f654058cbd6d4b8b970782c440815194",
+   "model_id": "7412bc1623ec41a8b93732d5c57cbf8d",
+   "status": "succeeded",
+   "saved_file_reloaded_and_verified": true,
+   "surface_area_mm2": 982.5887974169791,
+   "bbox_mm": [
+    [
+     -0.12000480019201759,
+     -0.12000480019200767,
+     9.879995199807992
+    ],
+    [
+     40.12000480019203,
+     20.120004800192007,
+     15.120004800192012
+    ]
+   ],
+   "section_edges": [
+    53,
+    85
+   ],
+   "seam_strip": "strip_b",
+   "seam_g1_max_angle_deg": 0.0,
+   "seam_within_g1": true,
+   "boundary_conditions_echo": [
+    {
+     "boundary": "first_section",
+     "condition": "tangent",
+     "edge_id": 53,
+     "experiment_keep_chain": true,
+     "experiment_stretch": -1.0,
+     "index": 0,
+     "status": "written",
+     "surface_id": 55,
+     "tan_cond_type": 2,
+     "tnc_index": 0
+    },
+    {
+     "boundary": "last_section",
+     "condition": "tangent",
+     "edge_id": 85,
+     "experiment_keep_chain": true,
+     "experiment_stretch": 1.0,
+     "index": 1,
+     "status": "written",
+     "surface_id": 87,
+     "tan_cond_type": 2,
+     "tnc_index": 1
+    }
+   ]
+  },
+  {
+   "round": "20261111-203407",
+   "spec": "v=3;first_section=0;last_section=1;k=1;s0=-1;s1=1",
+   "reverse_strip_a": false,
+   "job_id": "18c0841a09a14657bb20e081047b54b0",
+   "model_id": "d538d238fcad4efabdc730e62b78aada",
+   "status": "succeeded",
+   "saved_file_reloaded_and_verified": true,
+   "surface_area_mm2": 915.9893112293888,
+   "bbox_mm": [
+    [
+     -0.12000480019200947,
+     -1.5682109047912782,
+     9.879995199807988
+    ],
+    [
+     40.120004800192056,
+     20.120004800192014,
+     10.120004800192024
+    ]
+   ],
+   "section_edges": [
+    53,
+    85
+   ],
+   "seam_strip": "strip_a",
+   "seam_g1_max_angle_deg": 90.00000000000003,
+   "seam_within_g1": false,
+   "boundary_conditions_echo": [
+    {
+     "boundary": "first_section",
+     "condition": "tangent",
+     "edge_id": 53,
+     "experiment_keep_chain": true,
+     "experiment_stretch": -1.0,
+     "index": 0,
+     "status": "written",
+     "surface_id": 55,
+     "tan_cond_type": 3,
+     "tnc_index": 0
+    },
+    {
+     "boundary": "last_section",
+     "condition": "tangent",
+     "edge_id": 85,
+     "experiment_keep_chain": true,
+     "experiment_stretch": 1.0,
+     "index": 1,
+     "status": "written",
+     "surface_id": 87,
+     "tan_cond_type": 3,
+     "tnc_index": 1
+    }
+   ]
+  },
+  {
+   "round": "20261111-203407",
+   "spec": "v=4;first_section=0;last_section=1;k=1;s0=-1;s1=1",
+   "reverse_strip_a": false,
+   "job_id": "283a758b649440969fe9de52d859488b",
+   "model_id": "b77a29ff307c4f09afa6e4b5b099a16c",
+   "status": "succeeded",
+   "saved_file_reloaded_and_verified": true,
+   "surface_area_mm2": 800.0,
+   "bbox_mm": [
+    [
+     0.0,
+     0.0,
+     10.0
+    ],
+    [
+     40.0,
+     20.0,
+     10.0
+    ]
+   ],
+   "section_edges": [
+    53,
+    85
+   ],
+   "seam_strip": "strip_a",
+   "seam_g1_max_angle_deg": 90.0,
+   "seam_within_g1": false,
+   "boundary_conditions_echo": [
+    {
+     "boundary": "first_section",
+     "condition": "tangent",
+     "edge_id": 53,
+     "experiment_keep_chain": true,
+     "experiment_stretch": -1.0,
+     "index": 0,
+     "status": "written",
+     "surface_id": 55,
+     "tan_cond_type": 4,
+     "tnc_index": 0
+    },
+    {
+     "boundary": "last_section",
+     "condition": "tangent",
+     "edge_id": 85,
+     "experiment_keep_chain": true,
+     "experiment_stretch": 1.0,
+     "index": 1,
+     "status": "written",
+     "surface_id": 87,
+     "tan_cond_type": 4,
+     "tnc_index": 1
+    }
+   ]
+  }
+ ]
+}

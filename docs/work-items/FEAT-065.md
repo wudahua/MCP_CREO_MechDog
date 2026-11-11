@@ -2,21 +2,22 @@
 
 ## 当前摘要（2026-11-11）
 
-分类：**开发中**（M1/M2 已随 0.21.0 发布；M3/M4 在开发分支 `codex/FEAT-065-m3-m4-surface-loft`）。类型：功能。优先级：P1。
+分类：**开发中**（M1/M2 已随 0.21.0 发布；M3/M4 已在开发分支 `codex/FEAT-065-m3-m4-surface-loft` 完成实机验收，待合入发布）。类型：功能。优先级：P1。
 
 - **已发布**：M1 同方向 2—32 截面（两截面直纹，三截面以上单张光滑面）、M2 第二方向导线 2—8 条，均在 Creo 12.4.0.0 实机验收（见下文 2026-11-11 两节）。0.21.1 修复了 compact 回执裁掉测量值的问题（BUG-118）。
-- **本轮（2026-11-11）离线已交付，实机未验收**（范围、验收与分派见[计划](../superpowers/plans/2026-11-11-feat065-m3-m4-surface-loft.md)）：
-  - **M3（T1，`b0a0bfa`）**：`sections`/`guides` 在草图之外，再接受已有曲线 `{kind:'curve'}`、边 `{kind:'edge'}`；首末截面可以是收敛点。草图来源的行为不变。收敛点用的 `PRO_CURVCOLL_ADD_POINT_INSTR` 能否放进边界混合链容器，Probbl.h 没有写，属于实验路线。
-  - **quilt 边 ID 通道（T1b，`c76f05b`）**：`creo_measure_surface_group` 回执新增 `group.open_edge_records`（最多 32 条，含边 ID、所属面与 quilt、长度、端点），可按端点挑边作为 `{kind:'edge'}` 输入。
-  - **M4（T2a，`095ef27`）**：新增 `boundary_conditions` 字段，校验已就绪，但被 `UNAVAILABLE_FIELDS` 门禁挡住，提交前就会被拒绝。原生候选只写抽取树；两张映射表（条件 → 整数、边界 → `TNC_BNDRY` 下标）为空，映射未知时以 `SURFACE_LOFT_BOUNDARY_CONDITION_UNMAPPED` 拒绝。要填这两张表，得先从 Creo 界面建的参照件里读回真实值（T2b）。
-  - 离线证据：定向单测、四个离线驱动、`cl /Zs` 语法检查都通过；全量 `dev_check` 结果见计划 §8。未编译执行器，未连 Creo。
-- **验收环境**：本机 Creo 12.4.0.0 + 匹配 SDK。实机（含编译执行器）须用户当次确认；本轮至今未获授权。Creo 9/10 不在本轮范围。
+- **本轮（2026-11-11）已在开发分支交付，Creo 12.4.0.0 实机验收通过**，未合 main、未发布。范围、验收与分派见[计划](../superpowers/plans/2026-11-11-feat065-m3-m4-surface-loft.md)：
+  - **M3**：`sections`/`guides` 除草图外，再接受已有曲线 `{kind:'curve'}`、边 `{kind:'edge'}`，首末截面还可以是收敛点。四种来源都已实机验证，包括 YZ 截面沿 X 排列和收敛点。
+  - **quilt 边 ID 通道（T1b）**：`creo_measure_surface_group` 回执的 `group.open_edge_records` 给出开放边的 ID 与端点，已实机验证。
+  - **M4**：`boundary_conditions` 只开放首/末截面上的 `tangent`，且该截面来源必须是边。实现为 `TAN_COND_TYPE` 2，`STRETCH` 首截面 -1、末截面 +1；这组值是用试值法在实机上测出来的（T2b）。两条接缝实测 G1 都是 0.0°。`curvature`、`normal` 和导线边界没有实测依据，在提交前拒绝。
+  - 证据：下文「T3 实机验收与 T2b 试值取证」与「最终代码实机复核」两节，以及 [T2b 证据](../validation/feat065-t2b-tangency-2026-11-11/EVIDENCE.md)。
+- **验收环境**：本机 Creo 12.4.0.0 + 匹配 SDK，用户当次授权。Creo 9/10 未测。
 - **仍开放**：
-  - T2b 参照树取证、T3 实机验收。
-  - 模型里已有实体时 `surface_loft` 一律失败：原生 `has_solid` 检查看的是整个模型，所以「用实体边补面」走不通。
-  - `ADV_VIA_CRV`、导线形状的可视化核对。
-  - 曲线导线 600 mm² 的几何解释。下文元素树实验场景 E（799.94 mm²）与验收段曲线导线（600.0 mm²）出自不同作业，包围盒同为 x 44.24 mm，两者是否同一几何未核对。
-  - Creo 9/10 差异（DEV-080 H01）。
+  - `curvature`、`normal` 和导线边界上的连续条件：没找到有实测依据的值。
+  - 非平面相邻面（如圆柱）上的相切，以及两端相邻面朝向不同的情形，都没有测。
+  - 模型里已有实体时 `surface_loft` 一律失败：原生 `has_solid` 检查看的是整个模型。
+  - `boundary_conditions` 不在 compact 保护集合内，回执超过 32 KiB 时可能被裁掉。
+  - `ADV_VIA_CRV`、导线形状的可视化核对；曲线导线 600 mm² 与场景 E 799.94 mm² 的关系未核对。
+  - Creo 9/10 差异（DEV-080 H01）；WorkBuddy 黑盒未做。
 
 ## 登记时摘要（2026-11-10，历史）
 
@@ -263,3 +264,38 @@
 - `normal` 在 Creo 边界混合里可能需要的参照与「相邻面」不同，未核对；首版把它与 tangent/curvature 同样处理，由 T2b 结论决定是否保留。
 - 实机验收标准仍按计划 §5：`creo_measure_surface_curvature` 在共享边上 `g1_max_angle_deg < 0.5` 且 `within_g1=true`，保存重载 verified（T3）。
 - `references.py` / `docs/REFERENCE_SYNTAX.md` 未加 `boundary_conditions` 示例（不在 T2a 文件范围内；字段解除门禁前也不应给可执行示例）。
+
+## 2026-11-11 T3 实机验收（M3）与 T2b 试值取证（M4）
+
+用户当次确认授权实机测试，范围是：编译执行器、新建测试模型、试值实验。环境为 Windows x64、Creo 12.4.0.0 + 匹配 SDK；会话是机器上已在运行的 Creo，未结束或重启 Creo，未清锁，未做故障注入。BUG-001 卡死根因仍未定，这一事实照实保留。
+
+### M3 实机验收（提交 `7b5c4ff` 的代码，未加改动）
+
+`bridge.py build` 复用 17:16 的缓存。那次编译不是本会话发起的，但缓存指纹与 `7b5c4ff` 的原生源码一致。之后运行 `tools/test_surface_loft_inputs.py --live --confirm-session-usable`：离线与实机全 PASS，共 40 项实机检查，报告为 `build/surface_loft_inputs/20261111-200556.json`。
+
+- (a) 边补面：`open_edge_records` 列出两张竖直曲面带的 8 条开放边，ID、端点和长度全部正确；按端点取到顶边 53/85，补面为 800 mm² 平面。补面后接缝 gap 0，截面边不再是开放边；保存重载 verified（作业 `3e08cb56…`，模型 `3fc7b219…`）。
+- (b) 投影曲线作截面（截面依次为曲线、草图）：直纹面积符合预期（作业 `3a1a5872…`）。
+- (c0) 3 个 YZ 椭圆截面沿 X 排列：2075.380558712057 mm²（作业 `c1fabc29…`）。
+- (c) 再加收敛点：2415.049123545896 mm²，x 延伸到 60 mm，`convergence_point` 回报正确（作业 `78854815…`）。`PRO_CURVCOLL_ADD_POINT_INSTR` 放进链容器这条 Probbl.h 没有文档的路线，因此得到实机证明。
+- (d) 负例：不存在的边 ID 给出结构化拒绝；点放在中间位置，提交前就被拒绝。
+
+### M4 试值取证（T2b，不建参照件）
+
+用户不熟悉 Creo 界面操作，所以没有建参照件，改为在测试模型上用临时实验钩子逐个试候选值，钩子没有提交。共 23 组试验，全部保存重载 verified。详见 [证据](../validation/feat065-t2b-tangency-2026-11-11/EVIDENCE.md) 与 G5 契约 §2.1a 的回填。结论：
+
+- 相切 = `TAN_COND_TYPE` 2 加 `STRETCH`（首截面 -1、末截面 +1）。拱形面积 982.5887974169791 mm²，两条接缝 G1 都是 0.0°。曲面带反向画线后结果完全相同。
+- 下标 0 = 首截面，1 = 末截面。面链沿用内核默认（方法 1），引用边的相邻面。
+- 值 3：接缝 90°，不是曲率连续。值 4：与自由无法区分。导线边界没有测量。因此只开放首/末截面上的 `tangent`，其余条件在建特征之前以 `not_available` 拒绝。
+
+实验结束后丢弃钩子，`native/surface_loft.cpp` 恢复到实验前版本，再写入实测映射与 `STRETCH`，并删除面链重建代码和 `SURFACE_LOFT_CONNECT_CHAIN_METHOD`。M3 回执的 `live_verified` 改为 true，`unverified_input_forms` 保留字段但恒为空。最终代码的实机复核见下一节。
+
+### 最终代码实机复核（2026-11-11 21:00—21:10）
+
+实验钩子丢弃后，原生代码定稿：写入实测映射与 `STRETCH`、沿用内核默认面链、在建特征前拒绝不可用条件。Python 层同步更新：schema 只放行边来源首/末截面上的 `tangent`；`UNAVAILABLE_FIELDS` 清空，机制保留；文案与测试按实测改写。`bridge.py build` 于 20:36:51 编译出最终执行器，之后依次运行：
+
+- `tools/test_surface_loft_inputs.py --live --confirm-session-usable`：离线 37 项、实机 40 项全 PASS，报告 `build/surface_loft_inputs/20261111-210010.json`。回执中曲线、边、点三种来源 `live_verified=true`，`unverified_input_forms=[]`。
+- 新驱动 `tools/test_surface_loft_continuity.py --live --confirm-session-usable`：离线 35 项、实机 59 项全 PASS，报告 `build/surface_loft_continuity/20261111-210431.json`。
+  - 显式写 `free` 的基线：800.0 mm² 平面，接缝 A 90.0°，回执为 `status=kernel_default`（作业 `30e5facd…`，模型 `3795e087…`）。
+  - 两端 `tangent`：4 个独立模型，分别量接缝 A、接缝 B，以及曲面带 A 反向画线后的 A、B。面积都是 982.5887974169791 mm²，z 最高 15.12 mm，四条接缝的 `g1_max_angle_deg` 都是 0.0、`within_g1=true`，保存重载全部 verified。回执写入 `tan_cond_type=2`、`stretch` 为 -1/+1、`connect_chain=kernel_default`。作业依次为 `5dcd8b2b…`、`9eda7612…`、`60c96476…`、`33b7aa67…`。
+  - 负例：`curvature` 在提交前被拒，没有建作业。
+  - 合并回执通过 `creo_get_job(detail="full")` 的 operations_result 读取。

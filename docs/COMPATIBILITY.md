@@ -23,6 +23,21 @@
   - M2：两截面 + 2 条直导线 800.0 mm²（包围盒 x 止 40.0 mm）；两截面 + 2 条圆弧导线 600.0 mm²（包围盒 x 达 44.24 mm）；3 截面 + 2 条直导线 **1599.9999999999995 mm²**、`section_count=3`、`guide_count=2`，均保存重载 verified；单导线提交前拒绝、无作业。`tools/test_surface_loft_guides.py --live --confirm-session-usable`：0.21.0 离线 10 + 实机 17 项、0.21.1 离线 12 + 实机 22 项全 PASS。证据见 [FEAT-065](work-items/FEAT-065.md) 的 2026-11-11 各节与 [0.21.0](validation/RELEASE-0.21.0.md)/[0.21.1](validation/RELEASE-0.21.1.md) 发布记录。
 - **未测/不支持**：Creo 9/10（本机无 SDK，未编译、未建模；SDK 缺 `Probbl.h` 时该操作不可用，见 [DEV-080](work-items/DEV-080.md) H01）；`PRO_E_BNBLN_ADV_VIA_CRV`、`PRO_E_CTRL_PTS`/`PRO_E_BLEND_TYPE`；任意正交平面截面（如 YZ 截面沿 X 排列）；端点收敛（点作截面）；边界相切/曲率条件与 G1/G2 连续性；闭合曲面；导线草图内含 2 条曲线；扭转或圆弧截面；非 mm；WorkBuddy 黑盒。圆弧导线曲面的形状未在 GUI 或等价可视化中核对，600.0 mm² 与直纹基线 800.0 mm² 的差异无几何解释。FEAT-065 的 M3（已有曲线/边/收敛点作截面）与 M4（边界相切）在开发分支，未发布，不属本节支持范围。
 
+## 开发分支（未发布）：`surface_loft` 已有几何输入与边界相切（FEAT-065 M3/M4，2026-11-11）
+
+本节属开发分支 `codex/FEAT-065-m3-m4-surface-loft`，**尚未发布**；合入 `main` 并发版后，才算正式支持范围。
+
+- **Creo 12.4.0.0 已测**（用户当次授权的实机）：
+  - **M3 截面与导线输入**：可用已有曲线 `{kind:'curve'}`、边 `{kind:'edge'}`，首末截面可用收敛点。实测四种情形：边补面（800 mm²，接缝 gap 0）、投影曲线作截面、3 个 YZ 椭圆截面沿 X 排列（2075.38 mm²）、再加收敛点（2415.05 mm²）。
+  - **quilt 开放边 ID**：`creo_measure_surface_group` 的 `open_edge_records` 给出开放边的 ID 与端点，已实测。
+  - **M4 相切**：首/末截面为边时可设 `tangent`，实测拱形 982.5888 mm²，两条接缝 G1 0.0°，曲面带反向画线后结果相同。
+  - 以上均保存重载 verified。驱动：`tools/test_surface_loft_inputs.py`（实机 40 项）、`tools/test_surface_loft_continuity.py`（实机 59 项）。证据见 [FEAT-065](work-items/FEAT-065.md) 与 [T2b](validation/feat065-t2b-tangency-2026-11-11/EVIDENCE.md)。
+- **未测/不支持**：
+  - 条件：`curvature`、`normal`、导线边界上的条件，均在提交前拒绝。
+  - 相切几何：非平面相邻面上的相切；两端相邻面朝向不同。
+  - 环境：已有实体模型中使用 `surface_loft`（原生 `has_solid` 看整个模型，会失败）；Creo 9/10；非 mm 单位。
+  - WorkBuddy 黑盒。
+
 ## 0.19.0 已发布：曲面边圆角与数值曲率/G1（2026-11-08）
 
 - **支持**：`creo_surface_round`（同一 quilt 内两个相邻成员面的恒定半径圆角）与只读 `creo_measure_surface_curvature`（主曲率、曲率半径、UV 采样与共享边法向夹角/G1）。

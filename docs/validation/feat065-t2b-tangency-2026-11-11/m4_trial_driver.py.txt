@@ -1,0 +1,211 @@
+"""FEAT-065 T2b trial driver (temporary, not committed).
+
+For each trial spec, start a server.py whose environment carries
+MECHDOG_EXPERIMENT_TAN_COND, build two vertical strips, bridge their top edges
+with a two-section surface_loft (no guides) and record status, area, bbox and
+the TAN_COND tree. A free bridge is the flat 40 x 20 rectangle (800 mm2, z max
+10); a tangent bridge must rise above z = 10.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools"))
+import test_surface_loft_inputs as drv  # noqa: E402
+
+harness = drv.harness
+
+
+def strips_plan(reverse_a: bool = False) -> list[dict]:
+    plan = [op for op in drv.bridge_build_plan() if op["label"] not in ("guide_l", "guide_r")]
+    if reverse_a:
+        # same strip, opposite sketch direction: edge direction and face normal flip
+        plan[0] = drv.line_sketch("strip_a_line", 0.0, [drv.STRIP_LENGTH_MM, 0.0], [0.0, 0.0])
+    return plan
+
+
+async def one_trial(spec: str | None, seam_strip: str, reverse_a: bool = False) -> dict:
+    from mcp import Client
+    from mcp.client.stdio import StdioServerParameters
+
+    env = dict(os.environ)
+    env.pop("MECHDOG_EXPERIMENT_TAN_COND", None)
+    if spec:
+        env["MECHDOG_EXPERIMENT_TAN_COND"] = spec
+    out: dict = {"spec": spec}
+    async with Client(
+        StdioServerParameters(
+            command=sys.executable, args=[str(ROOT / "server.py")], cwd=str(ROOT), env=env
+        )
+    ) as client:
+        started = await harness.wait_ready(client)
+        if not started.get("connected"):
+            out["error"] = f"not connected: {started.get('state')}"
+            return out
+        build = await harness.submit(client, strips_plan(reverse_a))
+        out["reverse_a"] = reverse_a
+        out["build"] = {"job_id": build.get("job_id"), "status": build.get("status")}
+        if build.get("status") != "succeeded":
+            out["build"]["message"] = str(build.get("message"))[:400]
+            return out
+        model_id = build["model_id"]
+        strips = [
+            {"kind": "quilt_feature", "label": "strip_a"},
+            {"kind": "quilt_feature", "label": "strip_b"},
+        ]
+        measured, _ = await drv.measure_group(client, model_id, strips)
+        edges, detail = drv.pick_bridge_edges(measured.get("group") or {})
+        if not edges:
+            out["edges_error"] = detail
+            return out
+        out["edges"] = edges
+        loft = {
+            "op": "surface_loft",
+            "label": "bridge",
+            "sections": [drv.edge_ref(edges[0]), drv.edge_ref(edges[1])],
+        }
+        state = await harness.submit(client, [loft], model_id, build.get("revision"))
+        op = harness.operation_of(state, "surface_loft")
+        out["loft"] = {
+            "job_id": state.get("job_id"),
+            "status": state.get("status"),
+            "message": str(state.get("message"))[:600],
+            "saved_verified": harness.saved_verified(state),
+            "surface_area_mm2": op.get("surface_area_mm2"),
+            "quilt_id": op.get("quilt_id"),
+            "experiment_tan_cond": op.get("experiment_tan_cond"),
+            "boundary_conditions": op.get("boundary_conditions"),
+            "failed_boundary_condition": op.get("failed_boundary_condition"),
+            "tan_cond_tree": op.get("tan_cond_tree"),
+        }
+        if state.get("status") == "succeeded" and op.get("quilt_id") is not None:
+            quilt = await drv.quilt_record(client, state["model_id"], op.get("quilt_id"))
+            out["loft"]["bbox_mm"] = quilt.get("bbox_mm")
+            out["model_id"] = state.get("model_id")
+            out["revision"] = state.get("revision")
+            out["g1"] = await g1_check(client, state["model_id"], state.get("revision"), seam_strip)
+    return out
+
+
+async def g1_pair(client, model_id: str, quilt_id: int) -> dict:
+    measured = await harness.call_tool(
+        client,
+        "creo_measure_surface_curvature",
+        {
+            "model_id": model_id,
+            "target": {"kind": "quilt", "id": quilt_id},
+            "faces": [0, 1],
+            "samples_per_direction": 8,
+        },
+    )
+    flat = json.dumps(measured, ensure_ascii=False)
+    found = {}
+    def walk(node):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key in ("g1_max_angle_deg", "within_g1") and key not in found:
+                    found[key] = value
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+    walk(measured)
+    if not found:
+        found["raw"] = flat[:600]
+    return found
+
+
+def job_operation(job_id: str, op: str) -> dict:
+    try:
+        manifest = json.loads((ROOT / "jobs" / job_id / "job.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    for item in (manifest.get("result") or {}).get("operations") or []:
+        if item.get("op") == op:
+            return item
+    return {}
+
+
+async def g1_check(client, model_id: str, revision, strip: str) -> dict:
+    """Join one strip with the bridge (2 faces) and measure the seam."""
+    result: dict = {"strip": strip}
+    merged = await harness.submit(
+        client,
+        [
+            {
+                "op": "quilt_merge",
+                "label": "join_seam",
+                "target": {"kind": "quilt_feature", "label": strip},
+                "tool": {"kind": "quilt_feature", "label": "bridge"},
+            }
+        ],
+        model_id,
+        revision,
+    )
+    receipt = job_operation(merged.get("job_id") or "", "quilt_merge")
+    result["merge"] = {
+        "status": merged.get("status"),
+        "message": str(merged.get("message"))[:300],
+        "result_quilt_id": receipt.get("result_quilt_id"),
+        "faces": len(receipt.get("merged_surface_ids") or []),
+    }
+    if merged.get("status") == "succeeded" and receipt.get("result_quilt_id") is not None:
+        result["seam"] = await g1_pair(client, model_id, receipt["result_quilt_id"])
+    return result
+
+
+async def main(specs: list[str | None]) -> None:
+    results = []
+    for spec in specs:
+        started = time.time()
+        seam = "strip_a"
+        reverse_a = False
+        if spec and spec.endswith("#R"):
+            spec, reverse_a = spec[:-2], True
+        if spec and spec.endswith("@B"):
+            spec, seam = spec[:-2], "strip_b"
+        elif spec and spec.endswith("@A"):
+            spec = spec[:-2]
+        try:
+            result = await one_trial(spec, seam, reverse_a)
+        except Exception as error:  # keep going; record the failure
+            result = {"spec": spec, "exception": repr(error)[:500]}
+        result["seconds"] = round(time.time() - started, 1)
+        results.append(result)
+        loft = result.get("loft") or {}
+        box = loft.get("bbox_mm")
+        g1 = result.get("g1") or {}
+        print(
+            json.dumps(
+                {
+                    "spec": spec,
+                    "status": loft.get("status"),
+                    "area": loft.get("surface_area_mm2"),
+                    "zmax": box[1][2] if box else None,
+                    "zmin": box[0][2] if box else None,
+                    "seam": g1.get("strip"),
+                    "reverse_a": result.get("reverse_a"),
+                    "g1": g1.get("seam"),
+                    "merge": (g1.get("merge") or {}).get("status"),
+                    "msg": (loft.get("message") or result.get("exception") or "")[:160],
+                },
+                ensure_ascii=False,
+            ),
+            flush=True,
+        )
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    path = ROOT / ".tmp" / "split" / f"m4_trial_{stamp}.json"
+    path.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
+    print("report", path)
+
+
+if __name__ == "__main__":
+    specs = [None if s == "none" else s for s in sys.argv[1:]]
+    asyncio.run(main(specs))

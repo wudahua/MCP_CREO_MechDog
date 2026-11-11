@@ -27,8 +27,8 @@
 | T1 M3 离线实现 | 子 agent「M3 实现」 | 无 | 完成（`b0a0bfa`） | 见 §4。定向单测通过、离线驱动 PASS、Ruff 无新增诊断 |
 | T1b quilt 开放边 ID 通道 | 子 agent「开放边清单」 | T1 | 完成（`c76f05b`） | `creo_measure_surface_group` 回执加有上限的开放边清单（ID、所属面与 quilt、长度、端点）；驱动 (a) 改用该通道取边 |
 | T2a M4 离线候选 | 子 agent「M4 候选」 | T1 | 完成（`095ef27`） | 见 §5。门禁关闭状态下提交前拒绝；候选代码与取证输出就绪 |
-| T2b M4 参照树取证 | 主会话 + 用户 | T2a；用户在 Creo 界面建参照件 | 需用户当次确认 | 见 §6 |
-| T3 实机验收 | 主会话 | T1（M4 另需 T2b） | 需用户当次确认 | `tools/test_surface_loft_inputs.py --live --confirm-session-usable` 全 PASS，保存重载 verified |
+| T2b M4 参照树取证 | 主会话 | T2a | 完成（改用试值法） | 用户不熟悉界面操作，未建参照件；改为在测试模型上逐个试候选值，23 组，见 §8 |
+| T3 实机验收 | 主会话 | T1、T2b | 完成 | M3 实机 40 项、M4 实机 59 项全 PASS，均为最终代码 |
 | T4 收尾 | 主会话 | T0、T1、T2a | 完成 | 全量 `tools/dev_check.py --work-item FEAT-065` success；工作卡与台账回填；分支提交 |
 
 T0 与 T1 改的文件互不重叠，可以并行。T2a 与 T1 改同一批文件（`surface_ops.py`、`surface_loft.cpp`），必须等 T1 完成。
@@ -108,3 +108,7 @@ T0 与 T1 改的文件互不重叠，可以并行。T2a 与 T1 改同一批文�
   - YZ 截面沿 X 排列的放样；
   - `TAN_COND_TYPE` 整数值与 `TNC_BNDRY` 顺序；
   - 执行器编译（未运行 `bridge.py build`）。
+- **实机授权（2026-11-11 用户当次确认）**：「全部授权，你自己做」，范围是编译执行器、新建测试模型、M3 实机验收和 M4 试值实验。不含结束或重启 Creo、清锁、故障注入，这些都没有做。会话用的是本机已在运行的 Creo 12.4.0.0。
+- **T3 M3（代码 `7b5c4ff`）**：实机 40 项全 PASS（`build/surface_loft_inputs/20261111-200556.json`）。曲线、边、收敛点三种来源与 YZ 截面放样全部成立；`open_edge_records` 实机正确。
+- **T2b 改用试值法**：用户不熟悉 Creo 界面操作，没有建参照件。改为在 `surface_loft.cpp` 加临时钩子（读环境变量 `MECHDOG_EXPERIMENT_TAN_COND`，没有提交），在两张竖直曲面带之间补面做试验，共 5 轮、23 组，全部保存重载 verified。测得：相切 = `TAN_COND_TYPE` 2，且必须写 `STRETCH`（首截面 -1、末截面 +1）；下标 0/1 分别对应首/末截面；面链沿用内核默认。值 3、值 4 和导线边界没有实测依据，拒绝。证据见 [validation/feat065-t2b-tangency-2026-11-11](../../validation/feat065-t2b-tangency-2026-11-11/EVIDENCE.md)。
+- **定稿**：丢弃钩子，原生写入实测映射（主会话）；Python 契约、测试和新驱动 `tools/test_surface_loft_continuity.py` 由子 agent 完成。用最终执行器（20:36:51 编译）重跑：M3 实机 40 项全 PASS（`20261111-210010.json`），M4 实机 59 项全 PASS（`build/surface_loft_continuity/20261111-210431.json`），四条相切接缝 G1 都是 0.0°，`curvature` 在提交前被拒。
