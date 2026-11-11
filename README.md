@@ -1,8 +1,8 @@
-# MCP_CREO_MechDog 0.21.1
+# MCP_CREO_MechDog 0.22.0
 
-![version](https://img.shields.io/badge/version-0.21.1-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
+![version](https://img.shields.io/badge/version-0.22.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.21.1**（PATCH——修 BUG-118：3 截面以上曲面放样的 compact 回执被预算裁剪剥光测量值，只剩 `detail_truncated`；面积/闭合/计数/导线 ID 并入保护集合，不再被裁。同批把 0.21.0 的 3 截面 + 导线实机用例跑通并回填发布记录；公开工具仍 107） · [版本说明](docs/RELEASE_NOTES_0.21.1.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
+当前正式版 **0.22.0**（MINOR——FEAT-065 M3/M4：`creo_surface_loft` 的截面与导线除草图外接受已有曲线和 quilt 边，首末截面可用收敛点；新增 `boundary_conditions`，目前只开放边来源首/末截面的 `tangent`（`curvature`/`normal`/导线边界提交前拒绝）；`creo_measure_surface_group` 回执新增开放边清单 `open_edge_records`，作为取 quilt 边 ID 的公开渠道；公开工具仍 107） · [版本说明](docs/RELEASE_NOTES_0.22.0.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 

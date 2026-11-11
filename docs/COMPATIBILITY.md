@@ -6,7 +6,7 @@
 
 2026-11-08 DEV-080补充：`creo_surface_boundary_fill` 与 `creo_surface_loft` 同源于 `Probbl.h` 的边界混合元素树；不含该头的 Toolkit SDK（已观测：Creo 10.0.0.0）上两者均不可用。执行器在 `creo_worker.exe build-info` 自报头条件状态，Python 侧按已验证的 worker 身份在提交作业前拒绝，给出 `SURFACE_LOFT_SDK_UNAVAILABLE` 一类明确降级回执，不伪造几何，也不应被误判为安装失败；`surface_boundary_fill` 另保持能力面 GATED。缺头 SDK 的整包编译还受 `native/surface_boundary_fill.cpp` 复用 `surface_loft.cpp` 内部符号影响，根因、抽头方案与不依赖 `Probbl.h` 的等价元素树见 [DEV-080](work-items/DEV-080.md) H01；需 Creo 10 SDK 编译与实机几何验收，本机未验，不据门控夹具外推为通过。
 
-> **版本归属说明（2026-11-11）：** 当前**已发布**版本为 **0.21.1**（以 [version.py](../version.py) 为准；PATCH，[BUG-118](work-items/BUG-118.md) compact 回执保留曲面放样测量值，见[版本说明](RELEASE_NOTES_0.21.1.md)与[发布记录](validation/RELEASE-0.21.1.md)）。0.19.0 之后依次发布 0.19.1—0.19.3、0.20.0（DEV-081 B 批，含选择性切除作用域，见下方 2026-11-10 分节）、0.21.0（[FEAT-065](work-items/FEAT-065.md) M1/M2：`creo_surface_loft` 2—32 截面与 2—8 条第二方向导线，见下方 0.21.0/0.21.1 分节与[发布记录](validation/RELEASE-0.21.0.md)）与 0.21.1，均未新增工具，公开工具仍 **107**。下文分节按写作时点保留各自结论，**章节顺序不代表版本顺序**；"当前"字样属于该节的写作时点，不作为今天的交付状态。
+> **版本归属说明（2026-11-11）：** 当前**已发布**版本为 **0.22.0**（以 [version.py](../version.py) 为准；MINOR，[FEAT-065](work-items/FEAT-065.md) M3/M4：`creo_surface_loft` 接受已有曲线与 quilt 边、首末截面可用收敛点，新增 `boundary_conditions` 的边来源 `tangent`，`creo_measure_surface_group` 回执新增 `open_edge_records`，见下方 0.22.0 分节、[版本说明](RELEASE_NOTES_0.22.0.md)与[发布记录](validation/RELEASE-0.22.0.md)）。0.19.0 之后依次发布 0.19.1—0.19.3、0.20.0（DEV-081 B 批，含选择性切除作用域，见下方 2026-11-10 分节）、0.21.0（[FEAT-065](work-items/FEAT-065.md) M1/M2：`creo_surface_loft` 2—32 截面与 2—8 条第二方向导线，见下方 0.21.0/0.21.1 分节与[发布记录](validation/RELEASE-0.21.0.md)）、0.21.1（[BUG-118](work-items/BUG-118.md) compact 回执保留曲面放样测量值，见[版本说明](RELEASE_NOTES_0.21.1.md)与[发布记录](validation/RELEASE-0.21.1.md)）与 0.22.0，均未新增工具，公开工具仍 **107**。下文分节按写作时点保留各自结论，**章节顺序不代表版本顺序**；"当前"字样属于该节的写作时点，不作为今天的交付状态。
 > **版本归属说明（2026-11-08）：** 当时**已发布**版本为 **0.19.0**（DEV-074 曲面与整链批：FEAT-055/H08 新增 `creo_surface_round` 与只读 `creo_measure_surface_curvature`，FEAT-039/H03 重新公开 `creo_quilt_merge`，H10 五爪整瓶整链实机；公开工具 104→107；钣金成形类、独立 quilt 偏置与任意非平面 fill 仍不可用，门禁保持，见[发布记录](validation/RELEASE-0.19.0.md)）；下文分节按写作时点保留各自结论，**章节顺序不代表版本顺序**；"当前"字样属于该节的写作时点，不作为今天的交付状态。
 > **版本归属说明（2026-11-07 补记）：** 当时**已发布**版本为 **0.18.4**（DEV-074 0.18.3 后续实机批：FEAT-039/H09 旋转球面替代、H10 多 quilt 整链、H07 独立 quilt 偏置反证，FEAT-055/H08 曲面边圆角可行性，FEAT-014/H05 钣金附着增料反证，BUG-115/H12 回执复验；公开工具仍 104，无新增能力，见[发布记录](validation/RELEASE-0.18.4.md)）；上文分节按写作时点保留各自结论，**章节顺序不代表版本顺序**；"当前"字样属于该节的写作时点，不作为今天的交付状态。
 > **版本归属说明（2026-11-07 补记）：** 当时**已发布**版本为 **0.18.3**（DEV-074 0.17.4 反馈批：FEAT-058/H01 非零 origin 大跨度 resize 修复、FEAT-009/H02 `creo_surface_loft`、FEAT-039/H04 `creo_measure_surface_group` 与 H06 保留侧几何，公开工具 102→104，见[发布记录](validation/RELEASE-0.18.3.md)）；上文分节按写作时点保留各自结论，**章节顺序不代表版本顺序**；"当前"字样属于该节的写作时点，不作为今天的交付状态。
@@ -23,9 +23,9 @@
   - M2：两截面 + 2 条直导线 800.0 mm²（包围盒 x 止 40.0 mm）；两截面 + 2 条圆弧导线 600.0 mm²（包围盒 x 达 44.24 mm）；3 截面 + 2 条直导线 **1599.9999999999995 mm²**、`section_count=3`、`guide_count=2`，均保存重载 verified；单导线提交前拒绝、无作业。`tools/test_surface_loft_guides.py --live --confirm-session-usable`：0.21.0 离线 10 + 实机 17 项、0.21.1 离线 12 + 实机 22 项全 PASS。证据见 [FEAT-065](work-items/FEAT-065.md) 的 2026-11-11 各节与 [0.21.0](validation/RELEASE-0.21.0.md)/[0.21.1](validation/RELEASE-0.21.1.md) 发布记录。
 - **未测/不支持**：Creo 9/10（本机无 SDK，未编译、未建模；SDK 缺 `Probbl.h` 时该操作不可用，见 [DEV-080](work-items/DEV-080.md) H01）；`PRO_E_BNBLN_ADV_VIA_CRV`、`PRO_E_CTRL_PTS`/`PRO_E_BLEND_TYPE`；任意正交平面截面（如 YZ 截面沿 X 排列）；端点收敛（点作截面）；边界相切/曲率条件与 G1/G2 连续性；闭合曲面；导线草图内含 2 条曲线；扭转或圆弧截面；非 mm；WorkBuddy 黑盒。圆弧导线曲面的形状未在 GUI 或等价可视化中核对，600.0 mm² 与直纹基线 800.0 mm² 的差异无几何解释。FEAT-065 的 M3（已有曲线/边/收敛点作截面）与 M4（边界相切）在开发分支，未发布，不属本节支持范围。
 
-## 开发分支（未发布）：`surface_loft` 已有几何输入与边界相切（FEAT-065 M3/M4，2026-11-11）
+## 0.22.0 已发布：`surface_loft` 已有几何输入与边界相切（FEAT-065 M3/M4，2026-11-11）
 
-本节属开发分支 `codex/FEAT-065-m3-m4-surface-loft`，**尚未发布**；合入 `main` 并发版后，才算正式支持范围。
+本节随 0.22.0 发布（开发分支 `codex/FEAT-065-m3-m4-surface-loft` 已合入 `main`），属正式支持范围。
 
 - **Creo 12.4.0.0 已测**（用户当次授权的实机）：
   - **M3 截面与导线输入**：可用已有曲线 `{kind:'curve'}`、边 `{kind:'edge'}`，首末截面可用收敛点。实测四种情形：边补面（800 mm²，接缝 gap 0）、投影曲线作截面、3 个 YZ 椭圆截面沿 X 排列（2075.38 mm²）、再加收敛点（2415.05 mm²）。

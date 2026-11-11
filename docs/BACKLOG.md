@@ -54,10 +54,10 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 | 已有修复但待验收 | 29 |
 | 观察中 | 3 |
 | 其它 agent 处理范围 | 20 |
-| 开发中 | 8 |
+| 开发中 | 7 |
 | 部分交付，剩余待验收 | 38 |
 | 部分交付，剩余待规划 | 3 |
-| 待规划 | 41 |
+| 待规划 | 42 |
 
 BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与真实缺口，勿重复派工。
 
@@ -186,7 +186,6 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [DEV-079](work-items/DEV-079.md) | P1 | 离线子项已随 0.19.2 交付；Creo 10/钣金/黑盒待接手 | 0.19.2 | 0.19.0三份Creo 10反馈归档与对照；quilt_merge描述同步、曲率默认摘要/`include_samples`、surface_group结构化失败回执、`profile.method`、POSTCHECK旧句已修；`state_reason`与裸名导入等0.19.1已修项不重复；H01—H09（Probbl.h替代、开放弧trim、残留quilt、原生截面面积、大作业compact、连续顶边选边、entities_file、native_bundle、负origin resize）待实机。 |
 | [DEV-080](work-items/DEV-080.md) | P1 | 首批离线收口已随 0.19.3 交付；原生/实机余项待接手 | 0.19.3 | 接手0.19.0三份报告复核后仍未闭环的H01—H09及未编号缺口；首批交付手写TU头门控契约测试、COMPATIBILITY缺头降级说明、计数自检进CI；原生解耦/等价元素树、开放弧trim、残留quilt、原生截面面积、大作业compact、连续顶边选边、entities_file、native_bundle、负origin resize待Creo10 SDK或实机；解压单测发布前阻断与verify_stages优先留后续。 |
 | [DEV-082](work-items/DEV-082.md) | P1 | 开发中 | 未排期 | 0.19.3反馈P1-1/P1-2：`surface_boundary_fill.cpp` 已按 `MECHDOG_HAS_PROBBL_HEADER` 门控并给缺头 stub，新增跨TU符号可见性契约测试；`-DMECHDOG_HAS_PROBBL_HEADER=0` 聚合语法检查EXIT=0。H01抽 `element_tree_json.h`、单一真值源与真实Creo10 SDK整包编译仍开放。 |
-| [FEAT-065](work-items/FEAT-065.md) | P1 | 开发中（M1/M2 已随 0.21.0 发布；M3/M4 已在 `codex/FEAT-065-m3-m4-surface-loft` 实机验收，待合入发布） | 未排期 | M3：`surface_loft` 截面/导线接受已有曲线、边与首末收敛点；quilt 开放边 ID 由 `creo_measure_surface_group` 的 `open_edge_records` 提供；M4：`boundary_conditions` 开放边来源首/末截面上的 `tangent`（试值法测得 `TAN_COND_TYPE` 2，`STRETCH` 首 -1、末 +1；两条接缝 G1 0.0°，982.5888 mm²）。均于 2026-11-11 在 Creo 12.4.0.0 实机验收（用户当次授权）。剩余：curvature/normal/导线边界无实测依据，仍拒绝；非平面相邻面的相切未测；已有实体模型中 `surface_loft` 一律失败（`has_solid` 看整个模型）；`ADV_VIA_CRV`；Creo9/10。见 [2026-11-11 计划](superpowers/plans/2026-11-11-feat065-m3-m4-surface-loft.md)。 |
 
 ## 部分交付，剩余待验收
 
@@ -246,6 +245,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
+| [FEAT-065](work-items/FEAT-065.md) | P1 | 已交付 0.21.0（M1/M2）与 0.22.0（M3/M4）子项；剩余未排期 | 未排期 | 已发布：2—32 截面、2—8 条第二方向导线、截面/导线接受已有曲线与边、首末收敛点、边来源首/末截面的 `tangent`，quilt 边 ID 由 `creo_measure_surface_group` 的 `open_edge_records` 给出。剩余：`curvature`/`normal`/导线边界无实测依据仍拒绝；非平面相邻面与两端朝向不同的相切未测；已有实体模型中 `surface_loft` 一律失败（`has_solid` 看整个模型）；`ADV_VIA_CRV`；`boundary_conditions` 不在 compact 保护集合内；Creo 9/10 与 WorkBuddy 黑盒。见 [0.22.0 发布记录](validation/RELEASE-0.22.0.md)。 |
 | [DEV-003](BACKLOG_COMPLETED.md#legacy-dev-003) | P2 | 待规划 | 未排期 | 整理 C++ 的执行上下文、模块接口和资源由谁创建、释放，再用受影响的 SDK 构建并运行原生测试。 |
 | [DEV-004](BACKLOG_COMPLETED.md#legacy-dev-004) | P2 | 待规划 | 未排期 | 在 DEV-003 完成后，让各模块可以独立编译，并整理原生测试目录。检查构建缓存、安装、保存重载和失败回滚。 |
 | [DEV-005](BACKLOG_COMPLETED.md#legacy-dev-005) | P2 | 待规划 | 未排期 | 按工具和参数用法记录本机哪些测过、哪些没测，并注明真实环境，同步安装和能力说明。其他环境收到具体反馈再补；不要求双版本验收，也不能拿“82 工具测过”的汇总代替每种用法的兼容性测试。 |
