@@ -206,6 +206,33 @@ PRO_E_BNBLN_CURVES
 - 2DIR 明显改变几何：两截面 40 mm、间距 20 mm，直导线给出 800.0 mm²、包围盒 x = 0…40；半径 14.1421 mm 的半圆导线给出 600.0 mm²、包围盒 x 达 44.24。两组都通过保存重载校验。曲面的实际形状未做可视化核对，契约只声明可测数值。
 - 仍未定：`PRO_E_BNBLN_ADV_VIA_CRV`、`PRO_E_CTRL_PTS`/`PRO_E_BLEND_TYPE`、连续性元素与导线草图内含 2 条曲线的合法形态。
 
+### 2.1a surface_loft：边界连续性候选（FEAT-065/M4，2026-11-11，离线，门禁保持）
+
+性质：离线候选。未编译执行器、未连接 Creo，以下没有任何实机结论。公开字段已登记，但提交前被门禁拒绝。
+
+**公开字段**：`boundary_conditions: [{boundary, condition}]`，最多 4 项，每个 boundary 只能出现一次。
+
+- `boundary` ∈ `first_section | last_section | first_guide | last_guide`，分别对应 `sections[0]`、`sections[-1]`、`guides[0]`、`guides[-1]`；导线边界要求计划里有导线。
+- `condition` ∈ `free | tangent | curvature | normal`。`free` 保留内核默认值，不改树；其余三种要求该边界的来源是 `{kind:'edge',id:N}`，相邻面取这条边唯一的相邻面（T1 回执的 `adjacent_surface_ids`）。相邻面不是恰好 1 个（例如实体边或 quilt 内部边）时，原生在建特征之前拒绝。
+
+**门禁**：`src/creo_mechdog/capabilities.py` 的 `UNAVAILABLE_FIELDS["surface_loft.boundary_conditions"]`。`require_available` 对非空列表直接拒绝（`no native job was queued`），原因写明 Probbl.h 只文档化 `TAN_COND_FREE` 以及待 T2b 取证；`creo_capabilities` 的 `families.surface_loft.unavailable_fields` 同步公开这条原因。删除这一项就是解除门禁的全部 Python 改动。
+
+**原生路线**（`native/surface_loft.cpp`，`MECHDOG_HAS_PROBBL_HEADER` 门控内）：
+
+1. 解析输入后、建创建树之前：`surface_loft_conditions` 复核形状，把每个非 free 边界解析为（边 id，唯一相邻面 id）。拒绝前缀 `SURFACE_LOFT_BOUNDARY_CONDITION_REJECTED`，并在回执中写 `failed_boundary_condition`。
+2. 创建树不写任何 `PRO_E_BNBLN_TAN_COND*`（2026-11-01 P1 证明创建前写入会停在 `PRO_FEAT_UNREGENERATED`）。
+3. INCOMPLETE 创建 → `ProFeatureElemtreeExtract` → `surface_loft_apply_conditions` → `ProFeatureWithoptionsRedefine`。
+4. `surface_loft_apply_conditions` 先查两张映射表：`SURFACE_LOFT_TAN_COND_TYPE_VALUES`（condition → `PRO_E_BNBLN_TAN_COND_TYPE` 整数）和 `SURFACE_LOFT_TNC_BOUNDARY_INDEX`（boundary → `PRO_E_BNBLN_TAN_COND` 数组中 `PRO_E_BNBLN_TNC_BNDRY` 的下标）。**两张表当前都为空**。查不到时以 `SURFACE_LOFT_BOUNDARY_CONDITION_UNMAPPED` 拒绝，发生在改树和 redefine 之前；抽取树随即释放，作业按现有失败路径回滚，INCOMPLETE 特征不留存。
+5. 映射已知时：把对应 `TNC_BNDRY` 的 `TAN_COND_TYPE` 改为映射值；删掉已有的 `PRO_E_BNBLN_CONNECT_SURF_CHAIN`，重建 `CONNECT_SURF_CHAIN → SURF_CHAIN_CMPND → SURF_CHAIN_REF_SURFS → SURF_CHAIN_SURF → SURF_CHAIN_REF(相邻面)`。`PRO_E_SURF_CHAIN_METHOD` 由常量 `SURFACE_LOFT_CONNECT_CHAIN_METHOD` 控制，当前为 -1（不写）：`ProSweep.h` 的 `ProSurfChainMethod` 没有写明适用于边界混合。`TAN_FLD_TYPE`、`STRETCH`、`TAN_REF_TYPE`、`ADV_VIA_CRV` 不改。
+
+**取证输出**：回执新增 `tan_cond_tree`，即抽取树中 `PRO_E_BNBLN_TAN_COND` 子树的单独样本，预算 64 个元素，带 `truncated`。之所以单独取样，是因为共享的 160 元素 `extracted_tree` 在大放样里可能还没走到这一子树就用完了预算；共享样本的 `truncated` 此前恒为 `false`，本次已改为如实报告。`tan_cond_tree` 在三种情况下写入：请求了 `boundary_conditions`；任一截面或导线来源是边；redefine 或再生失败。纯草图放样的成功回执不变。
+
+**未知映射与 T2b 取证计划**：
+
+- 已知事实：2026-11-07 的两截面草图放样中，内核补出 4 个 `TNC_BNDRY`，`TAN_COND_TYPE`=1,1,0,0，`TAN_FLD_TYPE`=-1,-1,0,0。4 个下标分别对应首/末截面、首/末导线中的哪一个，**未知**；1 是否就是 `TAN_COND_FREE`，**未知**。
+- T2b（需用户当次确认）：用户在 Creo 12.4 界面建参照件（两张相邻曲面，边界混合一侧设「相切」、另一侧设「曲率」，必要时再加一个「法向」），主会话用 `tools/read_reference_tree.py` 读回元素树，按 FEAT-065 工作卡 T2a 一节的清单比对后回填两张表、`SURFACE_LOFT_CONNECT_CHAIN_METHOD` 和本节。
+- 读不回来，或 redefine 不接受读回的值：记录反证，门禁保持，M4 记为「实机反证，不发布」。
+
 ### 2.2 project_curve：实测定论与实际实现树（S04 回填，2026-11-04）
 
 #### 2.2.1 两族投影元素都不可用（实测，P2 结论）
@@ -961,6 +988,8 @@ double* min, ProVector dirs[2])`（给定 UV 点返回最大/最小主曲率与�
 
 **实现状态（2026-11-07）：** 本节边界已按原样交付为 `surface_loft` / `creo_surface_loft`，Creo 12.4 实机验收见 §9.4；上表"首版明确拒绝"的各参数在 schema 层直接拒绝，不走原生降级。
 
+**2026-11-11 更正（FEAT-065）：** 上表「截面数恰好 2 条、≥3 拒绝」「插值只取 straight、smooth 拒绝」「截面来源一条曲线」三行是 0.21.0 之前的首版口径，已被 [FEAT-065](../work-items/FEAT-065.md) 取代，原文保留不改：M1（0.21.0）放开为 2—32 截面，两截面直纹（`straight`），三截面以上是一张通过全部截面的光滑面，必须写 `smooth`（两截面也接受 `smooth`）；M2（0.21.0）增加 2—8 条第二方向导线；草图截面可以是两条曲线组成的一个闭合轮廓。M3（开发分支，Creo 12.4 实机未验收）允许截面/导线引用已有曲线或边、首末截面为收敛点。连续性一行仍然成立：M4 的 `boundary_conditions` 字段已登记但在提交前被门禁拒绝，见 §2.1a。
+
 ### 3.2 project_curve
 
 | 项 | 首版公开 | 首版明确拒绝 |
@@ -1039,6 +1068,8 @@ double* min, ProVector dirs[2])`（给定 UV 点返回最大/最小主曲率与�
 - **两个元素必须互不相同**（schema 层拒绝重复）。
 - 每个元素必须解析到**一条曲线**（`PRO_CURVE`）；解析到复合曲线（`PRO_ENT_CMP_CRV`）或零条/多条 → 拒绝。
 - 两条曲线的**相对位置不做任何规范化**：不排序、不镜像、不重排 Z。几何是否可放样由 Creo 判定，失败时回滚（§4.6）。
+
+**2026-11-11 更正（FEAT-065）：** 「首版长度必须为 2」「每个元素必须解析到一条曲线」已被 FEAT-065 M1/M2（0.21.0）取代，原文保留不改。现行规则：`sections` 长度 2—32，顺序即放样方向且不重排；元素互不相同；草图元素拥有 1 条非复合曲线，或 2 条曲线组成的一个闭合轮廓；3 个以上截面要求 `interpolation="smooth"`。M3 在开发分支上增加 `{kind:'curve',id}`、`{kind:'edge',id}` 和首末收敛点，Creo 12.4 实机未验收，规则见 `src/creo_mechdog/surface_ops.py` 与 [REFERENCE_SYNTAX](../REFERENCE_SYNTAX.md)。
 
 ### 4.3 方向坐标系与单位
 
@@ -1588,5 +1619,7 @@ joined 缝 ⇒ `closed`；无任何成员缝 ⇒ `open` + `no_member_seam_candid
 **顺序约束（实测）：** 同一模型先 `thicken` 再 `surface_trim` 时，trim 的 `ProFeatureWithoptionsCreate` 返回 -1（job `ddf1f332...`）。加厚后的 quilt 不能再作为该 trim 的目标；验收顺序改为 trim 在 thicken 之前或使用独立模型。未继续排查该顺序问题，也未改动 trim/thicken 既有逻辑。
 
 **未验证：** ≥3 截面、smooth、闭合、相切/曲率连续性、非平行/扭转或圆弧截面、Creo 9/10 实机、字面 erase 后重载。
+
+**2026-11-11 更正（FEAT-065）：** 上行中的「≥3 截面」「smooth」已在 Creo 12.4.0.0 实机验收（FEAT-065 M1/M2，随 0.21.0 发布；三截面 40/60/40 mm 实测 2101.25 mm²，3 截面 + 2 导线保存重载通过），原文保留不改。闭合、相切/曲率连续性、Creo 9/10 实机仍未验证；连续性的离线候选见 §2.1a。
 
 证据：[FEAT-009-H02-2026-11-07](../validation/FEAT-009-H02-2026-11-07/SUMMARY.md)（含 `live_report.json` 与首跑含抽取树的 `first_run_loft_receipt.json`）。

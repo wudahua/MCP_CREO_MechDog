@@ -2901,6 +2901,7 @@ async def creo_surface_loft(
     sections: Annotated[list[str | int | dict[str, Any]], Field(min_length=2, max_length=32)],
     interpolation: Literal["straight", "smooth"] = "straight",
     guides: Annotated[list[str | int | dict[str, Any]], Field(max_length=8)] | None = None,
+    boundary_conditions: Annotated[list[dict[str, str]], Field(max_length=4)] | None = None,
 ) -> dict[str, Any]:
     """Create a native boundary-blend surface quilt through section sketches.
 
@@ -2927,13 +2928,23 @@ async def creo_surface_loft(
     regeneration instead of being ignored. The result is one open datum-surface
     quilt (quilt_id, surface_area_mm2, quilt_closed_native, guide_count,
     section_source_kinds, unverified_input_forms); no solid material is created.
-    Closed surfaces and continuity requests are refused before a job is queued.
+    Closed surfaces are refused before a job is queued.
+
+    boundary_conditions (FEAT-065 M4, NOT AVAILABLE in this release): up to 4
+    {boundary: first_section|last_section|first_guide|last_guide, condition:
+    free|tangent|curvature|normal}, each boundary once; a non-free condition
+    needs that boundary to be an edge {kind:'edge',id:N}. Any non-empty list is
+    refused before a job is queued, because the TAN_COND integers are not
+    documented in Probbl.h and still have to be read from a reference part
+    (FEAT-065 T2b). Omit it to keep the kernel's default.
     """
     operation: dict[str, Any] = dict(
         op="surface_loft", label=label, sections=sections, interpolation=interpolation
     )
     if guides:
         operation["guides"] = guides
+    if boundary_conditions:
+        operation["boundary_conditions"] = boundary_conditions
     return await invoke(
         general.submit,
         [operation],

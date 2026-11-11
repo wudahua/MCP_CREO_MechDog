@@ -120,7 +120,9 @@ PROJECT_CURVE_KEYS = (
 #: failed boundary-blend regeneration needs. FEAT-065/M3 adds the per-slot
 #: source kinds and geometry ids, the per-slot source records, the convergence
 #: point block, the list of input forms without live evidence and the
-#: structured rejection of an unusable input.
+#: structured rejection of an unusable input. FEAT-065/M4 adds the boundary
+#: condition records, the structured refusal of one condition and the bounded
+#: PRO_E_BNBLN_TAN_COND sample the reference-part comparison (T2b) reads.
 SURFACE_LOFT_KEYS = (
     "sections",
     "section_count",
@@ -139,6 +141,9 @@ SURFACE_LOFT_KEYS = (
     "convergence_point",
     "unverified_input_forms",
     "failed_loft_input",
+    "boundary_conditions",
+    "failed_boundary_condition",
+    "tan_cond_tree",
     "route",
     "create_code",
     "create_element_errors",

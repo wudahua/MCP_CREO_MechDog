@@ -203,10 +203,17 @@ class SurfaceLoftProjectionTests(unittest.TestCase):
         self.assertIn("PRO_FEAT_CR_INCOMPLETE_FEAT", text)
         self.assertIn("ProFeatureElemtreeExtract", text)
         self.assertIn("redefine(&feature, extracted)", text)
-        # §2.1 forbids guessing the free-tangency elements in the first release.
-        # Only code counts: the header comment names the forbidden elements.
+        # §2.1 forbids writing the tangency elements into the creation tree (the
+        # 2026-11-01 probe stayed UNREGENERATED). FEAT-065/M4 may only touch them
+        # in the extracted tree (test_surface_loft_boundary_conditions). Only code
+        # counts: the header comment names the forbidden elements.
         code = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("//"))
-        self.assertNotIn("PRO_E_BNBLN_TAN_COND", code)
+        creation = code[
+            code.index("node(nullptr, PRO_E_FEATURE_TREE)") : code.index(
+                "ProFeatureWithoptionsCreate("
+            )
+        ]
+        self.assertNotIn("PRO_E_BNBLN_TAN_COND", creation)
         self.assertNotIn("PRO_E_BBL_ADD_CLOSED", code)
         # FEAT-065/M2: the optional second direction is its own tree beside
         # 1DIR, and one guide alone is refused before it reaches the kernel.

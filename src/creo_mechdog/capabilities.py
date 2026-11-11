@@ -131,6 +131,21 @@ UNAVAILABLE_OPERATIONS: dict[str, str] = {
     ),
 }
 
+# FEAT-065/M4: optional fields of a published operation whose native route is
+# not proved, keyed "<op>.<field>". A non-empty value is refused before a job
+# exists, in the same words as UNAVAILABLE_OPERATIONS. Deleting an entry is the
+# only switch; native/surface_loft.cpp still refuses an unmapped condition
+# (SURFACE_LOFT_BOUNDARY_CONDITION_UNMAPPED) until its tables are filled.
+UNAVAILABLE_FIELDS: dict[str, str] = {
+    "surface_loft.boundary_conditions": (
+        "FEAT-065 M4 boundary continuity is an offline candidate only; Probbl.h documents "
+        "only TAN_COND_FREE for PRO_E_BNBLN_TAN_COND_TYPE and gives it no parsable value, so "
+        "the tangent/curvature/normal integers and which PRO_E_BNBLN_TNC_BNDRY entry is "
+        "which boundary must first be read from a Creo-built reference part (FEAT-065 T2b); "
+        "omit boundary_conditions to keep the kernel's own default"
+    ),
+}
+
 
 def require_available(operations: list[dict]) -> None:
     unavailable = [op["op"] for op in operations if op["op"] in UNAVAILABLE_OPERATIONS]
@@ -141,6 +156,14 @@ def require_available(operations: list[dict]) -> None:
         raise ValueError(
             f"Not available in the {VERSION} release; no native job was queued. {details}"
         )
+    for op in operations:
+        for key, reason in UNAVAILABLE_FIELDS.items():
+            name, field = key.split(".", 1)
+            if op["op"] == name and op.get(field):
+                raise ValueError(
+                    f"Not available in the {VERSION} release; no native job was queued. "
+                    f"{key}: {reason}"
+                )
     for op in operations:
         if op["op"] == "loft" and (op.get("mode", "add") != "add" or op.get("new_body", False)):
             raise ValueError(
@@ -1050,8 +1073,18 @@ def families() -> dict:
                 "for a chain holder, so it is an experiment; the receipt lists these forms in "
                 "unverified_input_forms and a bad id fails with SURFACE_LOFT_INPUT_REJECTED and "
                 "failed_loft_input; creo_inspect_model enumerates solid edges only, so a quilt "
-                "edge id has no public discovery channel yet"
+                "edge id has no public discovery channel yet. FEAT-065 M4 boundary_conditions "
+                "([{boundary: first_section|last_section|first_guide|last_guide, condition: "
+                "free|tangent|curvature|normal}], at most 4, each boundary once, non-free only "
+                "where that boundary is an edge) is validated but gated: any non-empty list is "
+                "refused before a job (UNAVAILABLE_FIELDS) until FEAT-065 T2b reads the "
+                "TAN_COND integers from a reference part"
             ),
+            "unavailable_fields": {
+                key.split(".", 1)[1]: reason
+                for key, reason in UNAVAILABLE_FIELDS.items()
+                if key.startswith("surface_loft.")
+            },
         },
         "surface_round": {
             "enabled": True,

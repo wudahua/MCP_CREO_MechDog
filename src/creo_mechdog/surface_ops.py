@@ -232,6 +232,29 @@ def _first_repeat(values: list[Any]) -> tuple[int, int] | None:
 # FEAT-065/M3 reference objects. Shape is enforced by the model validators.
 LoftInput = str | int | dict[str, Any]
 
+#: FEAT-065/M4: the four loft boundaries a continuity condition can name, and
+#: the slot that supplies each one. A guide boundary needs guides.
+LOFT_BOUNDARY_SLOTS = {
+    "first_section": ("sections", 0),
+    "last_section": ("sections", -1),
+    "first_guide": ("guides", 0),
+    "last_guide": ("guides", -1),
+}
+
+
+class LoftBoundaryCondition(StrictModel):
+    """FEAT-065/M4: continuity between one loft boundary and its neighbour face.
+
+    ``free`` keeps the kernel's own default. ``tangent``/``curvature``/
+    ``normal`` need the boundary to be an edge ``{kind:'edge',id:N}``: the
+    neighbour is that edge's single adjacent face, resolved natively. The
+    whole field is gated in ``capabilities.UNAVAILABLE_FIELDS`` until FEAT-065
+    T2b reads the PRO_E_BNBLN_TAN_COND_TYPE integers from a reference part.
+    """
+
+    boundary: Literal["first_section", "last_section", "first_guide", "last_guide"]
+    condition: Literal["free", "tangent", "curvature", "normal"]
+
 
 class SurfaceLoftOp(StrictModel):
     """Boundary blend with one or two directions (FEAT-009/H02, FEAT-065 M1/M2/M3).
@@ -257,9 +280,11 @@ class SurfaceLoftOp(StrictModel):
     the surface is built through as well. A guide is never a point. Whether a
     guide actually crosses every section is left to the kernel; the measured
     shape follows the guides (2026-11-11: semicircular guides widened the quilt
-    to x = 44.24 mm on a 40 mm section). Closed surfaces, continuity requests
-    and solid output are still refused before a job exists, and the operator
-    never falls back to a solid Blend.
+    to x = 44.24 mm on a 40 mm section). Closed surfaces and solid output are
+    still refused before a job exists, and the operator never falls back to a
+    solid Blend. ``boundary_conditions`` (FEAT-065/M4) is validated here but
+    gated in ``capabilities.UNAVAILABLE_FIELDS``: a non-empty list is refused
+    before a job until the TAN_COND integers are read from a reference part.
     """
 
     op: Literal["surface_loft"]
@@ -272,6 +297,9 @@ class SurfaceLoftOp(StrictModel):
     # is an MCP-owned sketch holding one curve, or (M3) one curve/edge id; every
     # guide must cross every section, and that crossing is the kernel's call.
     guides: Annotated[list[LoftInput], Field(max_length=8)] = []
+    # FEAT-065/M4 offline candidate, gated before a job exists. None keeps the
+    # dumped plan of every earlier request unchanged.
+    boundary_conditions: Annotated[list[LoftBoundaryCondition], Field(max_length=4)] | None = None
 
     @field_validator("sections", mode="before")
     @classmethod
@@ -370,6 +398,39 @@ class SurfaceLoftOp(StrictModel):
                 'piecewise ruled patches; pass interpolation="smooth" (straight is exact only '
                 "with exactly two sections)"
             )
+        return self
+
+    @model_validator(mode="after")
+    def boundary_conditions_name_edge_boundaries(self):
+        # FEAT-065/M4: one entry per boundary; a guide boundary needs guides;
+        # a non-free condition needs an edge there, because the neighbour face
+        # is the edge's own adjacent face and a sketch or curve has none.
+        seen: dict[str, int] = {}
+        for index, item in enumerate(self.boundary_conditions or []):
+            where = f"surface_loft boundary_conditions[{index}]"
+            if item.boundary in seen:
+                raise ValueError(
+                    f"{where} repeats boundary '{item.boundary}' from "
+                    f"boundary_conditions[{seen[item.boundary]}]; give each boundary once"
+                )
+            seen[item.boundary] = index
+            field, position = LOFT_BOUNDARY_SLOTS[item.boundary]
+            slots = self.sections if field == "sections" else self.guides
+            if not slots:
+                raise ValueError(
+                    f"{where} names '{item.boundary}' but the loft has no guides; add 2-8 "
+                    "guides or use first_section/last_section"
+                )
+            if item.condition == "free":
+                continue
+            slot = position if position >= 0 else len(slots) - 1
+            value = slots[slot]
+            if not isinstance(value, dict) or value.get("kind") != "edge":
+                raise ValueError(
+                    f"{where} '{item.condition}' needs {field}[{slot}] to be an edge "
+                    f"{{kind:'edge',id:N}}, not {_loft_input_text(value)}; the neighbour face "
+                    "is that edge's adjacent face"
+                )
         return self
 
 

@@ -49,10 +49,17 @@ static constexpr int SURFACE_LOFT_SECTION_LIMIT = 32;
 // FEAT-065/M2 experiment: the second direction (guides) is bounded the same way.
 static constexpr int SURFACE_LOFT_GUIDE_LIMIT = 8;
 
-static J loft_element_json(ProElement element, int depth, int &budget) {
+// `truncated`, when given, is set once the budget runs out before an element
+// or a sibling list is read, so a cut sample never claims to be the whole tree.
+static J loft_element_json(ProElement element, int depth, int &budget, bool *truncated = nullptr) {
     J record = J::object();
-    if (!element || budget <= 0)
+    if (!element)
         return record;
+    if (budget <= 0) {
+        if (truncated)
+            *truncated = true;
+        return record;
+    }
     budget--;
     ProElemId id = 0;
     if (!ProElementIdGet(element, &id))
@@ -98,7 +105,7 @@ static J loft_element_json(ProElement element, int depth, int &budget) {
             }
         }
     }
-    if (depth < 12 && budget > 0) {
+    if (depth < 12) {
         ProElement *children = nullptr;
         ProArrayAlloc(0, sizeof(ProElement), 1, (ProArray *)&children);
         ProError code = array == PRO_B_TRUE ? ProElementArrayGet(element, nullptr, &children)
@@ -106,24 +113,31 @@ static J loft_element_json(ProElement element, int depth, int &budget) {
         int count = 0;
         if (!code)
             ProArraySizeGet((ProArray)children, &count);
-        if (count > 0) {
-            J items = J::array();
-            for (int index = 0; index < count && budget > 0; index++)
-                items.push_back(loft_element_json(children[index], depth + 1, budget));
-            record["children"] = items;
+        J items = J::array();
+        for (int index = 0; index < count; index++) {
+            if (budget <= 0) {
+                if (truncated)
+                    *truncated = true;
+                break;
+            }
+            items.push_back(loft_element_json(children[index], depth + 1, budget, truncated));
         }
+        if (!items.empty())
+            record["children"] = items;
         if (children)
             ProArrayFree((ProArray *)&children);
     }
     return record;
 }
 
-static J loft_tree_json(ProElement root) {
-    int budget = SURFACE_LOFT_TREE_SAMPLE_LIMIT;
-    return {{"limit", SURFACE_LOFT_TREE_SAMPLE_LIMIT},
-            {"truncated", false},
-            {"root", loft_element_json(root, 0, budget)},
-            {"elements_read", SURFACE_LOFT_TREE_SAMPLE_LIMIT - budget}};
+static J loft_tree_json(ProElement root, int limit = SURFACE_LOFT_TREE_SAMPLE_LIMIT) {
+    int budget = limit;
+    bool truncated = false;
+    J sample = loft_element_json(root, 0, budget, &truncated);
+    return {{"limit", limit},
+            {"truncated", truncated},
+            {"root", sample},
+            {"elements_read", limit - budget}};
 }
 
 // One section = one sketch feature. A section may be a single non-composite
@@ -483,6 +497,238 @@ static void surface_loft_chain(ProElement holders, const SurfaceLoftInput &input
     curve_collection(collection, refs);
 }
 
+// FEAT-065/M4 (2026-11-11, offline candidate): continuity between one loft
+// boundary and the face next to it. Probbl.h documents only TAN_COND_FREE for
+// PRO_E_BNBLN_TAN_COND_TYPE and gives it no parsable value, and the
+// kernel-completed PRO_E_BNBLN_TAN_COND array (four PRO_E_BNBLN_TNC_BNDRY,
+// TAN_COND_TYPE=1,1,0,0 on 2026-11-07) does not say which entry is which
+// boundary. Both tables stay empty until FEAT-065 T2b reads a Creo-built
+// reference part: an empty entry refuses the request after extraction and
+// before redefine, so nothing is guessed into the kernel. The public field is
+// also refused before a job by capabilities.UNAVAILABLE_FIELDS.
+static const std::map<std::string, int> SURFACE_LOFT_TAN_COND_TYPE_VALUES = {};
+static const std::map<std::string, int> SURFACE_LOFT_TNC_BOUNDARY_INDEX = {};
+// PRO_E_SURF_CHAIN_METHOD of the connect chain. ProSweep.h's ProSurfChainMethod
+// is not documented for Probbl.h, so -1 leaves the element unwritten until the
+// reference tree shows the value Creo stores.
+static const int SURFACE_LOFT_CONNECT_CHAIN_METHOD = -1;
+// The TAN_COND subtree has its own budget: in a large loft the shared
+// 160-element sample runs out before the walk reaches it.
+static constexpr int SURFACE_LOFT_TAN_COND_SAMPLE_LIMIT = 64;
+
+struct SurfaceLoftCondition {
+    size_t index = 0;
+    std::string boundary;
+    std::string condition;
+    int edge_id = -1;
+    int surface_id = -1;
+};
+
+[[noreturn]] static void surface_loft_condition_reject(J &details, const char *prefix,
+                                                       const SurfaceLoftCondition &item,
+                                                       const char *reason, ProError code,
+                                                       const std::string &why) {
+    const std::string slot = "boundary_conditions[" + std::to_string(item.index) + "]";
+    details["failed_boundary_condition"] = {
+        {"index", (int)item.index},
+        {"slot", slot},
+        {"boundary", item.boundary},
+        {"condition", item.condition},
+        {"reason", reason},
+        {"query_code", code == PRO_TK_NO_ERROR ? J(nullptr) : J((int)code)},
+        {"tracking", "FEAT-065 T2b"}};
+    stage_operation_result(details);
+    throw std::runtime_error(std::string(prefix) + ": surface_loft " + slot + " " + item.boundary +
+                             "=" + item.condition + ": " + why);
+}
+
+// Re-checks the request shape (a hand-written plan can bypass the Python
+// model) and resolves each non-free boundary to its edge and the edge's single
+// adjacent face. Runs before the feature tree is built, so a refusal here
+// creates nothing.
+static std::vector<SurfaceLoftCondition> surface_loft_conditions(
+    const J &op, const std::vector<SurfaceLoftInput> &sections,
+    const std::vector<SurfaceLoftInput> &guides, J &details) {
+    std::vector<SurfaceLoftCondition> result;
+    if (!op.contains("boundary_conditions") || op["boundary_conditions"].is_null())
+        return result;
+    const J &items = op["boundary_conditions"];
+    if (!items.is_array() || items.size() > 4)
+        throw std::runtime_error("SURFACE_LOFT_BOUNDARY_CONDITION_REJECTED: surface_loft "
+                                 "boundary_conditions must be a list of at most four "
+                                 "{boundary, condition} objects");
+    std::set<std::string> seen;
+    J echo = J::array();
+    for (size_t index = 0; index < items.size(); index++) {
+        const J &raw = items[index];
+        SurfaceLoftCondition item;
+        item.index = index;
+        if (raw.is_object() && raw.contains("boundary") && raw["boundary"].is_string())
+            item.boundary = raw["boundary"].get<std::string>();
+        if (raw.is_object() && raw.contains("condition") && raw["condition"].is_string())
+            item.condition = raw["condition"].get<std::string>();
+        auto refuse = [&details, &item](const char *reason, ProError code, const std::string &why) {
+            surface_loft_condition_reject(details, "SURFACE_LOFT_BOUNDARY_CONDITION_REJECTED", item,
+                                          reason, code, why);
+        };
+        const bool section = item.boundary == "first_section" || item.boundary == "last_section";
+        if (!section && item.boundary != "first_guide" && item.boundary != "last_guide")
+            refuse("unknown_boundary", PRO_TK_NO_ERROR,
+                   "boundary must be first_section, last_section, first_guide or last_guide");
+        if (item.condition != "free" && item.condition != "tangent" &&
+            item.condition != "curvature" && item.condition != "normal")
+            refuse("unknown_condition", PRO_TK_NO_ERROR,
+                   "condition must be free, tangent, curvature or normal");
+        if (!seen.insert(item.boundary).second)
+            refuse("repeated_boundary", PRO_TK_NO_ERROR, "each boundary may be named once");
+        const std::vector<SurfaceLoftInput> &slots = section ? sections : guides;
+        if (slots.empty())
+            refuse("no_guides", PRO_TK_NO_ERROR, "the loft has no guides");
+        const bool first = item.boundary == "first_section" || item.boundary == "first_guide";
+        const SurfaceLoftInput &input = first ? slots.front() : slots.back();
+        if (item.condition != "free") {
+            if (input.source != "edge")
+                refuse("boundary_not_an_edge", PRO_TK_NO_ERROR,
+                       "a non-free condition needs that boundary to be an edge {kind:'edge',id:N}, "
+                       "not a " +
+                           input.source);
+            const J faces = input.record.value("adjacent_surface_ids", J(nullptr));
+            if (!faces.is_array() || faces.size() != 1)
+                refuse("adjacent_face_count",
+                       (ProError)input.record.value("neighbors_query_code", 0),
+                       "edge " + std::to_string(input.ids.front()) + " has " +
+                           std::to_string(faces.is_array() ? (int)faces.size() : -1) +
+                           " readable adjacent faces; a continuity neighbour must be the single "
+                           "face of a quilt boundary edge");
+            item.edge_id = input.ids.front();
+            item.surface_id = faces[0].get<int>();
+        }
+        echo.push_back({{"index", (int)index},
+                        {"boundary", item.boundary},
+                        {"condition", item.condition},
+                        {"edge_id", item.edge_id < 0 ? J(nullptr) : J(item.edge_id)},
+                        {"surface_id", item.surface_id < 0 ? J(nullptr) : J(item.surface_id)},
+                        {"status", item.condition == "free" ? "kernel_default" : "requested"}});
+        result.push_back(item);
+    }
+    details["boundary_conditions"] = echo;
+    return result;
+}
+
+static J surface_loft_tan_cond_json(ProElement tree) {
+    ProError code = PRO_TK_NO_ERROR;
+    ProElement array = get_optional(tree, {PRO_E_BNBLN_TAN_COND}, &code);
+    if (code != PRO_TK_NO_ERROR || !array)
+        return {{"available", false}, {"query_code", (int)code}};
+    J sample = loft_tree_json(array, SURFACE_LOFT_TAN_COND_SAMPLE_LIMIT);
+    sample["available"] = true;
+    return sample;
+}
+
+// Mapping unknown: refuse before any element of the extracted tree is touched.
+// Mapping known: rewrite that TNC_BNDRY entry's TAN_COND_TYPE and rebuild its
+// connect chain around the edge's single adjacent face.
+static void surface_loft_apply_conditions(ProElement tree,
+                                          const std::vector<SurfaceLoftCondition> &conditions,
+                                          J &details) {
+    const char *unmapped = "SURFACE_LOFT_BOUNDARY_CONDITION_UNMAPPED";
+    bool any = false;
+    for (const auto &item : conditions) {
+        if (item.condition == "free")
+            continue;
+        any = true;
+        if (!SURFACE_LOFT_TAN_COND_TYPE_VALUES.count(item.condition) ||
+            !SURFACE_LOFT_TNC_BOUNDARY_INDEX.count(item.boundary))
+            surface_loft_condition_reject(
+                details, unmapped, item, "unmapped", PRO_TK_NO_ERROR,
+                "the PRO_E_BNBLN_TAN_COND_TYPE value of '" + item.condition +
+                    "' and the PRO_E_BNBLN_TNC_BNDRY entry of '" + item.boundary +
+                    "' are unknown (Probbl.h documents only TAN_COND_FREE); FEAT-065 T2b must "
+                    "read them from a reference part. The feature is rolled back");
+    }
+    if (!any)
+        return;
+
+    ProError code = PRO_TK_NO_ERROR;
+    ProElement array = get_optional(tree, {PRO_E_BNBLN_TAN_COND}, &code);
+    std::vector<ProElement> entries;
+    if (code == PRO_TK_NO_ERROR && array) {
+        ProElement *items = nullptr;
+        int count = 0;
+        code = ProArrayAlloc(0, sizeof(ProElement), 1, (ProArray *)&items);
+        if (code == PRO_TK_NO_ERROR)
+            code = ProElementArrayGet(array, nullptr, &items);
+        if (code == PRO_TK_NO_ERROR)
+            code = ProArraySizeGet((ProArray)items, &count);
+        for (int index = 0; code == PRO_TK_NO_ERROR && index < count; index++)
+            entries.push_back(items[index]);
+        if (items)
+            ProArrayFree((ProArray *)&items);
+    }
+    for (const auto &item : conditions) {
+        if (item.condition == "free")
+            continue;
+        J &record = details["boundary_conditions"][item.index];
+        const int position = SURFACE_LOFT_TNC_BOUNDARY_INDEX.at(item.boundary);
+        if (code != PRO_TK_NO_ERROR || position < 0 || position >= (int)entries.size())
+            surface_loft_condition_reject(
+                details, unmapped, item, "tan_cond_entry_missing", code,
+                "the extracted tree holds " + std::to_string((int)entries.size()) +
+                    " PRO_E_BNBLN_TNC_BNDRY entries and the mapped entry " +
+                    std::to_string(position) + " is not among them. The feature is rolled back");
+        ProElement entry = entries[position];
+        const int value = SURFACE_LOFT_TAN_COND_TYPE_VALUES.at(item.condition);
+
+        ProError type_code = PRO_TK_NO_ERROR;
+        ProElement type = get_optional(entry, {PRO_E_BNBLN_TAN_COND_TYPE}, &type_code);
+        if (type_code != PRO_TK_NO_ERROR || !type)
+            type = node(entry, PRO_E_BNBLN_TAN_COND_TYPE);
+        CK(ProElementIntegerSet(type, value));
+
+        // Rebuilt from scratch, so no kernel default face survives beside the
+        // requested one.
+        ProError chain_code = PRO_TK_NO_ERROR;
+        if (get_optional(entry, {PRO_E_BNBLN_CONNECT_SURF_CHAIN}, &chain_code) &&
+            chain_code == PRO_TK_NO_ERROR) {
+            ProElempathItem step = {};
+            step.type = PRO_ELEM_PATH_ITEM_TYPE_ID;
+            step.path_item.elem_id = (ProElemId)PRO_E_BNBLN_CONNECT_SURF_CHAIN;
+            ProElempath path = nullptr;
+            ProElement removed = nullptr;
+            ProError remove_code = ProElempathAlloc(&path);
+            if (remove_code == PRO_TK_NO_ERROR)
+                remove_code = ProElempathDataSet(path, &step, 1);
+            if (remove_code == PRO_TK_NO_ERROR)
+                remove_code = ProElemtreeElementRemove(entry, path, &removed);
+            if (path)
+                ProElempathFree(&path);
+            check(remove_code, "ProElemtreeElementRemove(PRO_E_BNBLN_CONNECT_SURF_CHAIN)");
+            if (removed)
+                CK(ProElementFree(&removed));
+        }
+        ProElement chain = node(entry, PRO_E_BNBLN_CONNECT_SURF_CHAIN);
+        ProElement compound = node(chain, PRO_E_SURF_CHAIN_CMPND);
+        if (SURFACE_LOFT_CONNECT_CHAIN_METHOD >= 0)
+            integer(compound, PRO_E_SURF_CHAIN_METHOD, SURFACE_LOFT_CONNECT_CHAIN_METHOD);
+        ProElement surfaces = node(compound, PRO_E_SURF_CHAIN_REF_SURFS);
+        ProElement surface = node(surfaces, PRO_E_SURF_CHAIN_SURF);
+        ProSelection face = selection(item.surface_id, PRO_SURFACE);
+        try {
+            ref(surface, PRO_E_SURF_CHAIN_REF, face);
+        } catch (...) {
+            ProSelectionFree(&face);
+            throw;
+        }
+        ProSelectionFree(&face);
+        record["status"] = "written";
+        record["tnc_index"] = position;
+        record["tan_cond_type"] = value;
+        record["surf_chain_method"] = SURFACE_LOFT_CONNECT_CHAIN_METHOD >= 0
+                                          ? J(SURFACE_LOFT_CONNECT_CHAIN_METHOD)
+                                          : J(nullptr);
+    }
+}
+
 static void generic_surface_loft(const J &op) {
     const J &sections = op.at("sections");
     // FEAT-065/M1 (2026-11-10): the same PRO_E_BNBLN_1DIR tree that carries two
@@ -675,6 +921,18 @@ static void generic_surface_loft(const J &op) {
                     {"convergence_point", convergence},
                     {"unverified_input_forms", unverified_json}});
 
+    // FEAT-065/M4: refused shapes and non-edge boundaries stop here, before
+    // any feature exists. The TAN_COND sample is published whenever a
+    // condition was asked for or an edge feeds the loft (the edge-bridging
+    // case T2b compares against a reference part); sketch lofts keep their
+    // receipt unchanged.
+    const std::vector<SurfaceLoftCondition> conditions =
+        surface_loft_conditions(op, section_inputs, guide_inputs, details);
+    bool publish_tan_cond = !conditions.empty();
+    for (const auto *inputs : {&section_inputs, &guide_inputs})
+        for (const auto &input : *inputs)
+            publish_tan_cond = publish_tan_cond || input.source == "edge";
+
     ProElement root = node(nullptr, PRO_E_FEATURE_TREE);
     integer(root, PRO_E_FEATURE_TYPE, PRO_FEAT_DATUM_SURF);
     integer(root, PRO_E_FEATURE_FORM, PRO_USE_SURFS);
@@ -749,6 +1007,22 @@ static void generic_surface_loft(const J &op) {
     J tree_json = loft_tree_json(extracted);
     log("SURFACE_LOFT_TREE=%s\n", tree_json.dump().c_str());
     details["tree_elements_read"] = tree_json["elements_read"];
+    J tan_cond_tree = surface_loft_tan_cond_json(extracted);
+    if (publish_tan_cond)
+        details["tan_cond_tree"] = tan_cond_tree;
+
+    // FEAT-065/M4: written into the extracted tree only, never into the
+    // creation tree (the 2026-11-01 probe stayed UNREGENERATED that way). An
+    // unmapped condition is refused here, before redefine; the job rollback
+    // then discards the incomplete feature like every other failure below.
+    try {
+        surface_loft_apply_conditions(extracted, conditions, details);
+    } catch (...) {
+        details["tan_cond_tree"] = tan_cond_tree;
+        stage_operation_result(details);
+        CK(ProFeatureElemtreeFree(&feature, extracted));
+        throw;
+    }
 
     // The extracted tree is completed by the kernel's own defaults; redefining
     // with it is the regeneration the incomplete create skipped. A failure here
@@ -757,6 +1031,7 @@ static void generic_surface_loft(const J &op) {
         redefine(&feature, extracted);
     } catch (...) {
         details["extracted_tree"] = tree_json;
+        details["tan_cond_tree"] = tan_cond_tree;
         stage_operation_result(details);
         CK(ProFeatureElemtreeFree(&feature, extracted));
         throw;
@@ -821,6 +1096,7 @@ static void generic_surface_loft(const J &op) {
 
     if (status != PRO_FEAT_ACTIVE) {
         details["extracted_tree"] = tree_json;
+        details["tan_cond_tree"] = tan_cond_tree;
         stage_operation_result(details);
         last_feature_error_report = feature_error_report("ProFeatureStatusGet", (ProError)status,
                                                          "surface_loft_regeneration");

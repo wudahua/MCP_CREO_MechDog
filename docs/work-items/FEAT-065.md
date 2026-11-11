@@ -200,3 +200,60 @@
 - `surface_loft` 在模型已有实体时一律失败（`has_solid` 判的是整模型，不是本特征新增的材料），所以「用实体边补面」目前走不通；本轮未改这条既有规则。
 - 旧驱动 `tools/test_surface_loft.py` 离线检查 `schema_rejects_smooth` 失败：它仍要求两截面拒绝 `smooth`，而 M1（0.21.0）起两截面允许 `smooth`（`test_two_sections_still_accept_smooth`）。这是 M1 遗留，与本轮无关，未改。
 - `docs/development/G5-NATIVE-CONTRACT.md` §4.2 仍写「首版长度必须为 2」等 M1 前口径，未在本轮修改。
+
+## 2026-11-11 M4 离线候选（T2a）
+
+范围：边界与相邻曲面的连续条件（相切/曲率/法向）。本节只有离线证据：**未编译执行器、未连接 Creo/Toolkit、未运行任何 `--live`**。字段已登记但提交前被门禁拒绝，原生代码在映射表为空时只会拒绝，不会写值。
+
+### 设计
+
+- 公开字段：`surface_loft.boundary_conditions: [{boundary, condition}]`，最多 4 项，每个 boundary 只能出现一次；缺省为 `None`，旧计划的落盘请求不变（不会多出空列表）。
+  - `boundary` ∈ `first_section | last_section | first_guide | last_guide`，分别对应 `sections[0]`、`sections[-1]`、`guides[0]`、`guides[-1]`。导线边界要求计划里有导线，`free` 也一样。
+  - `condition` ∈ `free | tangent | curvature | normal`。`free` 保留内核默认值，原生不改树；非 `free` 要求该边界来源是 `{kind:'edge',id:N}`。
+  - `server.py` 的 `creo_surface_loft` 增加同名参数（`list[dict[str,str]]`，最多 4 项），文档字符串写明 NOT AVAILABLE 和 FEAT-065 T2b；`None` 和空列表都不写入计划。
+- 原生候选（`native/surface_loft.cpp`，全部在 `MECHDOG_HAS_PROBBL_HEADER` 门控内）：
+  - `surface_loft_conditions`：解析输入后、建创建树之前复核形状，把非 free 边界解析为（边 id，唯一相邻面 id）。相邻面取 T1 的 `adjacent_surface_ids`，不是恰好 1 个就拒绝（实体边、quilt 内部边有 2 个）。拒绝前缀 `SURFACE_LOFT_BOUNDARY_CONDITION_REJECTED`，回执带 `failed_boundary_condition`（`index`/`slot`/`boundary`/`condition`/`reason`/`query_code`/`tracking`）。
+  - 两张映射表 `SURFACE_LOFT_TAN_COND_TYPE_VALUES`（condition → `PRO_E_BNBLN_TAN_COND_TYPE` 整数）和 `SURFACE_LOFT_TNC_BOUNDARY_INDEX`（boundary → `PRO_E_BNBLN_TNC_BNDRY` 下标），**当前都为空**；`SURFACE_LOFT_CONNECT_CHAIN_METHOD = -1`（不写 `PRO_E_SURF_CHAIN_METHOD`）。
+  - `surface_loft_apply_conditions` 在 `ProFeatureElemtreeExtract` 之后、`redefine` 之前执行。映射未知时以 `SURFACE_LOFT_BOUNDARY_CONDITION_UNMAPPED` 拒绝，不改树；catch 里写入 `tan_cond_tree`、释放抽取树、重新抛出，作业按现有失败路径回滚，INCOMPLETE 特征不留存（与「抽取失败」「再生失败」同一条路）。映射已知时：改写对应 `TNC_BNDRY` 的 `TAN_COND_TYPE`；删掉已有 `CONNECT_SURF_CHAIN` 后重建 `CONNECT_SURF_CHAIN → SURF_CHAIN_CMPND → SURF_CHAIN_REF_SURFS → SURF_CHAIN_SURF → SURF_CHAIN_REF(相邻面)`；每个 Toolkit 调用都检查返回码，选择对象用完即释放。`TAN_FLD_TYPE`、`STRETCH`、`TAN_REF_TYPE`、`ADV_VIA_CRV` 不改。
+  - 创建树仍不含任何 `PRO_E_BNBLN_TAN_COND*`（2026-11-01 P1 反证）。
+- 取证输出：新增 `tan_cond_tree`，即抽取树 `PRO_E_BNBLN_TAN_COND` 子树的单独样本（64 元素预算，带 `truncated`、`elements_read`；子树不存在时为 `available=false` 加 `query_code`）。写入条件：请求了 `boundary_conditions`；任一截面或导线来源是边；redefine 或再生失败。纯草图放样的成功回执不变。顺带修正：共享的 `extracted_tree` 样本此前 `truncated` 恒为 `false`，现在如实报告（`surface_boundary_fill.cpp` 的三参调用不受影响）。
+- 投影：`job_projection.SURFACE_LOFT_KEYS` 加入 `boundary_conditions`、`failed_boundary_condition`、`tan_cond_tree`；`operation_results.FAILED_EVIDENCE_KEYS` 加入 `failed_boundary_condition`。
+- 契约文档：`docs/development/G5-NATIVE-CONTRACT.md` 在 §3.1、§4.2、§9.4「未验证」三处之后各加一段 2026-11-11 更正（原文不动），新增 §2.1a 记录本候选路线、未知映射与 T2b 计划。
+
+### 门禁位置与解除方法
+
+- 位置：`src/creo_mechdog/capabilities.py` 的 `UNAVAILABLE_FIELDS = {"surface_loft.boundary_conditions": <原因>}`，由 `require_available` 检查（`generic_bridge.submit` 与 `modeling_recipes` 共用），非空即拒绝，消息 `Not available in the <版本> release; no native job was queued. surface_loft.boundary_conditions: ...`，发生在取 Toolkit 通道之前。`creo_capabilities` 的 `families.surface_loft.unavailable_fields` 由同一常量生成。
+- 解除（T3，前提是 T2b 已回填原生映射表）：删除 `UNAVAILABLE_FIELDS` 中这一项即可，Python 侧没有第二处开关；同时按实机结果改写 `surface_loft` 的 limits、`creo_surface_loft` 文档字符串中的 NOT AVAILABLE 和本卡结论。原生侧在表为空时仍以 `SURFACE_LOFT_BOUNDARY_CONDITION_UNMAPPED` 拒绝，所以先删门禁、后填表也不会把猜测值写进内核。
+
+### T2b 需要从参照树读取的元素
+
+参照件建议：两张相邻曲面 + 一个边界混合，首截面设「相切」、末截面设「曲率」（两端条件不同，才能区分下标）；如能再做一个带两条第二方向导线、导线端设条件的版本，就能定出导线边界的下标；「法向」另建一例。
+
+1. `PRO_E_BNBLN_TAN_COND`：`PRO_E_BNBLN_TNC_BNDRY` 的个数与顺序。
+2. 每个 `TNC_BNDRY` 的 `PRO_E_BNBLN_TAN_COND_TYPE` 整数：自由端、相切端、曲率端、法向端各是多少（顺带判定 2026-11-07 默认值 1,1,0,0 里的 1 是否就是 free，0 是否表示「无此边界」）。回填 `SURFACE_LOFT_TAN_COND_TYPE_VALUES`。
+3. 哪个下标对应首截面、末截面、首导线、末导线：按 GUI 中设了相切/曲率的边界反推。回填 `SURFACE_LOFT_TNC_BOUNDARY_INDEX`。
+4. `PRO_E_BNBLN_CONNECT_SURF_CHAIN → PRO_E_SURF_CHAIN_CMPND → PRO_E_SURF_CHAIN_METHOD` 的值（对照 `ProSweep.h` 的 `ProSurfChainMethod`：DEFAULT1=1、DEFAULT2=2、SKETCH=4、SELECT=8、NONE=16）。回填 `SURFACE_LOFT_CONNECT_CHAIN_METHOD`。
+5. `PRO_E_SURF_CHAIN_REF_SURFS` 下 `PRO_E_SURF_CHAIN_SURF` 的个数，以及 `PRO_E_SURF_CHAIN_REF` 引用的是不是边界边的相邻面（面 id）。
+6. 约束端与自由端的 `PRO_E_BNBLN_TAN_FLD_TYPE`（Probbl.h 只写了 -1）；若约束端不是 -1，候选需要补写。
+7. `PRO_E_BNBLN_STRETCH`（double）是否出现及取值。
+8. `PRO_E_BNBLN_TAN_REF_TYPE`（Probbl.h 只在第一个 `TNC_BNDRY` 下列出）是否出现及取值；`PRO_E_BNBLN_ADV_VIA_CRV` 是否出现。
+9. 参照件 1DIR 链容器里装的是不是边，作为 M3 边截面写法的旁证。
+10. 对照 T3 驱动 (a)（两条曲面边作截面）回执里的 `tan_cond_tree`：内核对边来源的默认树是否已经自动填了 `CONNECT_SURF_CHAIN`。
+
+### 离线证据（2026-11-11，基于 `b88721b`，工作区未提交；T1b 同时在改 `surface_group.cpp` 等文件）
+
+- 新增 `tests/unit/test_surface_loft_boundary_conditions.py`（23 项）：门禁（非空即拒，含 `free` 单项；消息含原因与 FEAT-065 T2b；`generic_bridge.submit` 不取通道、不建目录；清空 `UNAVAILABLE_FIELDS` 即放行）、字段形态（boundary 不重复、取值、多余键、超过 4 项、非 free 只能落在边上、导线边界要求有导线）、旧行为（缺省时落盘请求键集合不变、空列表过门禁、服务端只转发非空列表、工具 schema 与说明）、投影与保护集合、原生静态契约（两张表为空、`TAN_COND_FREE` 不作为符号出现、UNMAPPED 拒绝在第一次写入之前、写入只发生在 extract 与 redefine 之间、拒绝时释放抽取树、`tan_cond_tree` 独立预算）。
+- 改动的既有测试：`test_surface_loft_schema.test_native_route_is_the_documented_blend_tree` 与 `test_surface_loft_inputs.test_tangency_elements_stay_unwritten` 原先断言整份源码不出现 `PRO_E_BNBLN_TAN_COND`，现改为「创建树（`node(nullptr, PRO_E_FEATURE_TREE)` 到 `ProFeatureWithoptionsCreate(`）不出现」，`PRO_E_BBL_ADD_CLOSED` 仍是整份不出现。
+- 定向单测：`test_surface_loft_boundary_conditions`、`test_surface_loft_inputs`、`test_surface_loft_schema`、`test_feedback0190_loft_limits`、`test_native_aggregate_compile`、`test_g5_native_contract` → `Ran 116 tests ... OK`；按关键字 grep 出的受影响模块（68 个，含 `test_capabilities_layout`、`test_capability_pages`、`test_t01_capability_contracts`、`test_large_plan_result_budget`、`test_job_projection`、`test_compact_sections`、`test_optional_loft_header`、`test_native_header_gate`、`test_surface_boundary_fill_contract` 等）合跑 → `Ran 1070 tests ... OK`。
+- 离线驱动：`tools/test_surface_loft_inputs.py` 35 项、`test_surface_loft_guides.py` 12 项、`test_surface_loft_multisection.py` 9 项、`test_surface_loft.py` 14 项，全部 PASS（报告在 `.tmp/syntax_check_t2a/`）。
+- 语法检查：按 `bridge.py` 编译 `creo_worker.exe` 的参数对 `native/worker.cpp` 跑 `cl /Zs`（SDK 头含 `Probbl.h`，门控代码参与检查），退出 0，只有既有的 C4819 代码页警告；未产出执行器。
+- 格式：Ruff check/format 通过；`native/surface_loft.cpp` clang-format 干跑无差异（只有新增段落被重排）。
+- 源码摘要（LF 归一 SHA256 前 16 位）：`native/surface_loft.cpp` `0b5d42eb695b53d4`，`src/creo_mechdog/surface_ops.py` `a13e36baea85057c`，`src/creo_mechdog/capabilities.py` `63cc111d6292f49d`（含 T1b 的并行改动）。
+
+### 未验证范围
+
+- 全部为离线候选：映射已知分支从未执行过；`ProElemtreeElementGet` 以 `TNC_BNDRY` 为根取子元素、`ProElemtreeElementRemove` 删除 `CONNECT_SURF_CHAIN`、追加子元素的顺序是否被 redefine 接受，都没有实机证据。
+- `TAN_COND_TYPE` 整数、`TNC_BNDRY` 顺序、`SURF_CHAIN_METHOD`、约束端是否需要改 `TAN_FLD_TYPE`/`STRETCH`，全部待 T2b。读不回来或 redefine 不接受时，M4 记为「实机反证，不发布」，门禁保持。
+- `normal` 在 Creo 边界混合里可能需要的参照与「相邻面」不同，未核对；首版把它与 tangent/curvature 同样处理，由 T2b 结论决定是否保留。
+- 实机验收标准仍按计划 §5：`creo_measure_surface_curvature` 在共享边上 `g1_max_angle_deg < 0.5` 且 `within_g1=true`，保存重载 verified（T3）。
+- `references.py` / `docs/REFERENCE_SYNTAX.md` 未加 `boundary_conditions` 示例（不在 T2a 文件范围内；字段解除门禁前也不应给可执行示例）。

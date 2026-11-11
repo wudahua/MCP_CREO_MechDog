@@ -383,7 +383,8 @@ OUTCOME_OPERATION_KEYS = (
 #: B2/F11: the zero-material-cut geometry receipt is failure evidence as well,
 #: so a polling compact view keeps it instead of falling back to text only.
 #: FEAT-065/M3: ``failed_loft_input`` names the rejected loft slot, its request,
-#: the reason, the raw query code and the form to use instead.
+#: the reason, the raw query code and the form to use instead. FEAT-065/M4:
+#: ``failed_boundary_condition`` does the same for one boundary condition.
 FAILED_EVIDENCE_KEYS = (
     "feature_errors",
     "edge_geometry_diagnostic",
@@ -392,6 +393,7 @@ FAILED_EVIDENCE_KEYS = (
     "failed_operation",
     "cut_geometry_context",
     "failed_loft_input",
+    "failed_boundary_condition",
 )
 
 

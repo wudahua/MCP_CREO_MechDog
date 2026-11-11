@@ -518,8 +518,15 @@ class NativeContractTests(unittest.TestCase):
         )
 
     def test_tangency_elements_stay_unwritten(self):
+        # FEAT-065/M4 may write PRO_E_BNBLN_TAN_COND* into the extracted tree
+        # only; the creation tree never carries them.
         code = _code(self.text)
-        self.assertNotIn("PRO_E_BNBLN_TAN_COND", code)
+        creation = code[
+            code.index("node(nullptr, PRO_E_FEATURE_TREE)") : code.index(
+                "ProFeatureWithoptionsCreate("
+            )
+        ]
+        self.assertNotIn("PRO_E_BNBLN_TAN_COND", creation)
         self.assertNotIn("PRO_E_BBL_ADD_CLOSED", code)
 
 
