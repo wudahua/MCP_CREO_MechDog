@@ -348,7 +348,7 @@ KNOWN_LIMITATIONS = (
         "release": "Creo 12.4",
         "evidence": "FEAT-055 H08",
         "configurable": False,
-        "effect": "constant radius on two adjacent faces only; no quilt edge-id channel",
+        "effect": "constant radius on two adjacent faces only; no edge-chain input",
     },
     {
         "id": "sheetmetal_forming_unavailable",
@@ -1072,8 +1072,9 @@ def families() -> dict:
                 "is placed with PRO_CURVCOLL_ADD_POINT_INSTR, which Probbl.h does not document "
                 "for a chain holder, so it is an experiment; the receipt lists these forms in "
                 "unverified_input_forms and a bad id fails with SURFACE_LOFT_INPUT_REJECTED and "
-                "failed_loft_input; creo_inspect_model enumerates solid edges only, so a quilt "
-                "edge id has no public discovery channel yet. FEAT-065 M4 boundary_conditions "
+                "failed_loft_input; creo_inspect_model enumerates solid edges only, so read a "
+                "quilt edge id from creo_measure_surface_group group.open_edge_records (FEAT-065 "
+                "T1b, not live-verified). FEAT-065 M4 boundary_conditions "
                 "([{boundary: first_section|last_section|first_guide|last_guide, condition: "
                 "free|tangent|curvature|normal}], at most 4, each boundary once, non-free only "
                 "where that boundary is an edge) is validated but gated: any non-empty list is "
@@ -1106,8 +1107,9 @@ def families() -> dict:
                 "radius, one reference set; the kernel decides adjacency (H08 measured the "
                 "non-adjacent pair failing regeneration and rolling back); no variable "
                 "radius, full/chordal/through-curve radius, edge chain, transitions, "
-                "multi-set or solid target; edge-chain needs a quilt edge id channel that "
-                "creo_inspect_model does not publish (its edges enumerate solid faces only); "
+                "multi-set or solid target; edge-chain input is not accepted: the route takes "
+                "face pairs only (quilt edge ids are now listed by creo_measure_surface_group "
+                "open_edge_records, but no edge-chain round route is proved); "
                 "the quilt result is open by nature, so no solid volume is expected"
             ),
         },

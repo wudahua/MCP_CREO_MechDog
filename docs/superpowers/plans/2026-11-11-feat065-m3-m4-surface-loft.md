@@ -25,11 +25,11 @@
 | --- | --- | --- | --- | --- |
 | T0 文档对账 | 子 agent「文档对账」 | 无 | 完成（`5ba2cf5`） | 见 §3。`tools/check_backlog_counts.py` exit 0，分类表与各分节行数一致 |
 | T1 M3 离线实现 | 子 agent「M3 实现」 | 无 | 完成（`b0a0bfa`） | 见 §4。定向单测通过、离线驱动 PASS、Ruff 无新增诊断 |
-| T1b quilt 开放边 ID 通道 | 子 agent「开放边清单」 | T1 | 执行中 | `creo_measure_surface_group` 回执加有上限的开放边清单（ID、所属面与 quilt、长度、端点）；驱动 (a) 改用该通道取边 |
-| T2a M4 离线候选 | 子 agent「M4 候选」 | T1 | 执行中 | 见 §5。门禁关闭状态下提交前拒绝；候选代码与取证输出就绪 |
+| T1b quilt 开放边 ID 通道 | 子 agent「开放边清单」 | T1 | 完成（`c76f05b`） | `creo_measure_surface_group` 回执加有上限的开放边清单（ID、所属面与 quilt、长度、端点）；驱动 (a) 改用该通道取边 |
+| T2a M4 离线候选 | 子 agent「M4 候选」 | T1 | 完成（`095ef27`） | 见 §5。门禁关闭状态下提交前拒绝；候选代码与取证输出就绪 |
 | T2b M4 参照树取证 | 主会话 + 用户 | T2a；用户在 Creo 界面建参照件 | 需用户当次确认 | 见 §6 |
 | T3 实机验收 | 主会话 | T1（M4 另需 T2b） | 需用户当次确认 | `tools/test_surface_loft_inputs.py --live --confirm-session-usable` 全 PASS，保存重载 verified |
-| T4 收尾 | 主会话 | T0、T1、T2a | 待执行 | 全量 `tools/dev_check.py --work-item FEAT-065` success；工作卡与台账回填；分支提交 |
+| T4 收尾 | 主会话 | T0、T1、T2a | 完成 | 全量 `tools/dev_check.py --work-item FEAT-065` success；工作卡与台账回填；分支提交 |
 
 T0 与 T1 改的文件互不重叠，可以并行。T2a 与 T1 改同一批文件（`surface_ops.py`、`surface_loft.cpp`），必须等 T1 完成。
 
@@ -95,3 +95,16 @@ T0 与 T1 改的文件互不重叠，可以并行。T2a 与 T1 改同一批文�
   1. quilt 边没有公开 ID 通道，`creo_inspect_model` 的 `edges` 只列实体面上的边。由 T1b 处理：`surface_group.cpp` 测量时已逐条收集开放边，只是没有输出。
   2. 原生 `has_solid` 检查看的是整个模型有没有实体，所以模型里已有实体时 `surface_loft` 一律失败，「用实体边补面」走不通。本轮未改，记入 FEAT-065 剩余范围。
 - **T4 待办（来自 T0/T1 报告）**：0.21.0 版本说明漏列 M1，按发布核对台账的勘误方式补记，不改已发布原文；FEAT-065 工作卡中场景 E（799.94 mm²）与验收段曲线导线（600.0 mm²）的数值关系需要说明；BACKLOG 中状态写法与分节名不符的行（DEV-077/079/080、DEV-081、FEAT-055、DEV-074、FEAT-014、FEAT-039、FEAT-058）留给台账维护者判断，本轮不移动。
+- **T1b（`c76f05b`）**：`creo_measure_surface_group` 回执新增 `group.open_edge_records`，每条含边 ID、所属面、quilt ID、长度和端点，端点在边参数 0/1 处求值。最多 32 条（按 32 KiB 预算计算），另给 `open_edge_records_total`（恒等于 `open_edges`）、`..._truncated` 和状态块；单位换算未知时 mm 值为 null。compact 裁剪改为保留 group 标量，不再整块丢弃。驱动 (a) 改为按端点挑边。与 T2a 共享的三个文件按 hunk 拆分提交；只含 T1b 的状态单独测过：125 项单测 OK，离线驱动 PASS。
+- **T2a（`095ef27`）**：新增 `boundary_conditions` 字段及其校验，`capabilities.UNAVAILABLE_FIELDS` 让非空请求在提交前被拒绝（唯一开关）。原生候选只写抽取树，两张映射表为空，映射未知时以 `SURFACE_LOFT_BOUNDARY_CONDITION_UNMAPPED` 拒绝，INCOMPLETE 特征按现有失败路径回滚。回执新增 `tan_cond_tree` 取证样本；共享的 `extracted_tree` 的 `truncated` 改为如实报告。G5 契约 §3.1/§4.2/§9.4 加带日期的更正，新增 §2.1a。证据：定向单测 138 项 OK、四个离线驱动 PASS、`cl /Zs` exit 0。T2a 列出了 T2b 需要从参照树读回的 10 项元素（见其工作卡一节）。
+- **T4（本提交）**：
+  - 6 处「quilt 边没有 ID 通道」文案改为指向 `open_edge_records`；`surface_round` 仍不接受边链，理由改为「只接受面对，边链路线未证明」。
+  - POSTCHECK v0.21.0 段补记漏列 M1 的勘误。
+  - 更新 FEAT-065 首页、台账行和本计划。
+  - 全量 `tools/dev_check.py --work-item FEAT-065`：`success=true`，单元 `passed`，`tests_run=3401`，failures 0，errors 0，skipped 0，耗时 419.3 s；风格检查无新增（存量 lint 21、未格式化 9，均在基线内）。受测源码为提交 `095ef27` 加上 T4 未提交改动（dirty），`checked_source_sha256=be4b729f8013f41fa8ac8126121e52475e9f2dd78b4ce517ec5e9348ba7ec7e6`。环境：Windows x64、Python 3.12、无 Creo 连接。
+- **未验证（全部待 T2b/T3，须用户当次确认）**：
+  - 曲线、边、点作为链容器能否在 Creo 12.4 建成并再生；
+  - quilt 边能否取到 ID，`surface_loft` 能否用这个 ID 选中边；
+  - YZ 截面沿 X 排列的放样；
+  - `TAN_COND_TYPE` 整数值与 `TNC_BNDRY` 顺序；
+  - 执行器编译（未运行 `bridge.py build`）。

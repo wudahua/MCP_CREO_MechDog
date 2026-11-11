@@ -146,6 +146,7 @@
 | `MCP_CREO_MechDog-0.21.0-seed-library.zip.sha256` | 107 | `9309ac3dd750d0f720963ddb9ab31f5fcbdcc8a3945e7103ed613873f6014bfe` | 2026-11-11T05:15:30Z |
 
 - 本记录只证明远端附件、两个 sidecar 与对应 ZIP 摘要一致；不重新验证包内功能、Creo 实机或安装结果。发布前本机四附件闸门（`tools/package.py`）同样通过，源码包解压单测的 MAX_PATH 例外见 [RELEASE-0.21.0](../validation/RELEASE-0.21.0.md)。
+- **勘误（2026-11-11，FEAT-065 T4 补记，未改已发布原文）**：[0.21.0 版本说明](../RELEASE_NOTES_0.21.0.md)只列了 FEAT-065 M2（`guides`），漏列同版发布的 M1。对照标签源码可以确认：`src/creo_mechdog/surface_ops.py` 中 `SurfaceLoftOp.sections` 在 `v0.20.0` 为 `max_length=2`，在 `v0.21.0` 为 `max_length=32`；`interpolation` 同版放开为 `straight|smooth`，三截面以上必须用 `smooth`。M1 的实机证据见 [FEAT-065](../work-items/FEAT-065.md)「2026-11-11 M1 实施与实机验收」。这条补记不改变已发布附件及其摘要。
 
 ## v0.19.2（2026-11-08 本轮联网实测）
 

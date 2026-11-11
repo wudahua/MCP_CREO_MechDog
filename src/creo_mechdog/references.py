@@ -532,9 +532,10 @@ def reference_capabilities() -> dict[str, Any]:
                 "rejected": {
                     "multiple_sets": "a second set or a second radius is refused before a job",
                     "edge_chain": (
-                        "{'edge':...} and PRO_ROUND_REF_EDGE chains are refused; there is no "
-                        "quilt edge id channel in creo_inspect_model, whose edges enumerate "
-                        "solid faces only"
+                        "{'edge':...} and PRO_ROUND_REF_EDGE chains are refused; the route "
+                        "takes face pairs only (quilt edge ids are listed by "
+                        "creo_measure_surface_group open_edge_records, but no edge-chain round "
+                        "route is proved)"
                     ),
                     "variable_or_named_radius": (
                         "variable radius, full/chordal/through-curve radius and custom "
@@ -624,8 +625,10 @@ def reference_capabilities() -> dict[str, Any]:
                     ),
                 },
                 "edge_ids": (
-                    "creo_inspect_model edges enumerate solid faces only; quilt edges have no "
-                    "id discovery channel yet"
+                    "creo_inspect_model edges enumerate solid faces only; read quilt edge ids "
+                    "from creo_measure_surface_group group.open_edge_records (edge_id, "
+                    "surface_id, quilt_id, length_mm, endpoints_mm; FEAT-065 T1b, Creo 12.4 "
+                    "live acceptance pending) and pick edges by endpoint"
                 ),
             },
             "creo_sheetmetal_flange": {

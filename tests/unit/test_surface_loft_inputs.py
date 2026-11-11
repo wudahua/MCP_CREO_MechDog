@@ -270,7 +270,7 @@ class PublicSurfaceTests(unittest.TestCase):
             "PRO_CURVCOLL_ADD_POINT_INSTR",
             "unverified_input_forms",
             "SURFACE_LOFT_INPUT_REJECTED",
-            "no public discovery channel",
+            "creo_measure_surface_group group.open_edge_records",
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, limits)
