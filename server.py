@@ -2381,6 +2381,16 @@ async def creo_measure_surface_group(
     the call returns a structured isError payload carrying job_id, model_id,
     status, group.state_reason (for example contour_edge_visit_failed) and a
     re-read hint instead of a bare message.
+
+    group.open_edge_records lists the open boundary edges themselves (FEAT-065,
+    Creo 12.4 live acceptance pending): edge_id, surface_id, quilt_id, length_mm
+    and endpoints_mm [[x,y,z],[x,y,z]] per edge. This is where a quilt edge id
+    for creo_surface_loft {kind:'edge',id:N} comes from, since creo_inspect_model
+    lists solid edges only; pick the edge by its endpoints. At most 32 records
+    are listed; open_edge_records_total always equals open_edges and
+    open_edge_records_truncated=true means some were left out, so measure fewer
+    quilts to see the rest. An unknown unit scale keeps length_mm/endpoints_mm
+    null while the ids stay listed.
     """
     return await invoke(
         general.measure_surface_group, model_id, references, tolerance_mm, gap_search_mm

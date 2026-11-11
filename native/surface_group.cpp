@@ -48,6 +48,11 @@ static constexpr int SURFACE_GROUP_OVERLAP_PAIR_LIMIT = 20;
 static constexpr double SURFACE_GROUP_MIN_SHARED_RATIO = 0.1;
 static constexpr double SURFACE_GROUP_PARALLEL_RATIO = 0.9;
 static constexpr double SURFACE_GROUP_COINCIDENT_EPSILON_MM = 1e-6;
+// FEAT-065 T1b: at most this many open boundary edges are listed per
+// creo_measure_surface_group receipt. 32 records stay near 14 KB of the 32 KiB
+// response budget (indented JSON), leaving room for the faces and statuses;
+// the total is always reported beside the list.
+static constexpr int SURFACE_GROUP_OPEN_EDGE_RECORD_LIMIT = 32;
 
 struct GroupPoint {
     double v[3] = {0.0, 0.0, 0.0};
@@ -69,6 +74,13 @@ struct GroupBoundaryEdge {
     double length = 0.0; // native units
     std::vector<GroupPoint> points;
     bool joined = false;
+    // Raw query codes and parameter-end points (native units) for the open
+    // edge records; the endpoints are only meaningful when endpoints_ok.
+    ProError id_code = PRO_TK_NO_ERROR;
+    ProError sample_code = PRO_TK_NO_ERROR;
+    ProError endpoints_code = PRO_TK_NO_ERROR;
+    bool endpoints_ok = false;
+    GroupPoint endpoints[2];
 };
 
 struct SurfaceGroupAccumulator {
@@ -278,13 +290,35 @@ static bool group_sample_edge(ProEdge edge, std::vector<GroupPoint> &points, dou
     return true;
 }
 
+// FEAT-065 T1b: the two ends of an edge, evaluated at its normalized
+// parameters 0 and 1 (ProEdge.h). The sampled polyline is not used for this:
+// its last point is not the edge end when the parameter sweep stops early.
+static ProError group_edge_endpoints(ProEdge edge, GroupPoint endpoints[2]) {
+    for (int end = 0; end < 2; end++) {
+        ProVector point = {0.0, 0.0, 0.0};
+        ProVector deriv1 = {0.0, 0.0, 0.0};
+        ProVector deriv2 = {0.0, 0.0, 0.0};
+        ProVector direction = {0.0, 0.0, 0.0};
+        const ProError code =
+            ProEdgeXyzdataEval(edge, (double)end, point, deriv1, deriv2, direction);
+        if (code)
+            return code;
+        if (!std::isfinite(point[0]) || !std::isfinite(point[1]) || !std::isfinite(point[2]))
+            return PRO_TK_GENERAL_ERROR;
+        for (int axis = 0; axis < 3; axis++)
+            endpoints[end].v[axis] = point[axis];
+    }
+    return PRO_TK_NO_ERROR;
+}
+
 static ProError group_edge_cb(ProEdge edge, ProError status, ProAppData data) {
     auto *context = (GroupContourContext *)data;
     if (status || !edge || !context || !context->acc)
         return PRO_TK_NO_ERROR;
     SurfaceGroupAccumulator &acc = *context->acc;
     int edge_id = -1;
-    if (ProEdgeIdGet(edge, &edge_id))
+    const ProError id_code = ProEdgeIdGet(edge, &edge_id);
+    if (id_code)
         edge_id = -1;
     // Edge ids are unique in a part; when this SDK cannot name a datum-surface
     // edge the handle itself identifies the same edge on two faces.
@@ -297,6 +331,7 @@ static ProError group_edge_cb(ProEdge edge, ProError status, ProAppData data) {
     GroupBoundaryEdge record;
     record.key = key;
     record.edge_id = edge_id;
+    record.id_code = id_code;
     record.face_index = context->face_index;
     record.quilt_index = acc.current_quilt_index;
     if (context->face_index >= 0 && context->face_index < (int)acc.faces.size())
@@ -308,6 +343,11 @@ static ProError group_edge_cb(ProEdge edge, ProError status, ProAppData data) {
             acc.query_code = sample_code ? sample_code : PRO_TK_GENERAL_ERROR;
         record.points.clear();
     }
+    record.sample_code = sample_code;
+    // An endpoint failure only nulls that record's endpoints_mm (with its own
+    // code); it is not a boundary-visit failure and changes no group count.
+    record.endpoints_code = group_edge_endpoints(edge, record.endpoints);
+    record.endpoints_ok = record.endpoints_code == PRO_TK_NO_ERROR;
     acc.edge_index[key] = (int)acc.edges.size();
     acc.edges.push_back(std::move(record));
     return PRO_TK_NO_ERROR;
@@ -789,6 +829,74 @@ static void group_measure_overlap(ProSolid solid, SurfaceGroupAccumulator &acc, 
     out.overlap_pair_records = records;
 }
 
+// FEAT-065 T1b: open boundary edge records. creo_inspect_model lists solid
+// edges only, so this is the public id channel for quilt boundary edges, which
+// surface_loft takes as {kind:'edge',id:N}. "Open" is exactly what open_edges
+// counts (not shared by two member faces and not paired with another member's
+// boundary within tolerance), so `total` always equals open_edges. Records are
+// kept in visit order up to `limit`; the rest only count, and `truncated` says
+// so. mm values need a known unit scale and stay null otherwise; the ids do
+// not depend on units and are always listed. A value null for any other reason
+// names it with the raw query code. No Toolkit call here: the unit test
+// compiles this block on its own.
+struct GroupOpenEdgeRecords {
+    J records = J::array();
+    int total = 0;
+    bool truncated = false;
+    int edge_id_failures = 0;
+    int length_failures = 0;
+    int endpoint_failures = 0;
+};
+
+static GroupOpenEdgeRecords group_open_edge_records(const std::vector<GroupBoundaryEdge> &edges,
+                                                    const std::vector<int> &quilt_ids, bool scaled,
+                                                    double scale, int limit) {
+    GroupOpenEdgeRecords out;
+    for (const auto &edge : edges) {
+        if (edge.joined)
+            continue;
+        out.total++;
+        const bool has_id = edge.edge_id >= 0;
+        const bool has_length =
+            edge.points.size() >= 2 && edge.length > 0.0 && std::isfinite(edge.length);
+        if (!has_id)
+            out.edge_id_failures++;
+        if (!has_length)
+            out.length_failures++;
+        if (!edge.endpoints_ok)
+            out.endpoint_failures++;
+        if ((int)out.records.size() >= limit) {
+            out.truncated = true;
+            continue;
+        }
+        const bool has_quilt = edge.quilt_index >= 0 && edge.quilt_index < (int)quilt_ids.size();
+        J endpoints = nullptr;
+        if (scaled && edge.endpoints_ok) {
+            endpoints = J::array();
+            for (const auto &point : edge.endpoints)
+                endpoints.push_back(
+                    J::array({point.v[0] * scale, point.v[1] * scale, point.v[2] * scale}));
+        }
+        J record = {{"edge_id", has_id ? J(edge.edge_id) : J(nullptr)},
+                    {"surface_id", edge.surface_id >= 0 ? J(edge.surface_id) : J(nullptr)},
+                    {"quilt_id", has_quilt ? J(quilt_ids[edge.quilt_index]) : J(nullptr)},
+                    {"length_mm", scaled && has_length ? J(edge.length * scale) : J(nullptr)},
+                    {"endpoints_mm", endpoints}};
+        if (!has_id) {
+            record["reason"] = "edge_id_unavailable";
+            record["query_code"] = (int)edge.id_code;
+        } else if (!edge.endpoints_ok) {
+            record["reason"] = "endpoint_eval_failed";
+            record["query_code"] = (int)edge.endpoints_code;
+        } else if (!has_length) {
+            record["reason"] = "edge_sampling_failed";
+            record["query_code"] = (int)edge.sample_code;
+        }
+        out.records.push_back(record);
+    }
+    return out;
+}
+
 // Group-state decision. It describes the member seams, not the outer shell: a
 // flat two-patch group can have closed seams and still be an open sheet, so
 // `boundary_closed` (open_edges == 0) is reported separately.
@@ -830,9 +938,11 @@ static void group_state_decide(const SurfaceGroupMeasurement &measurement, doubl
 }
 
 // Project the measurement into the §4.4.1 status shape. Every value carries its
-// own status; an unknown unit scale keeps the mm value null.
+// own status; an unknown unit scale keeps the mm value null. Only the
+// creo_measure_surface_group receipt asks for the open edge records; the loft
+// and boundary-fill blocks that reuse this receipt keep their earlier shape.
 static J surface_group_receipt(const std::vector<int> &quilt_ids, double tolerance_mm,
-                               double gap_search_mm) {
+                               double gap_search_mm, bool with_open_edge_records = false) {
     auto units = inspect_length_units(board);
     auto scale = length_scale_to_mm(board, units);
     const bool scaled = scale.known;
@@ -1032,6 +1142,25 @@ static J surface_group_receipt(const std::vector<int> &quilt_ids, double toleran
          measurement.edges_available ? J(measurement.open_edges == 0) : J(nullptr)},
         {"tolerance_mm", tolerance_mm},
         {"gap_search_mm", gap_search_mm}};
+    if (with_open_edge_records) {
+        // The list shares the open_edges status (same boundary visit) plus its
+        // own bound and per-value failure counts over every open edge.
+        const GroupOpenEdgeRecords open_records = group_open_edge_records(
+            acc.edges, resolved, scaled, scale.scale, SURFACE_GROUP_OPEN_EDGE_RECORD_LIMIT);
+        const bool listed = measurement.edges_available;
+        J records_status = measurement_status_json(open_edges_outcome, units, scale);
+        records_status["limit"] = SURFACE_GROUP_OPEN_EDGE_RECORD_LIMIT;
+        records_status["returned"] = listed ? J((int)open_records.records.size()) : J(nullptr);
+        records_status["mm_values_reason"] = scaled ? J(nullptr) : J("unit_scale_unknown");
+        records_status["edge_id_failures"] = listed ? J(open_records.edge_id_failures) : J(nullptr);
+        records_status["length_failures"] = listed ? J(open_records.length_failures) : J(nullptr);
+        records_status["endpoint_failures"] =
+            listed ? J(open_records.endpoint_failures) : J(nullptr);
+        group["open_edge_records"] = listed ? open_records.records : J(nullptr);
+        group["open_edge_records_total"] = listed ? J(open_records.total) : J(nullptr);
+        group["open_edge_records_truncated"] = listed ? J(open_records.truncated) : J(nullptr);
+        group["open_edge_records_status"] = records_status;
+    }
     return {{"unit_name", units.length.name[0] ? J(utf8(units.length.name)) : J(nullptr)},
             {"length_scale_to_mm", scaled ? J(scale.scale) : J(nullptr)},
             {"group", group}};
@@ -1058,7 +1187,8 @@ static void generic_surface_group_measure(const J &op) {
         throw std::runtime_error("surface_group_measure needs tolerance_mm > 0 and "
                                  "gap_search_mm >= tolerance_mm");
 
-    J details = surface_group_receipt(quilt_ids, tolerance_mm, gap_search_mm);
+    J details = surface_group_receipt(quilt_ids, tolerance_mm, gap_search_mm,
+                                      /*with_open_edge_records=*/true);
     details["op"] = "surface_group_measure";
     details["tolerance_mm"] = tolerance_mm;
     details["gap_search_mm"] = gap_search_mm;

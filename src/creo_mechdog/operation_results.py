@@ -457,6 +457,11 @@ def _status_core(record: dict[str, Any], *, failed: bool) -> dict[str, Any]:
         PROTECTED_OPERATION_KEYS + OUTCOME_OPERATION_KEYS + (FAILED_EVIDENCE_KEYS if failed else ())
     )
     core = {key: record[key] for key in keys if key in record}
+    group = record.get("group")
+    if record.get("op") == "surface_group_measure" and isinstance(group, dict):
+        # FEAT-065 T1b: the measurement lives in the nested group block, which
+        # the top-level key sets cannot name; keep its scalars, drop the lists.
+        core["group"] = {key: group[key] for key in SURFACE_GROUP_OUTCOME_KEYS if key in group}
     core["detail_truncated"] = True
     return core
 
@@ -1399,6 +1404,98 @@ def annotate_kept_side_basis(result: dict[str, Any]) -> dict[str, Any]:
 # null. It never computes a gap, an overlap or a state.
 SURFACE_GROUP_STATES = ("closed", "open", "micro_gap", "overlap")
 
+#: FEAT-065 T1b: the bound of ``group.open_edge_records`` (native/surface_group.cpp
+#: SURFACE_GROUP_OPEN_EDGE_RECORD_LIMIT). The projection re-applies it, so a
+#: receipt never lists more records than the bound it advertises.
+SURFACE_GROUP_OPEN_EDGE_RECORD_LIMIT = 32
+
+#: FEAT-065 T1b: what a compact budget trim keeps of a surface_group_measure
+#: ``group`` block (``_status_core``). The block is nested, so the top-level
+#: ``OUTCOME_OPERATION_KEYS`` cannot protect it; these measured scalars and the
+#: size of the open-edge list survive, the faces/overlap/edge lists do not.
+SURFACE_GROUP_OUTCOME_KEYS = (
+    "quilt_ids",
+    "quilt_count",
+    "face_count",
+    "boundary_edges",
+    "joined_edges",
+    "open_edges",
+    "gap_max_mm",
+    "overlap_area_mm2",
+    "state",
+    "state_reason",
+    "boundary_closed",
+    "open_edge_records_total",
+    "open_edge_records_truncated",
+)
+
+_OPEN_EDGE_RECORD_KEYS = (
+    "open_edge_records",
+    "open_edge_records_total",
+    "open_edge_records_truncated",
+    "open_edge_records_status",
+)
+
+
+def _open_edge_point(value: Any) -> list[float] | None:
+    if not isinstance(value, list) or len(value) != 3:
+        return None
+    coordinates = [_finite_scalar(item) for item in value]
+    return None if any(item is None for item in coordinates) else coordinates
+
+
+def _normalize_open_edge_record(record: dict[str, Any], mm_known: bool) -> dict[str, Any]:
+    """Keep one open edge record's ids; mm values only with a known unit scale."""
+    item = dict(record)
+    for key in ("edge_id", "surface_id", "quilt_id"):
+        value = item.get(key)
+        item[key] = value if type(value) is int and value >= 0 else None
+    length = _finite_scalar(item.get("length_mm"))
+    item["length_mm"] = length if mm_known and length is not None and length > 0.0 else None
+    ends = item.get("endpoints_mm")
+    points = [_open_edge_point(end) for end in ends] if isinstance(ends, list) else []
+    valid = len(points) == 2 and all(point is not None for point in points)
+    item["endpoints_mm"] = points if mm_known and valid else None
+    return item
+
+
+def _normalize_open_edge_records(cleaned: dict[str, Any], open_available: bool) -> None:
+    """FEAT-065 T1b: the open boundary edge list never outlives its status.
+
+    The list shares the boundary visit of ``open_edges``: an unavailable visit
+    nulls the list, its total and its truncation marker. An unknown unit scale
+    keeps the ids and nulls every mm value. More records than the bound are cut
+    and marked truncated; the native total is kept when it is consistent.
+    """
+    status = cleaned.get("open_edge_records_status")
+    records = cleaned.get("open_edge_records")
+    if not (
+        open_available
+        and isinstance(status, dict)
+        and status.get("available") is True
+        and isinstance(records, list)
+    ):
+        cleaned["open_edge_records"] = None
+        cleaned["open_edge_records_total"] = None
+        cleaned["open_edge_records_truncated"] = None
+        return
+    mm_known = status.get("scale_to_mm_known") is True
+    kept = [
+        _normalize_open_edge_record(record, mm_known)
+        for record in records[:SURFACE_GROUP_OPEN_EDGE_RECORD_LIMIT]
+        if isinstance(record, dict)
+    ]
+    total = cleaned.get("open_edge_records_total")
+    if type(total) is not int or total < len(records):
+        total = None
+    cleaned["open_edge_records"] = kept
+    cleaned["open_edge_records_total"] = total
+    cleaned["open_edge_records_truncated"] = (
+        cleaned.get("open_edge_records_truncated") is True
+        or len(kept) < len(records)
+        or (total is not None and total > len(kept))
+    )
+
 
 def normalize_surface_group(group: Any) -> dict[str, Any] | None:
     """Normalize one native ``group`` block; unknown keys pass through."""
@@ -1411,6 +1508,8 @@ def normalize_surface_group(group: Any) -> dict[str, Any] | None:
     cleaned["open_edges"] = (
         open_edges if open_available and type(open_edges) is int and open_edges >= 0 else None
     )
+    if any(key in cleaned for key in _OPEN_EDGE_RECORD_KEYS):
+        _normalize_open_edge_records(cleaned, open_available)
 
     gap_status = cleaned.get("gap_max_status")
     gap_available = isinstance(gap_status, dict) and gap_status.get("available") is True

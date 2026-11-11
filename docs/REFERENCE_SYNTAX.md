@@ -165,7 +165,7 @@
 ```
 
 - `{"kind":"curve","id":N}`：一条 `PRO_CURVE` 几何 ID（`creo_inspect_model(section="feature_geometry")` 中 type 62，或 `project_curve` 的 `curve_id`）；复合曲线不拒绝，回执 `section_sources[i].composite` 标出。
-- `{"kind":"edge","id":N}`：一条边的几何 ID；回执给出 `adjacent_surface_ids`（边两侧的面，quilt 边界边只有一侧）。`creo_inspect_model` 的 `edges` 只枚举实体面上的边，**quilt 边目前没有公开的 ID 发现通道**。
+- `{"kind":"edge","id":N}`：一条边的几何 ID；回执给出 `adjacent_surface_ids`（边两侧的面，quilt 边界边只有一侧）。`creo_inspect_model` 的 `edges` 只枚举实体面上的边；**quilt 边的 ID 从 `creo_measure_surface_group` 回执的 `group.open_edge_records` 取**（2026-11-11 开发分支，Creo 12.4 实机未验收）：每条开放边给出 `edge_id`、`surface_id`、所属 `quilt_id`、`length_mm` 与两端点 `endpoints_mm`，按端点坐标挑边。最多列 32 条，`open_edge_records_total` 恒等于 `open_edges`，`open_edge_records_truncated=true` 表示有边没列出，减少一次测量的 quilt 数即可看到其余边；模型单位换算未知时 mm 值为 null、ID 照列。
 - 收敛点 `{"kind":"point","id":N}` 或 `{"kind":"datum_point_feature","label":...}`（单点 `datum_points` 特征）：只能放在 `sections` 第一项或最后一项，每个放样最多一个，不能作导线。原生用 `ProCrvcollection.h` 文档化的 `PRO_CURVCOLL_ADD_POINT_INSTR` 把点放进链容器，但 `Probbl.h` 没有说明链容器能装点，因此这是**未经实机证明的实验路线**。
 - 每个元素一个几何项：一个截面只装一条曲线或一条边，多条边拼成的闭合截面暂不支持（草图截面仍可是两条曲线的闭合轮廓）。
 - 提交前拒绝：点出现在中间位置或导线里、两个点、几何 kind 带 `label`、多余字段、`quilt`/`surface` 等非链 kind、同一引用重复或既作截面又作导线。只有原生能判定的（ID 不存在、类型不对、标签不是单点基准点）在作业中以 `SURFACE_LOFT_INPUT_REJECTED` 失败并回滚，失败记录带 `failed_loft_input`（`role`、`index`、`slot`、`request`、`reason`、`query_code`、`use_instead`）；ID 实际是另一种几何时，消息直接给出可用写法。

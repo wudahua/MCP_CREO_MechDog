@@ -14,17 +14,16 @@ run for that session (AGENTS.md). The cases are:
 (a) four-sided bridge: two surface-extruded strips (walls at y = 0 and y = 20,
     40 mm long, 10 mm high) are bridged by a loft whose two sections are the
     strips' top edges and whose guides are two sketch lines at z = 10. The
-    expected quilt is the flat 40 x 20 rectangle (800.0 mm2). The group
-    {strip_a, strip_b, bridge} is then measured with
-    ``creo_measure_surface_group`` (seam gap, joined and open edges).
-    ``creo_inspect_model`` enumerates solid edges only, so quilt edge ids have
-    no geometric discovery channel: the driver reads each strip's PRO_EDGE ids
-    from ``feature_geometry`` and probes the candidate pairs. Only the two top
-    edges touch both guide ends, so every other pair is expected to fail
-    regeneration and roll back; the first success is then checked against the
-    800.0 mm2 rectangle. ``--bridge-edges A B`` skips the probe. A solid block
-    cannot replace the strips: surface_loft refuses any model that holds solid
-    material (``has_solid``).
+    expected quilt is the flat 40 x 20 rectangle (800.0 mm2). The section
+    edges come from ``creo_measure_surface_group`` on {strip_a, strip_b}: its
+    ``group.open_edge_records`` (FEAT-065 T1b) list every open boundary edge
+    with its id and endpoints, and the driver picks the one edge per strip
+    whose endpoints are the two guide ends (order-insensitive, 0.01 mm). One
+    loft is submitted; nothing is probed. ``--bridge-edges A B`` still names
+    the two edges by hand. The group {strip_a, strip_b, bridge} is then
+    measured again (seam gap, joined and open edges; the two section edges
+    must no longer be open). A solid block cannot replace the strips:
+    surface_loft refuses any model that holds solid material (``has_solid``).
 (b) projected curve: a line projected onto a 40 x 20 fill (``project_curve``,
     z = 0, y = 10) is the first section; a sketch line at z = 20, y = 30 is the
     second. Ruled area 40 x 20*sqrt(2) = 1131.3708 mm2.
@@ -60,12 +59,9 @@ for entry in (str(ROOT), str(TOOLS)):
 
 import test_surface_loft_multisection as harness  # noqa: E402
 
-PRO_EDGE_TYPE = 6
 PRO_CURVE_TYPE = 62
 AREA_TOLERANCE_MM2 = 0.5
 BBOX_TOLERANCE_MM = 0.5
-#: The probe gives up after this many candidate pairs (4 x 4 edges at most).
-MAX_BRIDGE_ATTEMPTS = 16
 #: An id far above anything a small test model allocates.
 MISSING_EDGE_ID = 2147480000
 
@@ -74,6 +70,15 @@ STRIP_LENGTH_MM = 40.0
 STRIP_HEIGHT_MM = 10.0
 STRIP_GAP_MM = 20.0
 BRIDGE_AREA_MM2 = STRIP_LENGTH_MM * STRIP_GAP_MM
+#: The strip top edges end exactly on the guide ends; each strip has one.
+BRIDGE_SECTION_ENDPOINTS = {
+    "strip_a": ((0.0, 0.0, STRIP_HEIGHT_MM), (STRIP_LENGTH_MM, 0.0, STRIP_HEIGHT_MM)),
+    "strip_b": (
+        (0.0, STRIP_GAP_MM, STRIP_HEIGHT_MM),
+        (STRIP_LENGTH_MM, STRIP_GAP_MM, STRIP_HEIGHT_MM),
+    ),
+}
+ENDPOINT_TOLERANCE_MM = 0.01
 
 # (b) projected curve section
 PROJECT_WIDTH_MM = 40.0
@@ -103,6 +108,124 @@ def line_sketch(label: str, offset: float, start: list, end: list, plane: str = 
 
 def edge_ref(identifier: int) -> dict:
     return {"kind": "edge", "id": identifier}
+
+
+def _point_matches(point: Any, expected: tuple, tolerance: float) -> bool:
+    if not isinstance(point, list) or len(point) != len(expected):
+        return False
+    for value, target in zip(point, expected):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return False
+        if not abs(float(value) - target) <= tolerance:
+            return False
+    return True
+
+
+def edges_with_endpoints(
+    records: Any, ends: tuple, tolerance: float = ENDPOINT_TOLERANCE_MM
+) -> list[dict]:
+    """Open edge records whose two endpoints are ``ends``, in either order."""
+    found: list[dict] = []
+    for record in records if isinstance(records, list) else []:
+        points = record.get("endpoints_mm") if isinstance(record, dict) else None
+        if not isinstance(points, list) or len(points) != 2:
+            continue
+        first, second = points
+        if (
+            _point_matches(first, ends[0], tolerance) and _point_matches(second, ends[1], tolerance)
+        ) or (
+            _point_matches(first, ends[1], tolerance) and _point_matches(second, ends[0], tolerance)
+        ):
+            found.append(record)
+    return found
+
+
+def pick_bridge_edges(group: Any) -> tuple[list[int] | None, dict]:
+    """(a) the one open edge per strip whose endpoints are the two guide ends.
+
+    Reads ``group.open_edge_records`` of a ``creo_measure_surface_group``
+    receipt and returns ``[strip_a_edge_id, strip_b_edge_id]``, or ``None`` with
+    the reason. A missing list, no match or more than one match per strip, a
+    match without an id and two matches on the same quilt are refusals: the
+    driver never guesses an edge or falls back to probing.
+    """
+    group = group if isinstance(group, dict) else {}
+    records = group.get("open_edge_records")
+    detail: dict[str, Any] = {
+        "open_edge_records_total": group.get("open_edge_records_total"),
+        "open_edge_records_truncated": group.get("open_edge_records_truncated"),
+    }
+    if not isinstance(records, list):
+        detail["reason"] = "open_edge_records_missing"
+        return None, detail
+    chosen: dict[str, dict] = {}
+    for strip, ends in BRIDGE_SECTION_ENDPOINTS.items():
+        matches = edges_with_endpoints(records, ends)
+        detail[strip] = matches
+        if len(matches) != 1:
+            state = "ambiguous" if matches else "missing"
+            if not matches and group.get("open_edge_records_truncated") is True:
+                state = "missing_from_a_truncated_list"
+            detail["reason"] = f"{strip}_top_edge_{state}"
+            return None, detail
+        chosen[strip] = matches[0]
+    ids = [chosen[strip].get("edge_id") for strip in BRIDGE_SECTION_ENDPOINTS]
+    quilts = [chosen[strip].get("quilt_id") for strip in BRIDGE_SECTION_ENDPOINTS]
+    if not all(type(value) is int and value >= 0 for value in ids):
+        detail["reason"] = "top_edge_id_unavailable"
+        return None, detail
+    if not all(type(value) is int for value in quilts) or quilts[0] == quilts[1]:
+        detail["reason"] = "top_edges_not_on_two_quilts"
+        return None, detail
+    return ids, detail
+
+
+def synthetic_strip_group(**overrides: Any) -> dict:
+    """An offline stand-in for the {strip_a, strip_b} measurement receipt.
+
+    Four open edges per strip in a shuffled visit order; the strip_b top edge
+    runs backwards so the picker must match endpoints in either order.
+    """
+    h, length, gap = STRIP_HEIGHT_MM, STRIP_LENGTH_MM, STRIP_GAP_MM
+    edges = [
+        (101, 21, [[0.0, 0.0, 0.0], [length, 0.0, 0.0]]),
+        (102, 21, [[length, 0.0, 0.0], [length, 0.0, h]]),
+        (103, 21, [[0.0, 0.0, h], [length, 0.0, h]]),
+        (104, 21, [[0.0, 0.0, h], [0.0, 0.0, 0.0]]),
+        (201, 22, [[0.0, gap, 0.0], [0.0, gap, h]]),
+        (202, 22, [[length, gap, h], [0.0, gap, h]]),
+        (203, 22, [[0.0, gap, 0.0], [length, gap, 0.0]]),
+        (204, 22, [[length, gap, 0.0], [length, gap, h]]),
+    ]
+    records = [
+        {
+            "edge_id": edge_id,
+            "surface_id": quilt + 10,
+            "quilt_id": quilt,
+            "length_mm": math.dist(*ends),
+            "endpoints_mm": ends,
+        }
+        for edge_id, quilt, ends in edges
+    ]
+    group = {
+        "quilt_ids": [21, 22],
+        "open_edges": len(records),
+        "open_edges_status": {"available": True, "scale_to_mm_known": True, "unit_name": "mm"},
+        "open_edge_records": records,
+        "open_edge_records_total": len(records),
+        "open_edge_records_truncated": False,
+        "open_edge_records_status": {
+            "available": True,
+            "reason": None,
+            "query_code": 0,
+            "scale_to_mm_known": True,
+            "unit_name": "mm",
+            "limit": 32,
+        },
+        "state": "open",
+    }
+    group.update(overrides)
+    return group
 
 
 # ----------------------------------------------------------------------------
@@ -386,6 +509,76 @@ def case_offline() -> dict:
     check("native_rejects_inputs_with_a_structured_block", "failed_loft_input" in code)
     check("native_reports_unverified_forms", "unverified_input_forms" in code)
 
+    # (a) edge discovery: creo_measure_surface_group publishes the open edges
+    # (FEAT-065 T1b) and the driver picks the section edges by their endpoints.
+    picked, detail = pick_bridge_edges(synthetic_strip_group())
+    check("open_edge_picker_finds_both_top_edges", picked == [103, 202], detail)
+    group = synthetic_strip_group()
+    group["open_edge_records"] = [*group["open_edge_records"], dict(group["open_edge_records"][2])]
+    picked, detail = pick_bridge_edges(group)
+    check(
+        "open_edge_picker_refuses_an_ambiguous_match",
+        picked is None and detail.get("reason") == "strip_a_top_edge_ambiguous",
+        detail.get("reason"),
+    )
+    group = synthetic_strip_group(open_edge_records_truncated=True)
+    group["open_edge_records"] = group["open_edge_records"][:4]
+    picked, detail = pick_bridge_edges(group)
+    check(
+        "open_edge_picker_names_a_truncated_list",
+        picked is None and detail.get("reason") == "strip_b_top_edge_missing_from_a_truncated_list",
+        detail.get("reason"),
+    )
+    picked, detail = pick_bridge_edges(synthetic_strip_group(open_edge_records=None))
+    check(
+        "open_edge_picker_refuses_a_missing_list",
+        picked is None and detail.get("reason") == "open_edge_records_missing",
+        detail.get("reason"),
+    )
+    from creo_mechdog.operation_results import normalize_surface_group
+
+    unknown_units = synthetic_strip_group()
+    unknown_units["open_edge_records_status"] = {
+        **unknown_units["open_edge_records_status"],
+        "scale_to_mm_known": False,
+        "mm_values_reason": "unit_scale_unknown",
+    }
+    cleaned = normalize_surface_group(unknown_units) or {}
+    records = cleaned.get("open_edge_records") or []
+    check(
+        "unknown_unit_scale_keeps_ids_and_nulls_mm_values",
+        len(records) == 8
+        and all(isinstance(record["edge_id"], int) for record in records)
+        and all(
+            record["endpoints_mm"] is None and record["length_mm"] is None for record in records
+        )
+        and pick_bridge_edges(cleaned)[0] is None,
+        records[:2],
+    )
+    tool = server[server.index("async def creo_measure_surface_group(") :]
+    tool = tool[: tool.index('"""', tool.index('"""') + 3)]
+    check(
+        "measure_tool_documents_the_open_edge_records",
+        "group.open_edge_records" in tool and "live acceptance pending" in tool,
+    )
+    group_native = (ROOT / "native" / "surface_group.cpp").read_text(encoding="utf-8")
+    group_code = "\n".join(
+        line for line in group_native.splitlines() if not line.lstrip().startswith("//")
+    )
+    check(
+        "native_measurement_publishes_open_edge_records",
+        all(
+            phrase in group_code
+            for phrase in (
+                'group["open_edge_records"]',
+                'group["open_edge_records_total"]',
+                'group["open_edge_records_truncated"]',
+                "SURFACE_GROUP_OPEN_EDGE_RECORD_LIMIT",
+                "ProEdgeXyzdataEval(edge, (double)end",
+            )
+        ),
+    )
+
     return {"mode": "offline", "passed": all(item["ok"] for item in checks), "checks": checks}
 
 
@@ -465,48 +658,78 @@ async def case_a_edge_bridge(client, rec: Recorder, bridge_edges: list[int] | No
     ):
         return
     model_id, revision = build["model_id"], build.get("revision")
+    strips = [
+        {"kind": "quilt_feature", "label": "strip_a"},
+        {"kind": "quilt_feature", "label": "strip_b"},
+    ]
 
     if bridge_edges:
-        pairs = [tuple(bridge_edges)]
+        edge_a, edge_b = bridge_edges
         rec.observations["a_edge_source"] = "--bridge-edges"
     else:
-        strip_a = await geometry_ids(
-            client, model_id, await feature_id_of(client, model_id, "strip_a"), PRO_EDGE_TYPE
-        )
-        strip_b = await geometry_ids(
-            client, model_id, await feature_id_of(client, model_id, "strip_b"), PRO_EDGE_TYPE
-        )
-        rec.observations["a_strip_edge_ids"] = {"strip_a": strip_a, "strip_b": strip_b}
+        # FEAT-065 T1b: the open boundary edges of both strips, ids plus
+        # endpoints, from one read-only measurement; no candidate is probed.
+        measured, is_error = await measure_group(client, model_id, strips)
+        group = measured.get("group") or {}
+        records = group.get("open_edge_records")
+        summary = {
+            "job_id": measured.get("job_id"),
+            "is_error": is_error,
+            "open_edges": group.get("open_edges"),
+            "open_edge_records_total": group.get("open_edge_records_total"),
+            "open_edge_records_truncated": group.get("open_edge_records_truncated"),
+            "open_edge_records_status": group.get("open_edge_records_status"),
+        }
+        rec.observations["a_strip_open_edges"] = {**summary, "open_edge_records": records}
         if not rec.check(
-            "a_quilt_edge_ids_discoverable_via_feature_geometry",
-            bool(strip_a) and bool(strip_b),
-            {
-                "strip_a": strip_a,
-                "strip_b": strip_b,
-                "note": "creo_inspect_model edges list solid edges only; without PRO_EDGE "
-                "items here the bridge needs --bridge-edges",
-            },
+            "a_strip_open_edge_records_published",
+            not is_error
+            and isinstance(records, list)
+            and isinstance(group.get("open_edges"), int)
+            and group.get("open_edge_records_total") == group.get("open_edges")
+            and len(records) == group.get("open_edges")
+            and group.get("open_edge_records_truncated") is False,
+            summary,
         ):
             return
-        pairs = [(a, b) for a in strip_a for b in strip_b][:MAX_BRIDGE_ATTEMPTS]
-        rec.observations["a_edge_source"] = "feature_geometry probe"
+        rec.check(
+            "a_two_separate_strips_have_eight_open_edges",
+            group.get("open_edges") == 8,
+            summary,
+        )
+        rec.check(
+            "a_measurement_kept_the_revision",
+            measured.get("revision") == revision,
+            {"measured": measured.get("revision"), "build": revision},
+        )
+        picked, detail = pick_bridge_edges(group)
+        if not rec.check("a_top_edges_found_by_endpoints", picked is not None, detail):
+            return
+        edge_a, edge_b = picked
+        rec.check(
+            "a_top_edges_are_strip_long",
+            all(
+                _near(match[0].get("length_mm"), STRIP_LENGTH_MM, ENDPOINT_TOLERANCE_MM)
+                for match in (detail["strip_a"], detail["strip_b"])
+            ),
+            {strip: detail[strip] for strip in BRIDGE_SECTION_ENDPOINTS},
+        )
+        rec.observations["a_edge_source"] = "creo_measure_surface_group open_edge_records"
+    rec.observations["a_section_edges"] = [edge_a, edge_b]
 
-    bridged: dict = {}
-    attempts: list[dict] = []
-    for edge_a, edge_b in pairs:
-        state = await harness.submit(client, [bridge_loft(edge_a, edge_b)], model_id, revision)
-        rec.remember("a_bridge_attempt", state)
-        attempts.append({"edges": [edge_a, edge_b], "status": state.get("status")})
-        if state.get("status") == "succeeded":
-            bridged = state
-            break
-        if state.get("status") != "failed":
-            # unknown_outcome / unsettled / refused: keep the scene, never retry blindly.
-            break
-    rec.observations["a_bridge_attempts"] = attempts
-    if not rec.check("a_bridge_succeeded", bool(bridged), attempts[-3:]):
-        return
+    bridged = await harness.submit(client, [bridge_loft(edge_a, edge_b)], model_id, revision)
+    rec.remember("a_bridge", bridged)
     loft = harness.operation_of(bridged, "surface_loft")
+    if not rec.check(
+        "a_bridge_succeeded",
+        bridged.get("status") == "succeeded",
+        {
+            "status": bridged.get("status"),
+            "message": str(bridged.get("message"))[:400],
+            "failed_loft_input": loft.get("failed_loft_input"),
+        },
+    ):
+        return
     rec.check("a_saved_file_reloaded_and_verified", harness.saved_verified(bridged))
     rec.check(
         "a_sources_are_edges",
@@ -554,11 +777,7 @@ async def case_a_edge_bridge(client, rec: Recorder, bridge_edges: list[int] | No
     measured, is_error = await measure_group(
         client,
         bridged["model_id"],
-        [
-            {"kind": "quilt_feature", "label": "strip_a"},
-            {"kind": "quilt_feature", "label": "strip_b"},
-            {"kind": "quilt_feature", "label": "bridge"},
-        ],
+        [*strips, {"kind": "quilt_feature", "label": "bridge"}],
     )
     group = measured.get("group") or {}
     rec.observations["a_group"] = {
@@ -571,6 +790,8 @@ async def case_a_edge_bridge(client, rec: Recorder, bridge_edges: list[int] | No
             "open_edges",
             "gap_max_mm",
             "boundary_closed",
+            "open_edge_records_total",
+            "open_edge_records_truncated",
         )
     }
     rec.check(
@@ -586,6 +807,18 @@ async def case_a_edge_bridge(client, rec: Recorder, bridge_edges: list[int] | No
     )
     rec.check(
         "a_group_is_open", group.get("boundary_closed") is False, group.get("boundary_closed")
+    )
+    still_open = [
+        record.get("edge_id")
+        for record in group.get("open_edge_records") or []
+        if isinstance(record, dict) and record.get("edge_id") in (edge_a, edge_b)
+    ]
+    rec.check(
+        "a_section_edges_no_longer_open",
+        isinstance(group.get("open_edge_records"), list)
+        and group.get("open_edge_records_truncated") is False
+        and not still_open,
+        {"section_edges": [edge_a, edge_b], "still_open": still_open},
     )
 
 
@@ -814,7 +1047,10 @@ def main(argv: list[str] | None = None) -> int:
         type=int,
         nargs=2,
         metavar=("STRIP_A_TOP", "STRIP_B_TOP"),
-        help="case (a): use these strip top-edge ids instead of probing feature_geometry",
+        help=(
+            "case (a): use these strip top-edge ids instead of picking them from "
+            "creo_measure_surface_group open_edge_records"
+        ),
     )
     parser.add_argument("--output", type=Path, default=None)
     args = parser.parse_args(argv)
