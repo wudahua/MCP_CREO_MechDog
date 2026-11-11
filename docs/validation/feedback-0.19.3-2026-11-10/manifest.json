@@ -1,0 +1,51 @@
+{
+  "work_items": [
+    "BUG-116",
+    "BUG-117",
+    "DEV-082",
+    "DEV-083",
+    "FEAT-001",
+    "FEAT-009",
+    "FEAT-033",
+    "FEAT-036",
+    "FEAT-039",
+    "FEAT-065",
+    "DEV-080",
+    "BUG-101",
+    "BUG-115"
+  ],
+  "scope": "2026-11-10 0.19.3 feedback batch (four reports: draft neutral plane / surface chain on Creo 10 / bow guide-curve loft / 0.19.3 upgrade verification)",
+  "source_directory": "C:\\Users\\Administrator\\Downloads\\0.19.3",
+  "baseline": {
+    "version": "0.20.0",
+    "head": "074ea67",
+    "branch": "main"
+  },
+  "archive_policy": "originals are copied byte-for-byte and never reflowed or reformatted",
+  "files": [
+    {
+      "original_path": "C:\\Users\\Administrator\\Downloads\\0.19.3\\2026-11-10+CREO+0.19.3+拔模中性面解析与多会话选择及超时恢复缺陷.md",
+      "archived_path": "originals/2026-11-10+CREO+0.19.3+拔模中性面解析与多会话选择及超时恢复缺陷.md",
+      "bytes": 14177,
+      "sha256": "dcc88a4998332ce4d24cdee3a0adfa31621b858ada5e7da448e66516e91c0257"
+    },
+    {
+      "original_path": "C:\\Users\\Administrator\\Downloads\\0.19.3\\2026-11-10+CREO+0.19.3+曲面链验收通过但Creo10兼容性缺陷与链式引用缺陷.md",
+      "archived_path": "originals/2026-11-10+CREO+0.19.3+曲面链验收通过但Creo10兼容性缺陷与链式引用缺陷.md",
+      "bytes": 12219,
+      "sha256": "ff25e6a6320404bca27c6e9df1eb027cd9c1d70eebdd7b3500e26b5d2f8811d1"
+    },
+    {
+      "original_path": "C:\\Users\\Administrator\\Downloads\\0.19.3\\2026-11-10+CREO+0.19.3+球鼻艏导线曲面放样缺失与真机复测.md",
+      "archived_path": "originals/2026-11-10+CREO+0.19.3+球鼻艏导线曲面放样缺失与真机复测.md",
+      "bytes": 9826,
+      "sha256": "29daca7abf5c1bdd1a3f95bd9bcb2e04c19ad4bc3fe65115aa7aa57c35998692"
+    },
+    {
+      "original_path": "C:\\Users\\Administrator\\Downloads\\0.19.3\\2026-11-10CREO10.0.0.0-0.19.3-C1083已修但跨文件符号依赖仍阻断Creo10整包编译与新增头门控契约测试未覆盖聚合编译及发布后核对台账晚于发版落地.md",
+      "archived_path": "originals/2026-11-10CREO10.0.0.0-0.19.3-C1083已修但跨文件符号依赖仍阻断Creo10整包编译与新增头门控契约测试未覆盖聚合编译及发布后核对台账晚于发版落地.md",
+      "bytes": 37065,
+      "sha256": "c3e5374e53df5ea28badf8393733f6912149c8d6030ffb9cd179f47503b34a48"
+    }
+  ]
+}

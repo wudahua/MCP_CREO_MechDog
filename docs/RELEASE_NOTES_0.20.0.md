@@ -47,7 +47,7 @@ B4 新增公开参数 `extrude(scope=...)`，属新增功能，按约定递增 M
 - `tools/dev_check.py --work-item DEV-081 --unit-timeout-seconds 1800`：EXIT=0、`success=true`、`unit_tests=passed`、`native_validation=not_run`；受测源码指纹 `417a0477e95127c5567c65934f361110ce31f86dc9959cc5f20ec538b21488a5`（`source.dirty=true`，提交号仅作定位）。风格基线为存量 21 项 lint / 9 个未格式化文件，未新增诊断。
 - `tools/check_backlog_counts.py`：`consistent=true`（172 / BUG 75 / FEAT 61 / DEV 36）。
 - 种子包按确定性流程构建两次，SHA256 一致并回填 `docs/seed_package.json`；源码包与种子包各自生成 `.zip.sha256` sidecar。
-- **源码包解压后全量单测为独立门禁**，其结论在 Release 正文与 [发布记录](validation/RELEASE-0.20.0.md) 中给出；源码包内的本文件保留发布前摘要。
+- **源码包解压后全量单测为独立门禁**，其结论在 Release 正文与 [发布记录](validation/RELEASE-0.20.0.md) 中给出；源码包内的本文件是发布前快照，结论以 Release 正文与该发布记录为准。
 
 ## 未测范围与已知限制
 
@@ -65,4 +65,4 @@ B4 新增公开参数 `extrude(scope=...)`，属新增功能，按约定递增 M
 
 ## 附件
 
-发布附件固定四个：源码包、种子包及各自 `.zip.sha256`。文件名与完整 SHA256 在 Release 正文与 [发布记录](validation/RELEASE-0.20.0.md) 中给出；源码包内的本文件保留发布前摘要，实际摘要以 Release 与 POSTCHECK 为准。
+发布附件固定四个：源码包、种子包及各自 `.zip.sha256`。文件名与完整 SHA256 在 Release 正文与 [发布记录](validation/RELEASE-0.20.0.md) 中给出；源码包内本文件为发布前快照，实际摘要以 Release 正文与 [POSTCHECK](development/RELEASE-POSTCHECK-2026-11-07.md) 的 `## v0.20.0` 段为准。

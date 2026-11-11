@@ -284,7 +284,19 @@ static ProSelection resolve_quilt_reference(const J &r, ProSolid solid,
     }
     ProFeature f = feature(r.at("label"));
     J ids = J::array();
-    CK(ProFeatureGeomitemVisit(&f, PRO_QUILT, collect_geom_ids, nullptr, &ids));
+    // BUG-115 (2026-11-10 Creo 10 report): a merge/solidify/trim result is not
+    // always reachable through its own feature label — Creo answers -4 from
+    // ProFeatureGeomitemVisit — and the bare code named neither the label nor a
+    // usable alternative, so callers retried the same plan.
+    ProError visit = ProFeatureGeomitemVisit(&f, PRO_QUILT, collect_geom_ids, nullptr, &ids);
+    if (visit != PRO_TK_NO_ERROR)
+        throw std::runtime_error(
+            "Quilt feature " + r.at("label").dump() +
+            " could not be read for quilt geometry (ProError " + std::to_string((int)visit) +
+            "); a merge/solidify/trim result is not always visible through its own feature "
+            "label. Reference the original target quilt instead — its label, or "
+            "{kind:\"quilt\",id:<quilt_id>} from inspect_model(section=\"quilts\")" +
+            quilt_candidates_hint(solid, units, scale));
     if (ids.size() == 0)
         throw std::runtime_error(
             "Feature contains no quilt geometry item; a trim result is not always a usable "

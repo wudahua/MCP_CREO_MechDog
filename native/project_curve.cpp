@@ -144,7 +144,21 @@ static ProFeature project_helper_surface(const J &op, ProFeature source_owner, d
     integer(from, PRO_E_EXT_DEPTH_FROM_TYPE, PRO_EXT_DEPTH_FROM_NONE);
     integer(to, PRO_E_EXT_DEPTH_TO_TYPE, PRO_EXT_DEPTH_SYMMETRIC);
     real(to, PRO_E_EXT_DEPTH_TO_VALUE, depth);
-    ProFeature helper = create(root);
+    // FEAT-039 (2026-11-10 0.19.3 Creo 10 report): a bare "-1" from create did
+    // not say which of the two documented steps failed, so the caller could not
+    // tell a version-specific refusal from a bad reference.
+    ProFeature helper;
+    try {
+        helper = create(root);
+    } catch (const std::exception &error) {
+        ProElementFree(&root);
+        throw std::runtime_error(
+            std::string("project_curve step 1 of 2 (sweep the source sketch into a datum "
+                        "surface) was refused: ") +
+            error.what() +
+            "; this step uses the documented ProExtrude.h surface tree, so a refusal here is "
+            "not the undocumented projection tree");
+    }
     ProElementFree(&root);
     return helper;
 }
@@ -178,7 +192,18 @@ static ProFeature project_intersect_curve(const J &op, const J &swept_faces, Pro
     ProElement two = node(root, PRO_E_CRV_IP_COMP_REF2);
     ref(two, PRO_E_CRV_IP_REF2, second);
     integer(two, PRO_E_CRV_IP_REF_SEL2_TYPE, PRO_CURVE_TYPE_WHOLE);
-    ProFeature curve = create(root);
+    ProFeature curve;
+    try {
+        curve = create(root);
+    } catch (const std::exception &error) {
+        ProElementFree(&root);
+        throw std::runtime_error(
+            std::string("project_curve step 2 of 2 (ProDtmCrv INTERSECT of the swept surface "
+                        "with the target quilt) was refused: ") +
+            error.what() +
+            "; the swept surface and the target may not intersect, or the target quilt is not "
+            "readable as a whole-quilt reference");
+    }
     ProElementFree(&root);
     return curve;
 }

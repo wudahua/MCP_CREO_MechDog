@@ -847,3 +847,18 @@ build` 退出 0，公开工具仍 107）。几何：R20×40 圆筒（`extrude{mo
 - **H15**：`surface_group_measure` 的 overlap 预算耗尽时 `overlap_area_mm2` 仍为 null，`overlap_status` 新增 `sample_budget`、`faces_sampled/faces_total`、`budget_exceeded`、`partial`、`sample_tests_required/attempted`、`sample_test_coverage`、`containment_*_observed`。Creo12.4 四态组实机均返回 `sample_budget=20000`、`faces 2/2`、`tests 220/220`、`coverage=1.0`；大面真实 `budget_exceeded` 复现仍缺样本。
 - **H16**：`surface_trim` 在 `ProQuiltInit` 接受保留 quilt 后发布 `result_quilt_id` 和 `result_quilt_handle`（含 `available/id/source/visit_code/basis/reusable_as`），把判据可用与句柄可用分开。Creo12.4 四个 trim 均 `visit_code=-4`、句柄 available=true；同一模型第二次 trim 直接以 `result_quilt_id=82` 为目标，面积 600 mm²、保存重载 true、revision 1→2。
 - 证据：`build/surface_chain/20261108-072026-146300/report.json`（trim，7 作业，passed=true）与 `build/surface_chain/20261108-072241-881700/report.json`（group，passed=true）；本机未提交日志，上述值来自当次运行。
+
+### 2026-11-10 B 批：`project_curve` 两段失败指名（0.19.3 P14）
+
+Creo 10 报告只拿到 `ProFeatureWithoptionsCreate -1`，无法判断是本服务两段路线中的哪一步、还是引用不可用。`native/project_curve.cpp` 现分别包裹两次创建：
+
+- 步骤 1（`ProExtrude.h` 扫描面）：`project_curve step 1 of 2 (sweep the source sketch into a datum surface) was refused: <原生原因>; this step uses the documented ProExtrude.h surface tree, so a refusal here is not the undocumented projection tree`。
+- 步骤 2（`ProDtmCrv` INTERSECT）：`project_curve step 2 of 2 (ProDtmCrv INTERSECT ...) was refused: <原生原因>; the swept surface and the target may not intersect, or the target quilt is not readable as a whole-quilt reference`。
+
+仍开放：Creo 10 上 `-1` 的根因（H17/H18 同类问题）、失败时附「检测到几处相交/分支」的几何判据（报告建议）、共面相邻 merge 的接触判定（建议复用 H15/H16 的预算与句柄机制，未实施）。本轮未连接 Creo，只做编译验证。
+
+### 2026-11-10 B 批：`quilt_merge` 拒绝时回执带提交的一对 quilt（0.19.3 P15）
+
+`native/quilt_merge.cpp` 的 `create()` 失败不再抛裸码，而是带上：`target quilt <id>`、`tool quilt <id>`、两者已测得的目标面积与合计输入面积（mm²，单位未知时省略）、以及「JOIN 只接受真正相接/重叠的一对，先 `surface_group_measure` 量一遍，共面相邻的一对即使在干净模型里能过也可能在这里失败」。
+
+这不是接触判定本身：真正的边界接触/缝隙数值仍需几何评测；本轮只把「提交了什么、量到多少、为什么可能被拒」放进同一句回执，避免把共面相邻失败误判成引用错误。

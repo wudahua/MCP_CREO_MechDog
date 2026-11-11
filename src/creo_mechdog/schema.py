@@ -1709,6 +1709,15 @@ class RecolorAssemblyOp(StrictModel):
 
 
 def _normalize_feature_target(value: Any) -> Any:
+    # BUG-117 (0.19.3 feedback): a {kind:...} selection object used to fall
+    # through to the union and surface two internal validator names, so the
+    # caller could not tell which shape was legal. Refuse it by name here.
+    if isinstance(value, dict):
+        raise ValueError(
+            "feature_state targets must be a list of feature label strings or nonnegative "
+            'feature IDs, for example ["door_upper_neg", 6823]; a {kind:...} selection object '
+            "is not accepted in targets"
+        )
     if isinstance(value, bool):
         raise ValueError("Feature targets must be feature labels or nonnegative feature IDs")
     # A label always starts with a lowercase letter, so a digit-only string is

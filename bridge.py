@@ -1530,6 +1530,26 @@ def get_job(
     return view
 
 
+def expected_lifetime_seconds(manifest: dict) -> float:
+    """How long a queued/running job may live before the watchdog calls it unknown.
+
+    FEAT-033: a job that accepted its own budget must be judged against that
+    budget, not the server default, or a legitimately long native run is
+    declared unknown while the executor is still working.
+    """
+    if manifest.get("kind") in ("adoption_file", "adoption_file_inspect"):
+        from creo_mechdog.file_adoption import lifetime_seconds
+
+        return lifetime_seconds(manifest["item_count"])
+    if manifest.get("kind") in ("generic", "reconciliation", "adoption", "open_file"):
+        budget = manifest.get("timeout_seconds")
+        if isinstance(budget, bool) or not isinstance(budget, int) or budget <= 0:
+            budget = config().get("generic_timeout_seconds", 600)
+    else:
+        budget = config()["native_timeout_seconds"]
+    return 120 + 180 + budget + 30
+
+
 def _read_job(
     job_id: str,
     detail: str = "full",
@@ -1599,18 +1619,7 @@ def _read_job(
         age = (
             datetime.now(timezone.utc) - datetime.fromisoformat(manifest["created_at"])
         ).total_seconds()
-        if manifest.get("kind") in ("adoption_file", "adoption_file_inspect"):
-            from creo_mechdog.file_adoption import lifetime_seconds
-
-            lifetime = lifetime_seconds(manifest["item_count"])
-        else:
-            timeout = (
-                config().get("generic_timeout_seconds", 600)
-                if manifest.get("kind") in ("generic", "reconciliation", "adoption", "open_file")
-                else config()["native_timeout_seconds"]
-            )
-            lifetime = 120 + 180 + timeout + 30
-        if age > lifetime:
+        if age > expected_lifetime_seconds(manifest):
             manifest.update(
                 status="unknown_outcome",
                 message="Job exceeded its expected lifetime; inspect runner.log and Creo before retrying",

@@ -4,6 +4,28 @@
 #include <ProCurve.h>
 #include "surface_boundary_topology.h"
 
+// DEV-082 / H01 minimal fix (0.19.3 feedback): this TU is compiled after
+// surface_loft.cpp, which hides SURFACE_LOFT_TREE_SAMPLE_LIMIT,
+// loft_element_json() and the whole boundary-blend body behind
+// MECHDOG_HAS_PROBBL_HEADER. Every helper here that reads the boundary blend
+// tree or uses a Probbl-derived element id depends on the same header, so the
+// body is gated identically instead of referencing symbols that no longer
+// exist. A fallback definition keeps this file honest if it is ever included
+// without surface_loft.cpp first (the shared element-tree header tracked under
+// DEV-082 H01 is the real single source of truth).
+#ifndef MECHDOG_HAS_PROBBL_HEADER
+#if defined(__has_include)
+#if __has_include(<Probbl.h>)
+#define MECHDOG_HAS_PROBBL_HEADER 1
+#endif
+#endif
+#ifndef MECHDOG_HAS_PROBBL_HEADER
+#define MECHDOG_HAS_PROBBL_HEADER 0
+#endif
+#endif
+
+#if MECHDOG_HAS_PROBBL_HEADER
+
 static constexpr double SURFACE_BOUNDARY_FILL_TOLERANCE_MM = 0.01;
 static constexpr double SURFACE_BOUNDARY_FILL_GROUP_TOLERANCE_MM = 0.01;
 static constexpr double SURFACE_BOUNDARY_FILL_GROUP_GAP_SEARCH_MM = 1.0;
@@ -359,3 +381,16 @@ static void generic_surface_boundary_fill(const J &op) {
     remember(op, feature,
              {{"quilt_id", quilt_id}, {"boundary_curve_ids", details["boundary_curve_ids"]}});
 }
+
+#else // MECHDOG_HAS_PROBBL_HEADER == 0 (SDKs without Probbl.h)
+
+// The operation stays in UNAVAILABLE_OPERATIONS on such a build; this stub
+// only keeps generic.cpp compiling and states why nothing was created.
+static void generic_surface_boundary_fill(const J &op) {
+    (void)op;
+    throw std::runtime_error(
+        "SURFACE_BOUNDARY_FILL_SDK_UNAVAILABLE: surface_boundary_fill requires Probbl.h; this "
+        "Toolkit SDK does not provide the boundary-blend element tree. No feature was created");
+}
+
+#endif // MECHDOG_HAS_PROBBL_HEADER

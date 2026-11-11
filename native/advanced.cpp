@@ -37,6 +37,19 @@ static J sketch_curve_refs(const J &value) {
         throw std::runtime_error("Selected sketch has no native trajectory curves");
     return refs;
 }
+// BUG-116 (0.19.3 feedback): a shared resolve() error named neither the
+// parameter nor the value, so a draft with both surfaces[] and neutral_plane
+// could only be diagnosed by replacing one reference at a time. Attribute the
+// failure to the field that carried the reference.
+static ProSelection resolve_field(const J &reference, const char *field) {
+    try {
+        return resolve(reference);
+    } catch (const std::exception &error) {
+        J value = reference;
+        throw std::runtime_error(std::string("failed_reference field=") + field +
+                                 " value=" + value.dump() + " detail=" + error.what());
+    }
+}
 static void surface_collection(ProElement element, const J &refs) {
     ProCollection coll;
     CK(ProSrfcollectionAlloc(&coll));
@@ -261,15 +274,26 @@ static J generic_draft(const J &op) {
     integer(root, PRO_E_DRAFT_CONSTANT_OR_VARIABLE, PRO_DRAFT_UI_CONSTANT);
     integer(root, PRO_E_DRAFT_INCLUDE_TANGENT,
             op.value("include_tangent", false) ? PRO_DRAFT_UI_INC_TANG : PRO_DRAFT_UI_NOT_INC_TANG);
-    surface_collection(node(root, PRO_E_STD_SURF_COLLECTION_APPL), op["surfaces"]);
+    try {
+        surface_collection(node(root, PRO_E_STD_SURF_COLLECTION_APPL), op["surfaces"]);
+    } catch (const std::exception &error) {
+        J surfaces = op["surfaces"];
+        throw std::runtime_error(std::string("failed_reference field=surfaces value=") +
+                                 surfaces.dump() + " detail=" + error.what());
+    }
     ProElement direction = node(root, PRO_E_DIRECTION_COMPOUND);
-    ProSelection pull = resolve(op.value("pull_direction", op["neutral_plane"]));
+    // pull_direction is documented as defaulting to the neutral plane; an
+    // explicit null keeps that default instead of resolving a null reference.
+    const bool explicit_pull = op.contains("pull_direction") && !op["pull_direction"].is_null();
+    const J &pull_reference = explicit_pull ? op["pull_direction"] : op["neutral_plane"];
+    ProSelection pull =
+        resolve_field(pull_reference, explicit_pull ? "pull_direction" : "neutral_plane_for_pull");
     ref(direction, PRO_E_DIRECTION_REFERENCE, pull);
     ProSelectionFree(&pull);
     integer(direction, PRO_E_DIRECTION_FLIP, op.value("flip", false) ? PRO_B_TRUE : PRO_B_FALSE);
     ProElement side = node(root, PRO_E_DRAFT_SIDE_1);
     integer(side, PRO_E_DRAFT_NEUTRAL_OBJECT_TYPE_1, PRO_DRAFT_UI_PLANE);
-    ProSelection neutral = resolve(op["neutral_plane"]);
+    ProSelection neutral = resolve_field(op["neutral_plane"], "neutral_plane");
     ref(side, PRO_E_DRAFT_NEUTRAL_PLANE_1, neutral);
     ProSelectionFree(&neutral);
     integer(side, PRO_E_DRAFT_DEPENDENT_1, PRO_DRAFT_UI_INDEPENDENT);

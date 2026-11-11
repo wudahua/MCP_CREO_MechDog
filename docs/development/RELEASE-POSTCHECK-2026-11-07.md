@@ -161,6 +161,22 @@
 
 - 本版未改 `native/*.cpp`、未连 Creo、未编译执行器；验收与未测范围以 `docs/validation/RELEASE-0.19.3.md` 与 Release 正文为准。本段只做远端附件核对，不重新验证包内功能。
 
+## v0.20.0（2026-11-10）
+
+- 记录时间：2026-11-10 17:57（+08:00）。`main` = `origin/main` = `2d7b498cd793a3f4693a561df6ae0df8f809d0f7`（`2c78aaa..2d7b498`）；附注标签对象 `3f4ed82589536f572f7265b718d96970ecebe715`（`v0.20.0`，指向上述提交）。
+- Release：[v0.20.0](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.20.0)，id `RE_kwDOU_ueTM4aPLew`，非 draft、非 prerelease，`published_at=2026-11-10T09:56:06Z`，target `main`。
+- 核对命令：`tools/check_release_assets.py --tag v0.20.0` → exit 0，四附件齐全，两个 sidecar 与对应 ZIP 摘要一致。
+- 四附件逐个列出（未用通配）；摘要与 sidecar 内容、远端 `sha256:` 逐一致：
+
+| 附件 | 字节 | SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.20.0-source.zip` | 9 398 084 | `896e03ffbdfa08c4c270e899c672b3812c98a88106cb575097d6f8da44d9c83d` |
+| `MCP_CREO_MechDog-0.20.0-source.zip.sha256` | 101 | `091c580a1dbf0001a807802a72923e1e7c3aa5a4f1985b9b25e665299fa8a1ed` |
+| `MCP_CREO_MechDog-0.20.0-seed-library.zip` | 493 442 | `6cde6888e80cf9dd9df1d8d86dec33eb308c193d3c5ca8c1e17af98f41ca0697` |
+| `MCP_CREO_MechDog-0.20.0-seed-library.zip.sha256` | 107 | `3692847566796970abe5dbc8ca545b0f74458fcb3a134d03657a010f7368d23c` |
+
+- 本版含 `native/*.cpp` 变更（B2/F11、B4/F08）与 B3/F06 进展字段；源码包解压后独立门禁 `Ran 3263 tests ... OK (skipped=5)`。本段只做远端附件与标签核对，不重新验证包内功能；功能验收以 [RELEASE-0.20.0](../validation/RELEASE-0.20.0.md) 与 Release 正文为准。
+
 ## 未覆盖
 
 - 本核对只证明**远端附件与 sidecar、摘要三者一致**，不重新验证包内功能、Creo 实机或安装结果；这些结论分别属于各版 `docs/validation/RELEASE-*.md` 的实际范围。

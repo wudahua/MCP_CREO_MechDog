@@ -36,3 +36,20 @@
 ## 2026-11-01 Q15 离线集成状态
 
 离线开发完成，待实机验收。来源及合并提交见 [Q15 集成报告](DEV-053-Q15-integration-2026-11-01.md)。此状态不表示原生构建、Creo 实机、主干合入或发布完成。
+
+## 2026-11-10 B 批：受控作业预算（opt-in，默认不变）
+
+背景：2026-11-10 0.19.3 第一批反馈（[MAPPING](../validation/feedback-0.19.3-2026-11-10/MAPPING.md) A-P3）中，378 特征模型 28 op 在 25 分钟后被判定 `unknown_outcome`，而原生实际跑完；看门狗寿命与执行器预算都来自同一个服务级常量，模型规模不参与。报告方明确要求「随规模自动放大，或提供 `timeout_seconds` 参数」。
+
+本次只做后者（可冻结、可回滚、默认不变），自动公式与阶段耗时契约仍归本卡待规划范围：
+
+- `creo_execute_plan(timeout_seconds=...)`：可选，整数秒，闭区间 **60—7200**；`None`/省略 = 服务配置 `generic_timeout_seconds`（默认 600），旧调用行为不变。Bool、浮点与字符串在入口拒绝并说明「no job was created」，不产生作业目录。
+- 冻结与回显：`request.json` 与 `job.json` 写入生效值 `timeout_seconds` 与来源 `timeout_source`（`job` / `server`），因此轮询回执能看到实际预算，不需要读本机配置。
+- 一致性：native 子进程超时（`job_timeout_seconds()`）与看门狗寿命（`bridge.expected_lifetime_seconds()`，120+180+budget+30）读取同一个冻结值，避免「执行器还在跑、外层先判 unknown」。
+- 超时回执：`Native worker exceeded its <N>s budget; ...` 点名实际预算，并明确「更大的预算只提高下一次尝试的上限，不是完成估计」。
+
+验收状态与未验证：
+
+- 离线/单测已通过（`tests/unit/test_execute_plan_budget.py` 16 项：范围与类型拒绝、来源优先级、旧请求回退、看门狗寿命、接线与文案）；`bridge.py build` 成功；`tools/dev_check.py --work-item FEAT-033` 为 `success=true`、`Ran 3293 tests`、无新增回归。
+- **未做实机长作业验收**：没有在真实大模型上以 `timeout_seconds` 跑完一次「预算内完成且保存重载通过」的作业，也没有验证超时后 `unknown_outcome` 与恢复矩阵（BUG-001/FEAT-018 边界）在更长预算下的行为。
+- 自动公式（按操作数/特征数放大）、各阶段耗时公开契约、到期提示与客户端轮询超时的分界仍未实现；数值 60/7200 是本次为可回滚而定的界限，不是本卡最终冻结值。

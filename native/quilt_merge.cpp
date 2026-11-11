@@ -94,7 +94,33 @@ static void generic_quilt_merge(const J &op) {
     CK(ProElementArraySet(root, array_path, members));
     CK(ProElempathFree(&array_path));
     ProArrayFree((ProArray *)&members);
-    ProFeature feature = create(root);
+    // FEAT-039 / 2026-11-10 0.19.3 feedback (B-P15): a refused join answered with
+    // a bare Toolkit code, so a coplanar-adjacent failure looked identical to a
+    // bad reference. Report the pair that was actually submitted, including the
+    // areas already measured above, and name the JOIN contact requirement.
+    ProFeature feature;
+    try {
+        feature = create(root);
+    } catch (const std::exception &error) {
+        ProElementFree(&root);
+        ProSelectionFree(&first);
+        ProSelectionFree(&second);
+        std::string context = "quilt_merge (JOIN) was refused: " + std::string(error.what()) +
+                              "; target quilt " + std::to_string(first_id) + ", tool quilt " +
+                              std::to_string(second_id);
+        if (target_before.available && scale.known)
+            context += ", target area " +
+                       std::to_string(target_before.value * scale.scale * scale.scale) + " mm2";
+        if (input_area.available && scale.known)
+            context += ", combined input area " +
+                       std::to_string(input_area.value * scale.scale * scale.scale) + " mm2";
+        context +=
+            ". JOIN only accepts two quilts that really touch or overlap along a shared "
+            "boundary; measure the pair with surface_group_measure before retrying, and note "
+            "that a coplanar-adjacent pair can fail here even when the same merge succeeds in a "
+            "clean model";
+        throw std::runtime_error(context);
+    }
     ProElementFree(&root);
     ProSelectionFree(&first);
     ProSelectionFree(&second);

@@ -331,7 +331,9 @@ def _check_dependencies(
                 path,
                 f"delete/suppress targets do not cover every affected dependency; "
                 f"list these feature IDs explicitly (no automatic cascade): "
-                f"{_describe(model, features, ordered)}",
+                f"{_describe(model, features, ordered)}. Append these feature IDs to targets "
+                f"and resubmit the same action; auto-created support datums carry no label, so "
+                f"their ids only appear here",
             )
     elif action == "resume":
         missing = set()

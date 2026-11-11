@@ -1224,9 +1224,22 @@ static ProSelection resolve(const J &r) {
         }
         if (kind == "datum_plane" && fabs(offset) < 1e-9 && matches.size() > 1)
             matches = {*std::min_element(matches.begin(), matches.end())};
-        if (matches.size() != 1)
-            throw std::runtime_error("Plane reference must identify exactly one surface; inspect "
-                                     "the model and use a surface ID");
+        if (matches.size() != 1) {
+            // BUG-116: report how many faces matched instead of only "not one",
+            // and name the form that survives a populated model.
+            std::string planes;
+            for (size_t i = 0; i < matches.size(); i++)
+                planes += (i ? "," : "") + std::to_string(matches[i]);
+            throw std::runtime_error(
+                "Plane reference must identify exactly one surface; " +
+                std::to_string(matches.size()) + " candidate surface(s) match normal/offset " +
+                (r.contains("normal") ? J(r["normal"]).dump()
+                                      : std::string("axis=") + r.value("axis", "z")) +
+                " offset=" + std::to_string(offset) + " (ids: " + planes +
+                "). Use an explicit surface or plane id from inspect, or the geometric form "
+                "{kind:'plane',normal:[...],offset:N}; the datum_plane axis+offset form needs "
+                "exactly one datum plane at that height");
+        }
         return selection(matches[0], PRO_SURFACE);
     }
     if (kind == "datum_axis_feature") {

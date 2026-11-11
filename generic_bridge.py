@@ -407,6 +407,48 @@ def new_loft_part(
     return result
 
 
+# FEAT-033 (2026-11-10 0.19.3 feedback, batch B): an accepted job may carry its
+# own executor budget. Bounds keep the value meaningful: below the minimum a
+# legitimate native run cannot even build and load, above the maximum it stops
+# being an upper bound and starts pinning the serial Toolkit channel for hours.
+EXECUTOR_TIMEOUT_MIN_SECONDS = 60
+EXECUTOR_TIMEOUT_MAX_SECONDS = 7200
+
+
+def validate_executor_timeout(value: int | None) -> int | None:
+    """Return a validated per-job budget, or None for the server default.
+
+    Bool is rejected explicitly: ``True`` is an ``int`` in Python and would
+    otherwise become a silent one-second budget.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(
+            "timeout_seconds must be an integer number of seconds, "
+            f"{EXECUTOR_TIMEOUT_MIN_SECONDS}-{EXECUTOR_TIMEOUT_MAX_SECONDS}; no job was created"
+        )
+    if not EXECUTOR_TIMEOUT_MIN_SECONDS <= value <= EXECUTOR_TIMEOUT_MAX_SECONDS:
+        raise ValueError(
+            f"timeout_seconds={value} is outside {EXECUTOR_TIMEOUT_MIN_SECONDS}-"
+            f"{EXECUTOR_TIMEOUT_MAX_SECONDS}; omit it to use the server budget, "
+            "or pick a value inside the range; no job was created"
+        )
+    return value
+
+
+def job_timeout_seconds(request: dict) -> int:
+    """The budget the runner enforces for an accepted request.
+
+    The frozen value on the request wins; a legacy request without it falls
+    back to the server setting, so already-queued jobs keep their behaviour.
+    """
+    value = request.get("timeout_seconds")
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value
+    return int(bridge.config().get("generic_timeout_seconds", 600))
+
+
 def submit(
     operations: list[dict],
     model_id: str | None = None,
@@ -417,7 +459,9 @@ def submit(
     model_type: str = "part",
     loft_seed: dict | None = None,
     template_name: str | None = None,
+    timeout_seconds: int | None = None,
 ) -> dict:
+    timeout_seconds = validate_executor_timeout(timeout_seconds)
     operations = validate_operations(operations)
     require_available(operations)
     if any(op["op"] in WORKER_CONDITIONAL_OPERATIONS for op in operations):
@@ -720,6 +764,11 @@ def submit(
             shutil.copyfile(source, snapshot)
             operations[index]["file_path"] = str(snapshot)
         model["pending_job"] = job_id
+        # FEAT-033: freeze the effective budget on the request so the runner and
+        # the outer watchdog cannot disagree about how long the job may live.
+        server_budget = int(bridge.config().get("generic_timeout_seconds", 600))
+        effective_timeout = timeout_seconds if timeout_seconds is not None else server_budget
+        timeout_source = "job" if timeout_seconds is not None else "server"
         # Splitting at reservation time also lazily migrates a legacy inline
         # record, so request.json never carries an unbounded payload (BUG-077).
         model_registry.write_model(path, model)
@@ -731,6 +780,8 @@ def submit(
             "components": {sid: _request_view(source) for sid, source in components.items()},
             "template_file": str(template),
             "assertions": assertions or {},
+            "timeout_seconds": effective_timeout,
+            "timeout_source": timeout_source,
         }
         if loft_seed:
             request["loft_seed"] = loft_seed
@@ -748,6 +799,11 @@ def submit(
             "operations_view": "normalized",
             "job_directory": str(directory),
             "output_directory": str(directory / "output"),
+            # FEAT-033: the accepted receipt states the budget that will be
+            # enforced and where it came from, so a long model can be planned
+            # against a real number instead of a guess.
+            "timeout_seconds": effective_timeout,
+            "timeout_source": timeout_source,
             "message": "Poll creo_get_job with this job_id; do not resubmit the operation",
         }
         if loft_seed:
@@ -872,7 +928,7 @@ def run_generic_job(job_id: str, manifest: dict):
                         env=bridge.native_environment(),
                         stdout=log,
                         stderr=subprocess.STDOUT,
-                        timeout=bridge.config().get("generic_timeout_seconds", 600),
+                        timeout=job_timeout_seconds(request),
                         creationflags=bridge.HIDDEN,
                     )
                 result_file = directory / "native_result.json"
@@ -1021,11 +1077,17 @@ def run_generic_job(job_id: str, manifest: dict):
                             ),
                         )
             except subprocess.TimeoutExpired:
+                budget = job_timeout_seconds(request)
                 manifest.update(
                     status="unknown_outcome" if worker_started else "failed",
-                    message="Native worker timed out; inspect Creo and the native checkpoint before retrying"
+                    message=(
+                        f"Native worker exceeded its {budget}s budget; inspect Creo and the "
+                        "native checkpoint before retrying. A larger timeout_seconds only "
+                        "raises the upper bound of a future attempt; it is not a completion "
+                        "estimate and never proves this attempt finished"
+                    )
                     if worker_started
-                    else "Native build exceeded its subprocess budget; inspect build logs. No native modeling worker started.",
+                    else f"Native build exceeded its {budget}s subprocess budget; inspect build logs. No native modeling worker started.",
                 )
                 model["status"] = (
                     "unknown_outcome"

@@ -1227,9 +1227,19 @@ class CreoStartup:
                 self._publish("timeout", native["message"], native=native)
                 return
             if native.get("connection_state") == "ambiguous":
+                # FEAT-001 (0.19.3 feedback): the old text sent callers to edit
+                # config.json, but no tool could enumerate the session ids and a
+                # running service never re-read them on its own. Say what
+                # actually recovers, in the order that works without a restart.
                 self._publish(
                     "selection_required",
-                    "Multiple Creo sessions match; configure creo_session_id and retry",
+                    "Multiple Creo sessions match and this service cannot tell them apart "
+                    "(toolkit_code=-36). Close every Creo instance but the one you want and "
+                    "call creo_startup_status(retry=true), or set creo_session_id in "
+                    "config.json and restart the MCP service so the startup coordinator reads "
+                    "it; editing config.json alone does not change the running service. No "
+                    "tool can list session ids yet, so an unattended client cannot choose a "
+                    "session programmatically",
                     native=native,
                 )
                 return

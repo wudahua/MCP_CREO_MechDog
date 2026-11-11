@@ -69,3 +69,16 @@
 ## 2026-10-21 0.4.7 黑盒inspect正例
 
 [本轮用户报告](../validation/WORKBUDDY-0.4.7-2026-10-21.md)对新受管圆盘A执行reconcile inspect/live=false：baseline verified、owners stopped、restore_baseline资格为true、其余动作按证据条件拒绝，未执行任何apply。仅补公开只读协调证据；不能据此关闭四动作、恢复中断或实际回滚矩阵。
+
+## 2026-11-10 B 批：`completion_review` 只读证据摘要
+
+来源：0.19.3 第一批反馈（[MAPPING](../validation/feedback-0.19.3-2026-11-10/MAPPING.md) A-P3）。报告方在 25 分钟被判 `unknown_outcome` 后，要分别翻原生结果、checkpoint、保存文件才能判断「是否其实已经做完」，reconcile 也没有任何「疑似已完成」的提示。
+
+本轮只在只读证据里加一个汇总块，不改恢复状态机、不新增动作、不放宽令牌：
+
+- `creo_mechdog/recovery.py::completion_review()`：输入原生结果、checkpoint、runner 是否存活、模型当前可用性，输出 `verdict`（`likely_completed` / `partially_confirmed` / `still_running` / `not_completed` / `insufficient_evidence`）、`suggested_next_action`、逐项 `signals` 与 `why`。
+- 固定声明 `read_only=true`、`authorizes_replay=false`、`authorizes_revision_change=false`，并在 `note` 里重申 accept_live 仍需新的证据令牌与显式动作。
+- `job_evidence()` 读完原生结果（≤16 MiB，超出不读）与 checkpoint 后填充 `completion_review`，`next_steps` 增加指向说明。
+- 判定优先级：runner 仍存活 → `still_running`；原生明确失败 → `not_completed`；成功且已保存重载且 runner 已停 → `likely_completed`；成功但无重载证据 → `partially_confirmed`；无记录 → `insufficient_evidence`。缺少 runner 身份记录时不会升级为 `likely_completed`。
+
+未验证：没有在真实 `unknown_outcome` 作业上跑过一次完整流程（需要实机与当次确认）；`accept_live` 的动作条件、证据令牌与四动作矩阵均未改动，本卡验收状态不变。

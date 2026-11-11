@@ -60,6 +60,111 @@ def file_identity(path: Path) -> dict:
         }
 
 
+def completion_review(
+    native_result: dict | None,
+    checkpoint: dict | None,
+    runner_alive: bool | None,
+    model_available: bool | None,
+) -> dict:
+    """Summarize what the leftover evidence supports about an uncertain job.
+
+    FEAT-018 / 2026-11-10 0.19.3 feedback (A-P3): after a watchdog timeout the
+    caller had to read the native result, the checkpoint and the saved file
+    separately before guessing whether anything was actually built. This block
+    answers one question only — *what does the evidence support* — and never
+    authorizes a replay, a revision bump or a status change.
+    """
+    success = None
+    verified = None
+    delivery = None
+    revision = None
+    if isinstance(native_result, dict):
+        if isinstance(native_result.get("success"), bool):
+            success = native_result["success"]
+        if isinstance(native_result.get("saved_file_reloaded_and_verified"), bool):
+            verified = native_result["saved_file_reloaded_and_verified"]
+        if isinstance(native_result.get("revision"), int):
+            revision = native_result["revision"]
+    if isinstance(checkpoint, dict):
+        if isinstance(checkpoint.get("delivery_complete"), bool):
+            delivery = checkpoint["delivery_complete"]
+        if verified is None and isinstance(
+            checkpoint.get("saved_file_reloaded_and_verified"), bool
+        ):
+            verified = checkpoint["saved_file_reloaded_and_verified"]
+        if success is None and isinstance(checkpoint.get("success"), bool):
+            success = checkpoint["success"]
+    signals = {
+        "native_result_success": success,
+        "saved_file_reloaded_and_verified": verified,
+        "checkpoint_delivery_complete": delivery,
+        "runner_alive": runner_alive,
+        "model_currently_available": model_available,
+        "reported_revision": revision,
+    }
+    if runner_alive is True:
+        verdict, action, why = (
+            "still_running",
+            "wait_for_runner",
+            "A recorded runner process for this job is still alive; a second submission "
+            "cannot own the channel and would only be refused",
+        )
+    elif success is False:
+        verdict, action, why = (
+            "not_completed",
+            "operator_reconciliation",
+            "The native result reports failure; follow the failure receipts instead of "
+            "accepting the current model state",
+        )
+    elif success is True and verified is True and runner_alive is False:
+        verdict, action, why = (
+            "likely_completed",
+            "inspect_saved_file_then_reconcile_accept_live",
+            "The native result reports success and a verified save/reload, and no runner is "
+            "alive; a fresh read-only inspect of the saved file can confirm the geometry "
+            "before an explicit accept_live",
+        )
+    elif success is True:
+        verdict, action, why = (
+            "partially_confirmed",
+            "inspect_saved_file_then_operator_reconciliation",
+            "The native result reports success but not a verified save/reload; the saved file "
+            "must be inspected before any reconciliation action",
+        )
+    else:
+        verdict, action, why = (
+            "insufficient_evidence",
+            "operator_reconciliation",
+            "No native result records this job's outcome; keep the pending reservation and "
+            "reconcile from the model and checkpoint on disk",
+        )
+    return {
+        "read_only": True,
+        "authorizes_replay": False,
+        "authorizes_revision_change": False,
+        "verdict": verdict,
+        "suggested_next_action": action,
+        "signals": signals,
+        "why": why,
+        "note": (
+            "This summary never accepts a model state or clears the reservation; "
+            "creo_reconcile_model still requires a fresh evidence token and an explicit action"
+        ),
+    }
+
+
+def _bounded_native_result(directory: Path) -> dict | None:
+    """Read the leftover native result without exceeding the diagnostic budget."""
+    path = directory / "native_result.json"
+    try:
+        if not path.is_file() or path.stat().st_size > 16 * 1024 * 1024:
+            return None
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
 def job_evidence(directory: Path, manifest: dict, model: dict | None = None) -> dict:
     """Do not mutate jobs/models, infer cancellation, or promote a checkpoint to success."""
     result = {
@@ -72,7 +177,9 @@ def job_evidence(directory: Path, manifest: dict, model: dict | None = None) -> 
             "runner identity and saved file in Creo; preserve the original model/checkpoint. "
             "Use creo_session_status and explicit startup retry to recheck the channel. "
             "A connected channel does not resolve this job or commit its revision. "
-            "If the result cannot be verified, operator reconciliation is required."
+            "If the result cannot be verified, operator reconciliation is required. "
+            "completion_review summarizes what the leftover evidence supports; it never "
+            "authorizes a replay, a revision change or clearing the reservation."
         ),
     }
     runner = manifest.get("runner_identity")
@@ -88,9 +195,11 @@ def job_evidence(directory: Path, manifest: dict, model: dict | None = None) -> 
     else:
         result["runner"] = {"observed": None, "reason": "No recorded process creation identity"}
     checkpoint = directory / "native_checkpoint.json"
+    checkpoint_data = None
     if checkpoint.is_file():
         try:
             data = json.loads(checkpoint.read_text(encoding="utf-8"))
+            checkpoint_data = data if isinstance(data, dict) else None
             result["native_checkpoint"] = {
                 **file_identity(checkpoint),
                 **{
@@ -125,4 +234,11 @@ def job_evidence(directory: Path, manifest: dict, model: dict | None = None) -> 
         }
         if model.get("part_file"):
             result["saved_baseline"] = file_identity(Path(model["part_file"]))
+    observed = result.get("runner", {}).get("observed")
+    result["completion_review"] = completion_review(
+        _bounded_native_result(directory),
+        checkpoint_data,
+        observed.get("alive") if isinstance(observed, dict) else None,
+        result.get("model_currently_available"),
+    )
     return result

@@ -242,7 +242,9 @@ static J generic_feature_state(const J &op) {
         throw std::runtime_error(
             "feature_state targets do not cover every affected dependency; list these feature "
             "IDs explicitly (no automatic cascade): " +
-            listed.dump());
+            listed.dump() +
+            ". Append the feature_id values above to targets and resubmit the same action; "
+            "auto-created support datums carry no label, so their ids only appear here");
     }
 
     J before = J::array();
@@ -321,7 +323,8 @@ static J generic_feature_state(const J &op) {
             throw std::runtime_error(
                 "feature_state targets do not cover every affected dependency; Creo also " +
                 std::string(action == "delete" ? "deleted" : "suppressed") +
-                " these features; list them explicitly (no automatic cascade): " + listed.dump());
+                " these features; list them explicitly (no automatic cascade): " + listed.dump() +
+                ". Append the feature_id values above to targets and resubmit the same action");
         }
     }
 
