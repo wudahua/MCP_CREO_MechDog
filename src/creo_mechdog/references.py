@@ -567,13 +567,65 @@ def reference_capabilities() -> dict[str, Any]:
                     '(interpolation="straight"), three or more are one smooth blend through '
                     'every section (interpolation="smooth" is required). An optional guides '
                     "list of 2-8 single-curve guide sketches adds a second direction that bends "
-                    "the surface (a single guide never regenerates). Closed surfaces stay "
+                    "the surface (a single guide never regenerates); curve/edge ids and one "
+                    "first/last convergence point are FEAT-065 M3 inputs that are not yet "
+                    "live-verified (see by_tool.creo_surface_loft). Closed surfaces stay "
                     "unpublished, and the operation is conditional on Probbl.h in the worker "
                     "build SDK"
                 ),
                 "requires": (
                     "sketch labels or integer feature IDs ordered by increasing Z, plus the "
                     "resolved Blend callback registration"
+                ),
+            },
+            # FEAT-065/M3: the surface loft's own section/guide shapes. The
+            # sketch forms are live-verified; curve/edge/point are not yet.
+            "creo_surface_loft": {
+                "sections": ["section_a", 42],
+                "section_curve": {"kind": "curve", "id": 41},
+                "section_edge": edge,
+                "convergence_point": {"kind": "point", "id": 90},
+                "convergence_point_by_label": {"kind": "datum_point_feature", "label": "tip"},
+                "guides": ["guide_left", "guide_right"],
+                "guide_curve_or_edge": [{"kind": "curve", "id": 43}, {"kind": "edge", "id": 13}],
+                "requires": (
+                    "2-32 sections in loft order and optionally 2-8 guides. Each entry is a "
+                    "sketch label or integer feature ID (one curve, or two for one closed "
+                    "section profile), a curve geometry id {kind:'curve',id:N} such as a "
+                    "project_curve curve_id, or an edge geometry id {kind:'edge',id:N}; only "
+                    "the first or last section may be one convergence point "
+                    "{kind:'point',id:N} or {kind:'datum_point_feature',label:...} (a "
+                    "single-point datum_points feature). Every entry names different geometry"
+                ),
+                "live_status": (
+                    "sketch sections and guides are Creo 12.4 live-verified; curve, edge and "
+                    "point inputs (FEAT-065 M3) are implemented offline and not live-verified, "
+                    "the point holder is an undocumented experiment, and the receipt names "
+                    "them in unverified_input_forms"
+                ),
+                "rejected": {
+                    "point_position": (
+                        "a point in a middle section, a point guide and two points are refused "
+                        "before a job"
+                    ),
+                    "labels_on_geometry_kinds": (
+                        "{kind:'curve',label:...}, {kind:'edge',label:...} and "
+                        "{kind:'point',label:...} are refused; name a sketch by its label, use "
+                        "geometry ids for curves/edges and datum_point_feature for a point label"
+                    ),
+                    "quilt_or_face": (
+                        "{kind:'quilt'}, {kind:'quilt_feature'} and {kind:'surface'} are not "
+                        "chains; pass one of their edges as {kind:'edge',id:N}"
+                    ),
+                    "unknown_id": (
+                        "an id that is not a curve/edge/point of the model fails the job with "
+                        "SURFACE_LOFT_INPUT_REJECTED and a failed_loft_input block naming the "
+                        "slot, reason, query code and the form to use instead"
+                    ),
+                },
+                "edge_ids": (
+                    "creo_inspect_model edges enumerate solid faces only; quilt edges have no "
+                    "id discovery channel yet"
                 ),
             },
             "creo_sheetmetal_flange": {

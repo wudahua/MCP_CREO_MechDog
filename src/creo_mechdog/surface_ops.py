@@ -106,7 +106,9 @@ def _normalize_feature_refs(values: Any, what: str) -> Any:
 
     Same public-client tolerance as LoftOp: digit-only strings are integer
     feature IDs, because a label must start with a letter. Booleans and
-    out-of-range integers are refused instead of being coerced.
+    out-of-range integers are refused instead of being coerced. FEAT-065/M3
+    reference objects pass through unchanged; their shape is checked by
+    ``loft_input_problem``.
     """
     if isinstance(values, list):
         values = [
@@ -120,13 +122,128 @@ def _normalize_feature_refs(values: Any, what: str) -> Any:
     return values
 
 
-class SurfaceLoftOp(StrictModel):
-    """Boundary blend with one or two directions (FEAT-009/H02, FEAT-065 M1/M2).
+#: FEAT-065/M3: reference objects a loft section or guide accepts beside a
+#: sketch label or feature id. A chain kind names one existing geometry item
+#: that becomes one chain holder; a point kind is a convergence end and is
+#: accepted only as the first or last section. The native executor proves each
+#: id exists and has that type. None of these forms has Creo 12.4 live evidence
+#: yet (FEAT-065 T3), so the receipt lists them in ``unverified_input_forms``.
+LOFT_CHAIN_KINDS = ("curve", "edge")
+LOFT_POINT_KINDS = ("point", "datum_point_feature")
+LOFT_INPUT_LIVE_STATUS = "Creo 12.4 live acceptance pending (FEAT-065 M3)"
 
-    Two to 32 sections, each one MCP-owned sketch that owns one non-composite
-    curve. The sections feed the same PRO_E_BNBLN_1DIR tree the two-section
-    release used, so a third (or more) section is one more chain holder rather
-    than a new feature family.
+LOFT_INPUT_FORMS = (
+    "a sketch label or integer feature id, {kind:'curve',id:N} (a PRO_CURVE geometry id, "
+    "e.g. a project_curve curve_id) or {kind:'edge',id:N} (an edge geometry id from "
+    "creo_inspect_model)"
+)
+LOFT_POINT_FORMS = "{kind:'point',id:N} or {kind:'datum_point_feature',label:'...'}"
+_LOFT_POINT_RULE_SECTION = (
+    "a point is only accepted as the first or last section (a convergence end); "
+    "move it to sections[0] or the last section"
+)
+_LOFT_POINT_RULE_GUIDE = (
+    "a guide is a curve that crosses every section and cannot be a point; use " + LOFT_INPUT_FORMS
+)
+
+
+def loft_input_problem(
+    value: Any, where: str, *, point_allowed: bool, point_rule: str
+) -> str | None:
+    """FEAT-065/M3: describe why one section/guide entry is unusable.
+
+    Strings and integers are sketch references (already normalized by
+    ``_normalize_feature_refs``) and are left to the native sketch resolver.
+    A reference object must be one of the documented forms, carry only its own
+    keys and, for a point, sit where a convergence end is allowed.
+    """
+    if not isinstance(value, dict):
+        return None
+    kind = value.get("kind")
+    if not isinstance(kind, str) or not kind:
+        return f"{where} must carry a string kind; use {LOFT_INPUT_FORMS}"
+    if kind in LOFT_CHAIN_KINDS or kind == "point":
+        if "label" in value:
+            alternative = (
+                "name a sketch by its label directly"
+                if kind == "curve"
+                else "use {kind:'datum_point_feature',label:...} for a datum point feature"
+                if kind == "point"
+                else "read the edge id from creo_inspect_model"
+            )
+            return (
+                f"{where} {{kind:'{kind}'}} is a geometry kind and takes an id, not a label; "
+                + alternative
+            )
+        if set(value) != {"kind", "id"}:
+            return f"{where} {{kind:'{kind}',id:N}} accepts only kind and id"
+        identifier = value.get("id")
+        if type(identifier) is not int or not 0 <= identifier <= 2147483647:
+            return f"{where}.id must be a nonnegative 32-bit integer geometry id"
+    elif kind == "datum_point_feature":
+        if set(value) != {"kind", "label"}:
+            return f"{where} {{kind:'datum_point_feature',label:...}} accepts only kind and label"
+        label = value.get("label")
+        if not isinstance(label, str) or not label:
+            return (
+                f"{where}.label must be the non-empty label of a single-point datum_points feature"
+            )
+    else:
+        hint = (
+            "; a quilt or face is not a chain - pass one of its edges as {kind:'edge',id:N}"
+            if kind in ("quilt", "quilt_feature", "surface", "plane", "datum_plane")
+            else ""
+        )
+        return f"{where} kind '{kind}' is not a loft input{hint}; use {LOFT_INPUT_FORMS}" + (
+            f", or at a convergence end {LOFT_POINT_FORMS}" if point_allowed else ""
+        )
+    if kind in LOFT_POINT_KINDS and not point_allowed:
+        return f"{where} is a point: {point_rule}"
+    return None
+
+
+def loft_input_key(value: Any) -> tuple[str, Any]:
+    """Identity of one section/guide entry for the distinctness checks."""
+    if isinstance(value, dict):
+        kind = value.get("kind")
+        return (str(kind), value.get("label") if kind == "datum_point_feature" else value.get("id"))
+    return ("sketch", value)
+
+
+def _loft_input_text(value: Any) -> str:
+    if isinstance(value, dict):
+        key = loft_input_key(value)
+        field = "label" if key[0] == "datum_point_feature" else "id"
+        return f"{{kind:'{key[0]}',{field}:{key[1]!r}}}"
+    return repr(value)
+
+
+def _first_repeat(values: list[Any]) -> tuple[int, int] | None:
+    seen: dict[tuple[str, Any], int] = {}
+    for index, value in enumerate(values):
+        key = loft_input_key(value)
+        if key in seen:
+            return seen[key], index
+        seen[key] = index
+    return None
+
+
+# Public JSON element of sections/guides: a sketch reference or one of the
+# FEAT-065/M3 reference objects. Shape is enforced by the model validators.
+LoftInput = str | int | dict[str, Any]
+
+
+class SurfaceLoftOp(StrictModel):
+    """Boundary blend with one or two directions (FEAT-009/H02, FEAT-065 M1/M2/M3).
+
+    Two to 32 sections. Each section is an MCP-owned sketch that owns one
+    non-composite curve (two for one closed profile), or - FEAT-065/M3, Creo
+    12.4 live acceptance pending - one existing curve ``{kind:'curve',id:N}``
+    or edge ``{kind:'edge',id:N}``; the first or the last section may instead
+    be one convergence point ``{kind:'point',id:N}`` /
+    ``{kind:'datum_point_feature',label:...}``. The sections feed the same
+    PRO_E_BNBLN_1DIR tree the two-section release used, so a third (or more)
+    section is one more chain holder rather than a new feature family.
 
     Interpolation follows what the kernel actually builds, measured on
     2026-11-11 (Creo 12.4.0.0): exactly two sections are ruled, so
@@ -136,24 +253,25 @@ class SurfaceLoftOp(StrictModel):
     2000.00), so ``"smooth"`` is required and ``"straight"`` is refused.
 
     ``guides`` is the optional second direction (``PRO_E_BNBLN_2DIR``): two to
-    eight sketches, each holding one curve, that the surface is built through
-    as well. Whether a guide actually crosses every section is left to the
-    kernel; the measured shape follows the guides (2026-11-11: semicircular
-    guides widened the quilt to x = 44.24 mm on a 40 mm section). Closed
-    surfaces, continuity requests and solid output are still refused before a
-    job exists, and the operator never falls back to a solid Blend.
+    eight sketches, each holding one curve, or (M3) curve/edge references, that
+    the surface is built through as well. A guide is never a point. Whether a
+    guide actually crosses every section is left to the kernel; the measured
+    shape follows the guides (2026-11-11: semicircular guides widened the quilt
+    to x = 44.24 mm on a 40 mm section). Closed surfaces, continuity requests
+    and solid output are still refused before a job exists, and the operator
+    never falls back to a solid Blend.
     """
 
     op: Literal["surface_loft"]
     label: Label
     # 32 keeps one element tree and one receipt bounded; the kernel publishes no
     # maximum of its own (native/surface_loft.cpp enforces the same number).
-    sections: Annotated[list[str | int], Field(min_length=2, max_length=32)]
+    sections: Annotated[list[LoftInput], Field(min_length=2, max_length=32)]
     interpolation: Literal["straight", "smooth"] = "straight"
     # FEAT-065/M2: guides are the second direction (PRO_E_BNBLN_2DIR). Each one
-    # is an MCP-owned sketch holding one curve; every guide must cross every
-    # section, and that crossing is the kernel's call, not a check here.
-    guides: Annotated[list[str | int], Field(max_length=8)] = []
+    # is an MCP-owned sketch holding one curve, or (M3) one curve/edge id; every
+    # guide must cross every section, and that crossing is the kernel's call.
+    guides: Annotated[list[LoftInput], Field(max_length=8)] = []
 
     @field_validator("sections", mode="before")
     @classmethod
@@ -167,8 +285,35 @@ class SurfaceLoftOp(StrictModel):
 
     @model_validator(mode="after")
     def distinct_sections(self):
-        if len(self.sections) != len(set(self.sections)):
-            raise ValueError("Surface loft sections must be distinct sketches")
+        last = len(self.sections) - 1
+        for index, value in enumerate(self.sections):
+            problem = loft_input_problem(
+                value,
+                f"sections[{index}]",
+                point_allowed=index in (0, last),
+                point_rule=_LOFT_POINT_RULE_SECTION,
+            )
+            if problem:
+                raise ValueError(f"surface_loft {problem}")
+        points = [
+            index
+            for index, value in enumerate(self.sections)
+            if isinstance(value, dict) and value.get("kind") in LOFT_POINT_KINDS
+        ]
+        if len(points) > 1:
+            raise ValueError(
+                f"surface_loft accepts one convergence point: sections[{points[0]}] and "
+                f"sections[{points[-1]}] are both points; keep the point at one end and give "
+                "the other end a curve, edge or sketch section"
+            )
+        repeat = _first_repeat(self.sections)
+        if repeat:
+            first, second = repeat
+            raise ValueError(
+                "Surface loft sections must be distinct sketches or references: "
+                f"sections[{second}] repeats sections[{first}] "
+                f"({_loft_input_text(self.sections[second])})"
+            )
         return self
 
     @model_validator(mode="after")
@@ -180,21 +325,36 @@ class SurfaceLoftOp(StrictModel):
         # one-guide request is refused here instead of failing after a job.
         if not self.guides:
             return self
+        for index, value in enumerate(self.guides):
+            problem = loft_input_problem(
+                value, f"guides[{index}]", point_allowed=False, point_rule=_LOFT_POINT_RULE_GUIDE
+            )
+            if problem:
+                raise ValueError(f"surface_loft {problem}")
         if len(self.guides) < 2:
             raise ValueError(
                 "surface_loft guides are a second direction: give at least two guide "
                 "sketches. A single guide is created but does not regenerate (2DIR needs "
                 "two curves), and one guide cannot define a direction"
             )
-        if len(self.guides) != len(set(self.guides)):
-            raise ValueError("Surface loft guides must be distinct sketches")
-        shared = sorted(
-            {str(value) for value in self.sections} & {str(value) for value in self.guides}
-        )
+        repeat = _first_repeat(self.guides)
+        if repeat:
+            first, second = repeat
+            raise ValueError(
+                "Surface loft guides must be distinct sketches or references: "
+                f"guides[{second}] repeats guides[{first}] "
+                f"({_loft_input_text(self.guides[second])})"
+            )
+        section_keys = {loft_input_key(value) for value in self.sections}
+        shared = [
+            _loft_input_text(value)
+            for value in self.guides
+            if loft_input_key(value) in section_keys
+        ]
         if shared:
             raise ValueError(
-                "surface_loft guides must not repeat a section sketch; one sketch cannot be "
-                "both a section and a guide: " + ", ".join(shared)
+                "surface_loft guides must not repeat a section sketch or reference; one sketch "
+                "or geometry item cannot be both a section and a guide: " + ", ".join(shared)
             )
         return self
 

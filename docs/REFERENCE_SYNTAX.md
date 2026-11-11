@@ -153,6 +153,24 @@
 
 `creo_surface_loft`（`surface_loft`）自 0.18.3 起公开，**取代**了「多截面放样未发布」的旧说法：2—32 个截面草图按提交顺序建一张边界混合曲面，两截面为直纹（`interpolation="straight"`），三截面及以上由内核拟合成一张光滑面，必须显式 `interpolation="smooth"`。`guides` 是可选第二方向：2—8 个草图、每条恰好一条非复合曲线、不得与截面重复；只给一条导线在校验层直接拒绝（实测单条 2DIR 曲线能建特征但不再生）。导线是否穿过截面由内核判定，不穿过就再生失败而不是被忽略。`creo_loft` 本身仍只接受 `mode="add"`，`mode="surface"`、`cut` 与 `new_body=true` 都在入队前拒绝，实体放样与曲面放样是两条独立路线。
 
+**截面/导线的已有几何引用（FEAT-065 M3，2026-11-11 开发分支，Creo 12.4 实机未验收）**：`sections`/`guides` 的元素除草图标签或特征 ID 外，还接受下列既有裸引用，不加 `reference`/`chain` 包装，每个元素对应一个链容器：
+
+```json
+// 截面：已有曲线（如 project_curve 回执的 curve_id）或边；首/末截面可为一个收敛点
+{"sections": [{"kind": "edge", "id": 12}, {"kind": "edge", "id": 13}],
+ "guides": ["guide_left", "guide_right"]}
+{"sections": [{"kind": "curve", "id": 41}, "sec_b"]}
+{"sections": ["sec_a", "sec_b", "sec_c", {"kind": "datum_point_feature", "label": "tip"}],
+ "interpolation": "smooth"}
+```
+
+- `{"kind":"curve","id":N}`：一条 `PRO_CURVE` 几何 ID（`creo_inspect_model(section="feature_geometry")` 中 type 62，或 `project_curve` 的 `curve_id`）；复合曲线不拒绝，回执 `section_sources[i].composite` 标出。
+- `{"kind":"edge","id":N}`：一条边的几何 ID；回执给出 `adjacent_surface_ids`（边两侧的面，quilt 边界边只有一侧）。`creo_inspect_model` 的 `edges` 只枚举实体面上的边，**quilt 边目前没有公开的 ID 发现通道**。
+- 收敛点 `{"kind":"point","id":N}` 或 `{"kind":"datum_point_feature","label":...}`（单点 `datum_points` 特征）：只能放在 `sections` 第一项或最后一项，每个放样最多一个，不能作导线。原生用 `ProCrvcollection.h` 文档化的 `PRO_CURVCOLL_ADD_POINT_INSTR` 把点放进链容器，但 `Probbl.h` 没有说明链容器能装点，因此这是**未经实机证明的实验路线**。
+- 每个元素一个几何项：一个截面只装一条曲线或一条边，多条边拼成的闭合截面暂不支持（草图截面仍可是两条曲线的闭合轮廓）。
+- 提交前拒绝：点出现在中间位置或导线里、两个点、几何 kind 带 `label`、多余字段、`quilt`/`surface` 等非链 kind、同一引用重复或既作截面又作导线。只有原生能判定的（ID 不存在、类型不对、标签不是单点基准点）在作业中以 `SURFACE_LOFT_INPUT_REJECTED` 失败并回滚，失败记录带 `failed_loft_input`（`role`、`index`、`slot`、`request`、`reason`、`query_code`、`use_instead`）；ID 实际是另一种几何时，消息直接给出可用写法。
+- 回执新增 `section_source_kinds`/`guide_source_kinds`（`sketch`/`curve`/`edge`/`point`）、`section_geometry_ids`/`guide_geometry_ids`（每个链容器实际装入的几何 ID）、`section_sources`/`guide_sources`（逐项来源记录）、`convergence_point` 与 `unverified_input_forms`（本次用到、尚无实机证据的形态）。`section_curve_ids`/`guide_curve_ids` 保持原义，只列曲线 ID。旧的纯草图计划行为与回执原有字段不变。
+
 `extrude(mode="surface")`、`revolve(mode="surface")`（含局部角度）以及曲面特征上的 `axis_pattern` 已有 Creo 10 报告方实机正证据；它们不替代多截面放样或 quilt 合并。`creo_quilt_merge` 自 0.19.0（FEAT-039 H03）起已公开：只支持两片相接/相交 quilt 的 JOIN，在 `target` 上原地重剪（`result_quilt_source="retrimmed_target_quilt"`）。**merge 的结果没有可独立引用的 quilt 标签**：下一次 merge、`solidify` 或 `thicken` 必须继续引用**原始 target** 的标签或几何 ID，用 merge 特征标签会得到 `ProFeatureGeomitemVisit -4`（2026-11-10 Creo 10 上报，同计划与跨计划均复现，见 [BUG-115](work-items/BUG-115.md)）。修剪结果 quilt 通过特征标签再次引用、弯曲 quilt 的偏置距离读回与保留侧的几何判据仍未闭环；需要从当前模型的 `inspect_model(section="quilts")` 获取实际几何 ID，不能把请求值当成实测值。
 
 ## 各工具的外层形状
@@ -173,6 +191,7 @@
 | thicken.reference | 裸 quilt 或 quilt_feature 引用 |
 | surface_trim.target/tool | target 一个 quilt；tool 一个 quilt、基准面标签或曲线几何 ID；`keep_side` 只用 `one`/`two`，实际依据见 `kept_side_basis`；`offset_mm` 仍拒绝 |
 | project_curve.target/source/direction_ref | target 一个 quilt；source 只接受 `{"kind":"curve","id":N}`（不接受 edge/axis 或曲线标签）；direction_ref 接受 `datum_feature`/`datum_axis_feature` 标签或曲线 ID，不接受 `datum_plane` 标签或裸向量 |
+| surface_loft.sections/guides | 每个元素是草图标签/特征 ID，或裸引用 `{"kind":"curve","id":N}`、`{"kind":"edge","id":N}`；只有首/末截面可为一个收敛点 `{"kind":"point","id":N}` / `{"kind":"datum_point_feature","label":...}`。引用形态为 FEAT-065 M3，Creo 12.4 实机未验收 |
 | surface_offset.reference | 裸 quilt 或 quilt_feature 引用；距离字段是 `distance`，结果为会增加实体体积的偏置壁；源 quilt id 不是新结果 quilt，实测距离可用性见 offset_distance_status |
 | sheetmetal_flange.edge | 裸引用（计划路径 `operations[i].edge`），两种形态：`{"kind":"edge","id":N}`，`id` 取当前 `creo_inspect_model` 的边 ID；或 `{"kind":"edge_geometry","endpoints_mm":[[x,y,z],[x,y,z]],"tolerance_mm":1e-6}`，用当前模型坐标毫米的两端点点名一条直线边，原生在执行每个 op 时重查当前几何、要求无向唯一匹配，因此计划可跨边 ID 重排。`tolerance_mm` 可省略（默认 1e-6，范围 1e-9..1000），不接受单位字段；0/多候选、非有限坐标、退化边或无法换算模型长度单位时明确拒绝。两种形态都不得再加 edge/reference 包装。首壁来源为 `native_planar` 时，报错只指向 `creo_sheetmetal_planar_wall` 的 frame/envelope；只有 `sheetmetal_wall` 转换首壁才引用 `wall_contract`；来源未知不给旧首壁配方 |
 | sheetmetal_unbend/flat_pattern/bend_back.fixed_surface | 裸面引用，如 `{"kind":"surface","id":N}`，取自当前巡检；`references` 省略时作用全部折弯，能否固定由原生执行判定 |

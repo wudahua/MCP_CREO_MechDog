@@ -117,16 +117,28 @@ PROJECT_CURVE_KEYS = (
 
 #: Keys produced by native/surface_loft.cpp: the created quilt id, the measured
 #: area and whether it is open/closed, plus the element-tree evidence that a
-#: failed boundary-blend regeneration needs.
+#: failed boundary-blend regeneration needs. FEAT-065/M3 adds the per-slot
+#: source kinds and geometry ids, the per-slot source records, the convergence
+#: point block, the list of input forms without live evidence and the
+#: structured rejection of an unusable input.
 SURFACE_LOFT_KEYS = (
     "sections",
     "section_count",
     "section_curve_ids",
+    "section_source_kinds",
+    "section_geometry_ids",
+    "section_sources",
     "piecewise_ruled",
     "interpolation",
     "guides",
     "guide_count",
     "guide_curve_ids",
+    "guide_source_kinds",
+    "guide_geometry_ids",
+    "guide_sources",
+    "convergence_point",
+    "unverified_input_forms",
+    "failed_loft_input",
     "route",
     "create_code",
     "create_element_errors",

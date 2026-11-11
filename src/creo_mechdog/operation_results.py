@@ -362,6 +362,14 @@ OUTCOME_OPERATION_KEYS = (
     "section_curve_ids",
     "guide_count",
     "guide_curve_ids",
+    # FEAT-065/M3: which form each loft slot used and which geometry ids went
+    # into its chain holder, plus the forms that still lack live evidence. A
+    # trimmed receipt must still say "these were edges/points, unverified".
+    "section_source_kinds",
+    "section_geometry_ids",
+    "guide_source_kinds",
+    "guide_geometry_ids",
+    "unverified_input_forms",
     "piecewise_ruled",
     "interpolation",
     "volume_mm3",
@@ -374,6 +382,8 @@ OUTCOME_OPERATION_KEYS = (
 #: ``failed_operation`` block is failure evidence too (FEAT-012/FEAT-008).
 #: B2/F11: the zero-material-cut geometry receipt is failure evidence as well,
 #: so a polling compact view keeps it instead of falling back to text only.
+#: FEAT-065/M3: ``failed_loft_input`` names the rejected loft slot, its request,
+#: the reason, the raw query code and the form to use instead.
 FAILED_EVIDENCE_KEYS = (
     "feature_errors",
     "edge_geometry_diagnostic",
@@ -381,6 +391,7 @@ FAILED_EVIDENCE_KEYS = (
     "failed_toolkit_call",
     "failed_operation",
     "cut_geometry_context",
+    "failed_loft_input",
 )
 
 

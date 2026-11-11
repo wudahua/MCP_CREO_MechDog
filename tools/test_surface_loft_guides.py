@@ -241,7 +241,11 @@ def case_offline() -> dict:
     check("native_refuses_a_single_guide", "need at least two guide" in code)
 
     server = (ROOT / "server.py").read_text(encoding="utf-8")
-    check("tool_exposes_the_guides_argument", "guides: Annotated[list[str | int]" in server)
+    # FEAT-065/M3 widened the element type to accept curve/edge references.
+    check(
+        "tool_exposes_the_guides_argument",
+        "guides: Annotated[list[str | int | dict[str, Any]]" in server,
+    )
 
     return {"mode": "offline", "passed": all(item["ok"] for item in checks), "checks": checks}
 

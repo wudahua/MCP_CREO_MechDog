@@ -2347,6 +2347,34 @@ def validate_operations(operations: list[dict]) -> list[dict]:
                     "through_points requires a single-point datum_points feature"
                 )
 
+    # FEAT-065/M3: a surface_loft convergence point named by label must, when
+    # this same plan creates it, be an earlier single-point datum_points
+    # feature. A label from an earlier plan is checked by the native resolver.
+    for index, operation in enumerate(dumped):
+        if operation["op"] != "surface_loft":
+            continue
+        for slot, value in enumerate(operation.get("sections") or []):
+            if not isinstance(value, dict) or value.get("kind") != "datum_point_feature":
+                continue
+            entry = producers.get(value.get("label"))
+            if entry is None:
+                continue
+            where = f"operations[{index}].sections[{slot}]"
+            producer_index, producer_op, point_count = entry
+            if producer_index >= index:
+                raise ValueError(
+                    f"{where}: convergence point label '{value['label']}' is created by "
+                    f"operations[{producer_index}], not before the surface_loft; create the "
+                    "point earlier in the plan"
+                )
+            if producer_op != "datum_points" or point_count != 1:
+                raise ValueError(
+                    f"{where}: convergence point label '{value['label']}' is created by "
+                    f"operations[{producer_index}] (op '{producer_op}'"
+                    + (f", {point_count} points" if producer_op == "datum_points" else "")
+                    + "); a convergence end needs a single-point datum_points feature"
+                )
+
     # BUG-115: a thicken that names the quilt_feature of a surface_trim fails on
     # hardware 3/3 with ProFeatureGeomitemVisit(PRO_QUILT) = -4 when the trim's
     # own target quilt is also created in that same plan: the fresh chain

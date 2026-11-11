@@ -2888,28 +2888,36 @@ async def creo_surface_loft(
     model_id: str,
     expected_revision: int,
     label: str,
-    sections: Annotated[list[str | int], Field(min_length=2, max_length=32)],
+    sections: Annotated[list[str | int | dict[str, Any]], Field(min_length=2, max_length=32)],
     interpolation: Literal["straight", "smooth"] = "straight",
-    guides: Annotated[list[str | int], Field(max_length=8)] | None = None,
+    guides: Annotated[list[str | int | dict[str, Any]], Field(max_length=8)] | None = None,
 ) -> dict[str, Any]:
     """Create a native boundary-blend surface quilt through section sketches.
 
     Requires a Toolkit SDK with Probbl.h. Missing boundary-blend support returns
     SURFACE_LOFT_SDK_UNAVAILABLE and creates no loft feature.
 
-    sections accepts 2-32 sketch labels or integer feature IDs in loft order
-    (index 0 is the start section); each sketch must own one non-composite curve
-    (two curves only as one closed profile) and no sketch may repeat. Two sections
-    are ruled, so interpolation='straight' is exact there; three or more are one
+    sections accepts 2-32 entries in loft order (index 0 is the start section).
+    A sketch label or integer feature ID must own one non-composite curve (two
+    curves only as one closed profile); no entry may repeat. Two sections are
+    ruled, so interpolation='straight' is exact there; three or more are one
     smooth blend through every section and require 'smooth'.
 
-    guides is the optional second direction: 2-8 distinct sketches, each owning
-    exactly one curve, that the surface is built through as well (a single guide
-    never regenerates). Whether a guide crosses every section is the kernel's
-    decision, so a non-crossing guide fails regeneration instead of being ignored.
-    The result is one open datum-surface quilt (quilt_id, surface_area_mm2,
-    quilt_closed_native, guide_count); no solid material is created. Closed surfaces
-    and continuity requests are refused before a job is queued.
+    FEAT-065 M3 (Creo 12.4 live acceptance pending): a section may also be one
+    existing curve {kind:'curve',id:N} (e.g. a project_curve curve_id) or edge
+    {kind:'edge',id:N}, and the first or last section may be one convergence
+    point {kind:'point',id:N} or {kind:'datum_point_feature',label:...}; the
+    point chain is an unproven experiment. A wrong id fails the job with
+    SURFACE_LOFT_INPUT_REJECTED and a failed_loft_input block.
+
+    guides is the optional second direction: 2-8 distinct sketches (one curve
+    each) or curve/edge references, never points, that the surface is built
+    through as well (a single guide never regenerates). Whether a guide crosses
+    every section is the kernel's decision, so a non-crossing guide fails
+    regeneration instead of being ignored. The result is one open datum-surface
+    quilt (quilt_id, surface_area_mm2, quilt_closed_native, guide_count,
+    section_source_kinds, unverified_input_forms); no solid material is created.
+    Closed surfaces and continuity requests are refused before a job is queued.
     """
     operation: dict[str, Any] = dict(
         op="surface_loft", label=label, sections=sections, interpolation=interpolation

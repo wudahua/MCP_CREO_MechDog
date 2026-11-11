@@ -162,3 +162,41 @@
 - `PRO_E_BNBLN_ADV_VIA_CRV`、`PRO_E_CTRL_PTS`/`PRO_E_BLEND_TYPE`、G1/G2 连续性、端点收敛、任意正交平面截面未测。
 - 导线草图拥有 2 条曲线（闭合轮廓）被明确拒绝，未验证内核是否接受。
 - Creo 9/10 未测；`Probbl.h` 不可用时该操作仍整条不可用（DEV-080 H01）。
+
+## 2026-11-11 M3 离线实现（T1）
+
+范围：`surface_loft` 的 `sections`/`guides` 除 MCP 草图外接受已有曲线、边，以及首末截面上的一个收敛点。本节只有离线证据：**未编译执行器、未连接 Creo/Toolkit、未运行任何 `--live`**，新形态一律为「Creo 12.4 实机未验收」，等 T3 用户当次确认后实测。
+
+### 改动
+
+- `src/creo_mechdog/surface_ops.py`：元素类型由 `str | int` 扩为 `str | int | dict`；字符串/整数仍是草图，归一与旧校验不变。新增 `loft_input_problem`/`loft_input_key`：接受 `{kind:'curve',id}`、`{kind:'edge',id}`，点 `{kind:'point',id}` / `{kind:'datum_point_feature',label}` 只能在 `sections` 首项或末项、最多一个、不能作导线；几何 kind 带 `label`、多余字段、非 32 位 id、`quilt`/`surface` 等非链 kind、重复引用、同一引用既作截面又作导线都在提交前拒绝，消息带 `sections[i]`/`guides[i]` 与可用写法。
+- `src/creo_mechdog/schema.py`：计划级补一条——收敛点标签若由同一计划创建，必须是更早的单点 `datum_points`，否则拒绝；来自旧计划的标签交给原生判定。
+- `native/surface_loft.cpp`（全部在 `MECHDOG_HAS_PROBBL_HEADER` 门控内）：新增 `SurfaceLoftInput`、`surface_loft_input`（来源解析）、`surface_loft_probe`（`ProModelitemInit` + 类型专属 Init/查询的存在性核验）、`surface_loft_kind_hint`、`surface_loft_reject`、`surface_loft_point_chain`、`surface_loft_chain`。草图来源仍走 `surface_loft_curves`，元素树与报错文字和 M1/M2 逐字一致；curve/edge 直接交给 `generic.cpp` 的 `curve_collection`；点用 `ProCrvcollection.h` 文档化的 `PRO_CURVCOLL_ADD_POINT_INSTR`。截面与导线共用一个 (类型, id) 去重集合。创建或再生失败时，若用到新形态，消息追加 `unverified input forms: ...`。
+- 回执：新增 `section_source_kinds`/`guide_source_kinds`、`section_geometry_ids`/`guide_geometry_ids`（每个链容器实际装入的几何 id）、`section_sources`/`guide_sources`（逐项记录：草图的 `feature_id`；曲线的 `curve_type`/`composite`；边的 `edge_type`、`adjacent_surface_ids`、`neighbors_query_code`；点的 `point_mm`、`chain_instruction`；每项 `live_verified`）、`convergence_point`、`unverified_input_forms`；原生拒绝时暂存 `failed_loft_input`（`role`/`index`/`slot`/`request`/`reason`/`query_code`/`use_instead`），消息前缀 `SURFACE_LOFT_INPUT_REJECTED`。`section_curve_ids`/`guide_curve_ids` 保持原义（只含 PRO_CURVE id）。
+- 投影与保护：`job_projection.SURFACE_LOFT_KEYS` 纳入上述字段；`operation_results.OUTCOME_OPERATION_KEYS` 加入来源种类、几何 id 与 `unverified_input_forms`（BUG-118 方式，compact 裁剪不丢）；`FAILED_EVIDENCE_KEYS` 加入 `failed_loft_input`。
+- 公开面：`server.py` 的 `creo_surface_loft` 签名改为 `list[str | int | dict[str, Any]]`，文档字符串注明「live acceptance pending」与拒绝码；`capabilities.py` 的 `surface_loft` scope/limits（前 160 字符不变）与 `surface_chain` 文案；`references.py` 新增 `by_tool.creo_surface_loft`；`docs/REFERENCE_SYNTAX.md` 增段与表行。
+- 测试与驱动：新增 `tests/unit/test_surface_loft_inputs.py`（41 项）与 `tools/test_surface_loft_inputs.py`（离线默认，`--live --confirm-session-usable` 含 (a)—(d)）。`tools/test_surface_loft_guides.py` 只改一处签名字符串检查（签名变了，旧字符串必然不再出现）。
+
+### 设计决定
+
+- 公开字段沿用仓库既有裸引用写法，不新造 `chain`/`reference` 包装：一个元素一个链容器、一个几何项。多条边拼成的闭合截面暂不支持；草图截面仍可是两条曲线的闭合轮廓。
+- 收敛点：`Probbl.h` 只说链容器装 curve collection，没写点；`ProCrvcollection.h` 有文档化的 `PRO_CURVCOLL_ADD_POINT_INSTR`（"Add selected point or points to the collection"）。因此实现了这条路，但回执 `convergence_point.live_verified=false`、`unverified_input_forms` 含 `point`，能力文案写明「undocumented for a chain holder, so it is an experiment」。链构建每步的返回码存进 `convergence_point.chain_codes`，被拒时以 `SURFACE_LOFT_POINT_CHAIN_REFUSED` 失败，且发生在创建特征之前。
+- 首版每个放样只允许一个收敛点（两端都收敛属另一种未测形态）；点仍计入截面数，3 段以上照旧要求 `smooth`。
+- 复合曲线：`Probbl.h` 写明集合里的曲线可以是复合曲线，所以显式 `{kind:'curve'}` 不拒绝复合曲线，只在回执标 `composite`；草图来源保持 M1 的「拒绝复合」规则。
+- 原生 id 类型核验：先用 `ProModelitemInit`（头文件写明找不到会报错），再用类型专属 Init 与查询；id 实际是另一种几何时，消息直接给出 `{kind:'edge',id:N}` 等可用写法。
+
+### 离线证据（2026-11-11，基于 `5ba2cf5`，工作区未提交）
+
+- 定向单测：`python -m unittest tests.unit.test_surface_loft_inputs tests.unit.test_surface_loft_schema tests.unit.test_feedback0190_loft_limits tests.unit.test_native_aggregate_compile -v` → `Ran 74 tests ... OK`；受影响模块合跑（含 `test_large_plan_result_budget`、`test_reference_contract`、`test_job_projection`、`test_compact_sections`、`test_optional_loft_header`、`test_native_header_gate` 等 42 个模块）→ `Ran 537 tests ... OK`。
+- 离线驱动：`tools/test_surface_loft_inputs.py` 28 项 PASS；`tools/test_surface_loft_guides.py`、`tools/test_surface_loft_multisection.py` 离线全 PASS。
+- 语法检查：按 `bridge.py` 编译 `creo_worker.exe` 的参数对 `native/worker.cpp` 跑 `cl /Zs`（SDK 头含 `Probbl.h`，门控代码参与检查），退出 0，只有既有的 C4819 代码页警告；未产出执行器，临时文件在 `.tmp/`。
+- 格式：Ruff check/format 通过；`native/surface_loft.cpp` 的 clang-format 干跑无差异（HEAD 版本本就干净，只格式化了新增段落）。
+- 源码摘要（LF 归一 SHA256 前 16 位）：`native/surface_loft.cpp` `964cf7034610c9f5`，`src/creo_mechdog/surface_ops.py` `3a04b926cdbc7b34`。
+
+### 未验证范围与已知问题
+
+- 全部新形态未上实机：curve/edge 链容器能否创建与再生、点链容器是否被内核接受、YZ 截面沿 X 的光滑放样（驱动 c0）、收敛点放样（驱动 c）、`failed_loft_input` 的真实返回码，均待 T3。
+- quilt 边没有公开的 id 发现通道：`creo_inspect_model` 的 `edges` 只枚举实体面上的边。驱动 (a) 因此从 `feature_geometry` 读两条曲面带的 PRO_EDGE id 并逐对试探（只有顶边与两条导线端点相接，其余组合预期再生失败并回滚），也可用 `--bridge-edges` 直接指定；`feature_geometry` 是否列出 quilt 的边本身未经实机确认。
+- `surface_loft` 在模型已有实体时一律失败（`has_solid` 判的是整模型，不是本特征新增的材料），所以「用实体边补面」目前走不通；本轮未改这条既有规则。
+- 旧驱动 `tools/test_surface_loft.py` 离线检查 `schema_rejects_smooth` 失败：它仍要求两截面拒绝 `smooth`，而 M1（0.21.0）起两截面允许 `smooth`（`test_two_sections_still_accept_smooth`）。这是 M1 遗留，与本轮无关，未改。
+- `docs/development/G5-NATIVE-CONTRACT.md` §4.2 仍写「首版长度必须为 2」等 M1 前口径，未在本轮修改。

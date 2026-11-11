@@ -161,6 +161,328 @@ static std::vector<int> surface_loft_curves(const J &reference, const char *role
     return simple;
 }
 
+// FEAT-065/M3 (2026-11-11, offline): one loft input is one chain holder. A
+// sketch label/id keeps the M1/M2 resolution above unchanged; an explicit
+// {kind:'curve'|'edge',id} goes straight into the curve collection; a point
+// ({kind:'point',id} or {kind:'datum_point_feature',label}) is a convergence
+// end at the first or last section only. Only the sketch form has Creo 12.4
+// live evidence; every other form is reported in unverified_input_forms.
+struct SurfaceLoftInput {
+    std::string source; // sketch | curve | edge | point
+    ProType type = PRO_CURVE;
+    std::vector<int> ids;
+    J record;
+};
+
+static const char *SURFACE_LOFT_INPUT_FORMS =
+    "use a sketch label or feature id, {kind:'curve',id:N} (a PRO_CURVE geometry id such as a "
+    "project_curve curve_id) or {kind:'edge',id:N} (an edge id from creo_inspect_model)";
+
+// A rejected input names its slot, its request, the reason and the form to use
+// instead, both in the message and as a staged failed_loft_input block, so a
+// client never has to parse prose to learn which reference was wrong.
+[[noreturn]] static void surface_loft_reject(J details, const char *role, size_t index,
+                                             const J &request, const char *reason, ProError code,
+                                             const std::string &why, const std::string &instead) {
+    const std::string slot = std::string(role) + "s[" + std::to_string(index) + "]";
+    details["failed_loft_input"] = {
+        {"role", role},
+        {"index", (int)index},
+        {"slot", slot},
+        {"request", request},
+        {"reason", reason},
+        {"query_code", code == PRO_TK_NO_ERROR ? J(nullptr) : J((int)code)},
+        {"use_instead", instead}};
+    stage_operation_result(details);
+    throw std::runtime_error("SURFACE_LOFT_INPUT_REJECTED: surface_loft " + slot + " " +
+                             request.dump() + ": " + why + "; " + instead);
+}
+
+// Typed existence check: ProModelitemInit documents "item not found" for a
+// wrong id or type, and the type-specific query proves the handle is real.
+static ProError surface_loft_probe(int id, ProType type) {
+    ProModelitem item;
+    ProError code = ProModelitemInit(board, id, type, &item);
+    if (code != PRO_TK_NO_ERROR)
+        return code;
+    if (type == PRO_CURVE) {
+        ProCurve curve = nullptr;
+        ProEnttype kind = PRO_ENT_NONE;
+        code = ProCurveInit((ProSolid)board, id, &curve);
+        if (code == PRO_TK_NO_ERROR)
+            code = ProCurveTypeGet(curve, &kind);
+    } else if (type == PRO_EDGE) {
+        ProEdge edge = nullptr;
+        ProEnttype kind = PRO_ENT_NONE;
+        code = ProEdgeInit((ProSolid)board, id, &edge);
+        if (code == PRO_TK_NO_ERROR)
+            code = ProEdgeTypeGet(edge, &kind);
+    } else if (type == PRO_POINT) {
+        ProPoint point = nullptr;
+        ProVector xyz = {0.0, 0.0, 0.0};
+        code = ProPointInit((ProSolid)board, id, &point);
+        if (code == PRO_TK_NO_ERROR)
+            code = ProPointCoordGet(point, xyz);
+    }
+    return code;
+}
+
+// A curve id passed as an edge (or the reverse) is answered with the kind the
+// id really resolves to, not only with "not found".
+static std::string surface_loft_kind_hint(int id, ProType requested) {
+    // Function-local and non-static: the aggregate-compile contract collects
+    // every `static` line in this gated region as a guarded file symbol.
+    const std::pair<ProType, const char *> candidates[] = {
+        {PRO_CURVE, "curve"}, {PRO_EDGE, "edge"}, {PRO_POINT, "point"}};
+    for (const auto &kind : candidates)
+        if (kind.first != requested && surface_loft_probe(id, kind.first) == PRO_TK_NO_ERROR)
+            return std::string(" (id ") + std::to_string(id) + " does resolve as a " + kind.second +
+                   "; pass {kind:'" + kind.second + "',id:" + std::to_string(id) + "})";
+    return "";
+}
+
+static SurfaceLoftInput surface_loft_input(const J &reference, const char *role, size_t index,
+                                           size_t count, const J &details) {
+    SurfaceLoftInput input;
+    if (!reference.is_object()) {
+        // Sketch label or feature id: the published M1/M2 path, message and all.
+        const std::string legacy = std::string(role) + " " + std::to_string((int)index + 1);
+        input.source = "sketch";
+        input.ids = surface_loft_curves(reference, legacy.c_str());
+        input.record = {{"source", "sketch"},
+                        {"feature_id", feature_id(reference)},
+                        {"geometry_type", "curve"},
+                        {"ids", input.ids},
+                        {"live_verified", true}};
+        return input;
+    }
+    const std::string kind = reference.contains("kind") && reference["kind"].is_string()
+                                 ? reference["kind"].get<std::string>()
+                                 : std::string();
+    const bool section = std::string(role) == "section";
+    const bool end_slot = index == 0 || index + 1 == count;
+    if (kind == "point" || kind == "datum_point_feature") {
+        if (!section)
+            surface_loft_reject(details, role, index, reference, "point_in_guides", PRO_TK_NO_ERROR,
+                                "a guide is a curve that crosses every section and cannot be a "
+                                "point",
+                                SURFACE_LOFT_INPUT_FORMS);
+        if (!end_slot)
+            surface_loft_reject(details, role, index, reference, "point_not_at_end",
+                                PRO_TK_NO_ERROR,
+                                "a point is only accepted as the first or last section (a "
+                                "convergence end)",
+                                "move the point to sections[0] or the last section, or " +
+                                    std::string(SURFACE_LOFT_INPUT_FORMS));
+    } else if (kind != "curve" && kind != "edge") {
+        surface_loft_reject(details, role, index, reference, "unsupported_kind", PRO_TK_NO_ERROR,
+                            kind.empty() ? std::string("the reference carries no string kind")
+                                         : "kind '" + kind + "' is not a loft section or guide",
+                            std::string(SURFACE_LOFT_INPUT_FORMS) +
+                                (section ? ", or at the first/last section {kind:'point',id:N} / "
+                                           "{kind:'datum_point_feature',label:...}"
+                                         : ""));
+    }
+
+    int id = -1;
+    if (kind != "datum_point_feature") {
+        const J raw = reference.contains("id") ? reference["id"] : J(nullptr);
+        if (!raw.is_number_integer() || raw.get<long long>() < 0 ||
+            raw.get<long long>() > 2147483647LL)
+            surface_loft_reject(details, role, index, reference, "invalid_id", PRO_TK_NO_ERROR,
+                                "the id must be a nonnegative 32-bit geometry id",
+                                "read a current id from creo_inspect_model");
+        id = raw.get<int>();
+    }
+
+    if (kind == "curve" || kind == "edge") {
+        const ProType type = kind == "curve" ? PRO_CURVE : PRO_EDGE;
+        ProError code = surface_loft_probe(id, type);
+        if (code != PRO_TK_NO_ERROR)
+            surface_loft_reject(
+                details, role, index, reference,
+                kind == "curve" ? "curve_not_found" : "edge_not_found", code,
+                "no " + kind + " geometry with id " + std::to_string(id) + " in this model" +
+                    surface_loft_kind_hint(id, type),
+                kind == "curve"
+                    ? "pass a current PRO_CURVE id (creo_inspect_model section=feature_geometry, "
+                      "type 62, or a project_curve curve_id), or name the sketch by its label"
+                    : "pass a current edge id from creo_inspect_model; ids change when the "
+                      "model rebuilds");
+        input.source = kind;
+        input.type = type;
+        input.ids = {id};
+        input.record = {{"source", kind},
+                        {"geometry_type", kind},
+                        {"ids", input.ids},
+                        {"live_verified", false}};
+        if (type == PRO_CURVE) {
+            ProCurve curve = nullptr;
+            ProEnttype curve_type = PRO_ENT_NONE;
+            CK(ProCurveInit((ProSolid)board, id, &curve));
+            CK(ProCurveTypeGet(curve, &curve_type));
+            input.record["curve_type"] = (int)curve_type;
+            // Probbl.h allows a composite curve in the collection; it is
+            // reported, not refused, because the caller named this exact id.
+            input.record["composite"] = curve_type == PRO_ENT_CMP_CRV;
+        } else {
+            ProEdge edge = nullptr;
+            ProEnttype edge_type = PRO_ENT_NONE;
+            CK(ProEdgeInit((ProSolid)board, id, &edge));
+            CK(ProEdgeTypeGet(edge, &edge_type));
+            input.record["edge_type"] = (int)edge_type;
+            // The faces on either side of the edge: a quilt boundary edge has
+            // one, an interior or solid edge two. FEAT-065/M4 needs this to name
+            // the surface a boundary condition would refer to.
+            ProEdge next1 = nullptr, next2 = nullptr;
+            ProSurface face1 = nullptr, face2 = nullptr;
+            ProError neighbors = ProEdgeNeighborsGet(edge, &next1, &next2, &face1, &face2);
+            J adjacent = J::array();
+            if (neighbors == PRO_TK_NO_ERROR)
+                for (ProSurface face : {face1, face2}) {
+                    int surface_id = -1;
+                    if (face && ProSurfaceIdGet(face, &surface_id) == PRO_TK_NO_ERROR)
+                        adjacent.push_back(surface_id);
+                }
+            input.record["neighbors_query_code"] = (int)neighbors;
+            input.record["adjacent_surface_ids"] =
+                neighbors == PRO_TK_NO_ERROR ? adjacent : J(nullptr);
+        }
+        return input;
+    }
+
+    // Convergence point. The curve-collection instruction for points is
+    // documented in ProCrvcollection.h (PRO_CURVCOLL_ADD_POINT_INSTR); its use
+    // inside a boundary-blend chain holder is not documented in Probbl.h, so
+    // this route is an experiment until a Creo 12.4 live run proves it.
+    int point_feature = -1;
+    if (kind == "datum_point_feature") {
+        if (!reference.contains("label") || !reference["label"].is_string() ||
+            reference["label"].get<std::string>().empty())
+            surface_loft_reject(details, role, index, reference, "invalid_label", PRO_TK_NO_ERROR,
+                                "datum_point_feature needs a non-empty feature label",
+                                "pass {kind:'datum_point_feature',label:'<datum_points label>'}");
+        try {
+            point_feature = feature_id(reference["label"]);
+        } catch (const std::runtime_error &error) {
+            surface_loft_reject(details, role, index, reference, "label_not_found", PRO_TK_NO_ERROR,
+                                error.what(),
+                                "create the point with a single-point datum_points operation "
+                                "first, or pass {kind:'point',id:N}");
+        }
+        ProFeature point_owner = {};
+        ProFeattype owner_type = 0;
+        ProError code = ProModelitemInit(board, point_feature, PRO_FEATURE, &point_owner);
+        if (code == PRO_TK_NO_ERROR)
+            code = ProFeatureTypeGet(&point_owner, &owner_type);
+        if (code != PRO_TK_NO_ERROR || owner_type != PRO_FEAT_DATUM_POINT)
+            surface_loft_reject(details, role, index, reference, "not_a_datum_point_feature", code,
+                                "feature " + std::to_string(point_feature) +
+                                    " is not a datum point feature",
+                                "pass a single-point datum_points label or {kind:'point',id:N}");
+        J points = J::array();
+        code = ProFeatureGeomitemVisit(&point_owner, PRO_POINT, collect_geom_ids, nullptr, &points);
+        if (code != PRO_TK_NO_ERROR || points.size() != 1)
+            surface_loft_reject(details, role, index, reference, "point_count", code,
+                                "datum point feature " + std::to_string(point_feature) +
+                                    " defines " + std::to_string((int)points.size()) +
+                                    " points; a convergence end needs exactly one",
+                                "use a single-point datum_points feature or {kind:'point',id:N}");
+        id = points[0]["id"].get<int>();
+    }
+    ProError code = surface_loft_probe(id, PRO_POINT);
+    if (code != PRO_TK_NO_ERROR)
+        surface_loft_reject(details, role, index, reference, "point_not_found", code,
+                            "no datum point geometry with id " + std::to_string(id) +
+                                " in this model" + surface_loft_kind_hint(id, PRO_POINT),
+                            "pass {kind:'datum_point_feature',label:...} for a datum_points "
+                            "feature, or a current point id");
+    ProPoint point = nullptr;
+    ProVector xyz = {0.0, 0.0, 0.0};
+    CK(ProPointInit((ProSolid)board, id, &point));
+    CK(ProPointCoordGet(point, xyz));
+    auto units = inspect_length_units(board);
+    auto scale = length_scale_to_mm(board, units);
+    input.source = "point";
+    input.type = PRO_POINT;
+    input.ids = {id};
+    input.record = {{"source", "point"},
+                    {"geometry_type", "point"},
+                    {"ids", input.ids},
+                    {"point_mm", xyz_json(xyz, scale)},
+                    {"chain_instruction", "PRO_CURVCOLL_ADD_POINT_INSTR"},
+                    {"live_verified", false}};
+    if (point_feature >= 0)
+        input.record["feature_id"] = point_feature;
+    return input;
+}
+
+// The documented point instruction of ProCrvcollection.h, mirrored on the
+// curve_collection() shape the curve/edge holders use. Every code is kept so a
+// refusal of the undocumented point holder is evidence, not a bare -1.
+static void surface_loft_point_chain(ProElement element, int point_id, J &details) {
+    J codes = J::object();
+    ProCollection collection = nullptr;
+    ProCrvcollinstr instruction = nullptr;
+    ProSelection selected = nullptr;
+    ProReference reference = nullptr;
+    ProError code = ProCrvcollectionAlloc(&collection);
+    codes["collection_alloc"] = (int)code;
+    if (code == PRO_TK_NO_ERROR) {
+        code = ProCrvcollinstrAlloc(PRO_CURVCOLL_ADD_POINT_INSTR, &instruction);
+        codes["instruction_alloc"] = (int)code;
+    }
+    if (code == PRO_TK_NO_ERROR) {
+        ProModelitem item;
+        code = ProModelitemInit(board, point_id, PRO_POINT, &item);
+        if (code == PRO_TK_NO_ERROR)
+            code = ProSelectionAlloc(nullptr, &item, &selected);
+        if (code == PRO_TK_NO_ERROR)
+            code = ProSelectionToReference(selected, &reference);
+        codes["point_reference"] = (int)code;
+    }
+    if (code == PRO_TK_NO_ERROR) {
+        code = ProCrvcollinstrReferenceAdd(instruction, reference);
+        codes["reference_add"] = (int)code;
+    }
+    if (code == PRO_TK_NO_ERROR) {
+        code = ProCrvcollectionInstructionAdd(collection, instruction);
+        codes["instruction_add"] = (int)code;
+    }
+    if (code == PRO_TK_NO_ERROR) {
+        code = ProElementCollectionSet(element, collection);
+        codes["collection_set"] = (int)code;
+    }
+    if (instruction)
+        ProCrvcollinstrFree(instruction);
+    if (selected)
+        ProSelectionFree(&selected);
+    if (collection)
+        ProCollectionFree(&collection);
+    details["convergence_point"]["chain_codes"] = codes;
+    if (code != PRO_TK_NO_ERROR) {
+        stage_operation_result(details);
+        throw std::runtime_error(
+            "SURFACE_LOFT_POINT_CHAIN_REFUSED: surface_loft could not place point " +
+            std::to_string(point_id) + " in a chain holder (code " + std::to_string((int)code) +
+            "); the PRO_CURVCOLL_ADD_POINT_INSTR holder is an unproven FEAT-065 M3 route. No "
+            "feature was created");
+    }
+}
+
+static void surface_loft_chain(ProElement holders, const SurfaceLoftInput &input, J &details) {
+    ProElement holder = node(holders, PRO_E_STD_CHAIN_HOLDER);
+    ProElement collection = node(holder, PRO_E_STD_CURVE_COLLECTION_APPL);
+    if (input.type == PRO_POINT) {
+        surface_loft_point_chain(collection, input.ids.front(), details);
+        return;
+    }
+    J refs = J::array();
+    for (int id : input.ids)
+        refs.push_back({{"kind", input.type == PRO_EDGE ? "edge" : "curve"}, {"id", id}});
+    curve_collection(collection, refs);
+}
+
 static void generic_surface_loft(const J &op) {
     const J &sections = op.at("sections");
     // FEAT-065/M1 (2026-11-10): the same PRO_E_BNBLN_1DIR tree that carries two
@@ -186,20 +508,50 @@ static void generic_surface_loft(const J &op) {
             "surface_loft with more than two sections is a smooth blend through every section; "
             "pass interpolation=\"smooth\"");
 
-    std::vector<std::vector<int>> section_curves;
+    // An empty list is the schema default, i.e. "no second direction"; it must
+    // stay a plain single-direction blend rather than a one-guide request.
+    const bool has_guides = op.contains("guides") && !op["guides"].is_null() &&
+                            (!op["guides"].is_array() || !op["guides"].empty());
+    // FEAT-065/M3: the request echo is staged with any rejected input, so the
+    // failure record names the slot without the caller re-reading its plan.
+    J details = {{"op", "surface_loft"},
+                 {"sections", sections},
+                 {"interpolation", interpolation},
+                 {"guides", has_guides ? op["guides"] : J::array()},
+                 {"route", "probbl_boundary_blend"}};
+
+    // Sketch sections resolve exactly as in M1/M2 (same curves, same messages).
+    // One (type, id) set spans sections and guides: no geometry item may sit in
+    // two chain holders, whichever spelling named it.
+    std::vector<SurfaceLoftInput> section_inputs;
     std::vector<int> curve_ids;
-    std::set<int> seen_curves;
+    std::set<std::pair<int, int>> used_items;
+    int point_sections = 0;
     for (size_t index = 0; index < sections.size(); index++) {
         std::string role = "section " + std::to_string((int)index + 1);
-        std::vector<int> curves = surface_loft_curves(sections[index], role.c_str());
-        for (int curve : curves) {
-            if (!seen_curves.insert(curve).second)
-                throw std::runtime_error("surface_loft " + role + " repeats curve " +
-                                         std::to_string(curve) +
-                                         "; every section must name a different sketch");
-            curve_ids.push_back(curve);
+        SurfaceLoftInput input =
+            surface_loft_input(sections[index], "section", index, sections.size(), details);
+        for (int id : input.ids) {
+            if (!used_items.insert({(int)input.type, id}).second) {
+                if (input.source == "sketch")
+                    throw std::runtime_error("surface_loft " + role + " repeats curve " +
+                                             std::to_string(id) +
+                                             "; every section must name a different sketch");
+                surface_loft_reject(details, "section", index, sections[index], "repeated_geometry",
+                                    PRO_TK_NO_ERROR,
+                                    input.source + " " + std::to_string(id) +
+                                        " already sits in an earlier section",
+                                    "every section must name different geometry");
+            }
+            if (input.type == PRO_CURVE)
+                curve_ids.push_back(id);
         }
-        section_curves.push_back(curves);
+        if (input.source == "point" && ++point_sections > 1)
+            surface_loft_reject(details, "section", index, sections[index], "second_point",
+                                PRO_TK_NO_ERROR, "a loft accepts one convergence point",
+                                "keep a point at one end only; the other end needs a curve or "
+                                "edge section");
+        section_inputs.push_back(std::move(input));
     }
 
     // FEAT-065/M2: guides are the second direction. Probbl.h lists
@@ -208,13 +560,10 @@ static void generic_surface_loft(const J &op) {
     // every section is the kernel's decision, not a guess made here. Measured
     // 2026-11-11 on Creo 12.4.0.0: one holder creates but never regenerates,
     // two holders build a quilt whose geometry follows the guide curves.
-    std::vector<std::vector<int>> guide_curves;
+    // FEAT-065/M3: a guide may also be one curve or edge id, never a point.
+    std::vector<SurfaceLoftInput> guide_inputs;
     std::vector<int> guide_curve_ids;
     std::set<int> seen_guides;
-    // An empty list is the schema default, i.e. "no second direction"; it must
-    // stay a plain single-direction blend rather than a one-guide request.
-    const bool has_guides = op.contains("guides") && !op["guides"].is_null() &&
-                            (!op["guides"].is_array() || !op["guides"].empty());
     if (has_guides) {
         const J &guides = op["guides"];
         if (!guides.is_array())
@@ -229,29 +578,102 @@ static void generic_surface_loft(const J &op) {
                                      " guides; a second direction is meant to be a few curves");
         for (size_t index = 0; index < guides.size(); index++) {
             std::string role = "guide " + std::to_string((int)index + 1);
-            if (!seen_guides.insert(feature_id(guides[index])).second)
+            if (!guides[index].is_object() && !seen_guides.insert(feature_id(guides[index])).second)
                 throw std::runtime_error("surface_loft " + role +
                                          " repeats a guide sketch; every guide must be a "
                                          "different sketch");
-            std::vector<int> curves = surface_loft_curves(guides[index], role.c_str());
+            SurfaceLoftInput input =
+                surface_loft_input(guides[index], "guide", index, guides.size(), details);
             // One guide is one direction curve: a two-curve closed profile is a
             // section shape, not a longitudinal guide, and is refused rather
             // than handed to the kernel as an unproved chain.
-            if (curves.size() != 1)
+            if (input.source == "sketch" && input.ids.size() != 1)
                 throw std::runtime_error(
                     "surface_loft " + role +
                     " must own exactly one non-composite curve; a guide is one curve "
                     "crossing the sections, not a closed profile");
-            for (int curve : curves) {
-                if (curve_ids.end() != std::find(curve_ids.begin(), curve_ids.end(), curve))
-                    throw std::runtime_error("surface_loft " + role + " reuses curve " +
-                                             std::to_string(curve) +
-                                             " as a section; a guide must be its own curve");
-                guide_curve_ids.push_back(curve);
+            for (int id : input.ids) {
+                if (!used_items.insert({(int)input.type, id}).second) {
+                    if (input.source == "sketch" &&
+                        curve_ids.end() != std::find(curve_ids.begin(), curve_ids.end(), id))
+                        throw std::runtime_error("surface_loft " + role + " reuses curve " +
+                                                 std::to_string(id) +
+                                                 " as a section; a guide must be its own curve");
+                    surface_loft_reject(details, "guide", index, guides[index], "repeated_geometry",
+                                        PRO_TK_NO_ERROR,
+                                        input.source + " " + std::to_string(id) +
+                                            " already sits in a section or an earlier guide",
+                                        "a guide must be its own curve or edge");
+                }
+                if (input.type == PRO_CURVE)
+                    guide_curve_ids.push_back(id);
             }
-            guide_curves.push_back(curves);
+            guide_inputs.push_back(std::move(input));
         }
     }
+
+    // Receipt: per-slot source kinds and the geometry ids actually placed in
+    // each holder. section_curve_ids/guide_curve_ids keep their M1/M2 meaning
+    // (PRO_CURVE ids only), so an edge or point never masquerades as a curve.
+    J curve_json = J::array();
+    for (int curve_id : curve_ids)
+        curve_json.push_back(curve_id);
+    J guide_json = J::array();
+    for (int curve_id : guide_curve_ids)
+        guide_json.push_back(curve_id);
+    std::set<std::string> unverified;
+    J convergence = nullptr;
+    auto describe = [&unverified, &convergence](const std::vector<SurfaceLoftInput> &inputs,
+                                                bool section, J &kinds, J &ids, J &records) {
+        kinds = J::array();
+        ids = J::array();
+        records = J::array();
+        for (size_t index = 0; index < inputs.size(); index++) {
+            const SurfaceLoftInput &input = inputs[index];
+            kinds.push_back(input.source);
+            ids.push_back(input.ids);
+            J record = input.record;
+            record["index"] = (int)index;
+            records.push_back(record);
+            if (input.source != "sketch")
+                unverified.insert(input.source);
+            if (section && input.source == "point")
+                convergence = {{"section_index", (int)index},
+                               {"position", index == 0 ? "start" : "end"},
+                               {"point_id", input.ids.front()},
+                               {"point_mm", input.record["point_mm"]},
+                               {"chain_instruction", "PRO_CURVCOLL_ADD_POINT_INSTR"},
+                               {"live_verified", false},
+                               {"note", "a point in a boundary-blend chain holder is not "
+                                        "documented in Probbl.h; unproven on Creo 12.4"}};
+        }
+    };
+    J section_kinds, section_ids, section_records, guide_kinds, guide_ids, guide_records;
+    describe(section_inputs, true, section_kinds, section_ids, section_records);
+    describe(guide_inputs, false, guide_kinds, guide_ids, guide_records);
+    std::string unverified_text;
+    J unverified_json = J::array();
+    for (const auto &form : unverified) {
+        unverified_text += (unverified_text.empty() ? "" : ",") + form;
+        unverified_json.push_back(form);
+    }
+    const std::string unverified_note = unverified_text.empty()
+                                            ? std::string()
+                                            : "; unverified input forms: " + unverified_text +
+                                                  " (FEAT-065 M3, no Creo 12.4 live evidence yet)";
+    details.update({{"section_count", (int)section_inputs.size()},
+                    {"section_curve_ids", curve_json},
+                    {"section_source_kinds", section_kinds},
+                    {"section_geometry_ids", section_ids},
+                    {"section_sources", section_records},
+                    {"piecewise_ruled", section_inputs.size() == 2},
+                    {"guide_count", (int)guide_inputs.size()},
+                    {"guide_curve_ids", guide_json},
+                    {"guide_source_kinds", guide_kinds},
+                    {"guide_geometry_ids", guide_ids},
+                    {"guide_sources", guide_records},
+                    {"convergence_point", convergence},
+                    {"unverified_input_forms", unverified_json}});
 
     ProElement root = node(nullptr, PRO_E_FEATURE_TREE);
     integer(root, PRO_E_FEATURE_TYPE, PRO_FEAT_DATUM_SURF);
@@ -261,41 +683,14 @@ static void generic_surface_loft(const J &op) {
     ProElement curves = node(root, PRO_E_BNBLN_CURVES);
     ProElement direction = node(curves, PRO_E_BNBLN_1DIR);
     ProElement holders = node(direction, PRO_E_BNBLN_DIR_CURVES);
-    for (auto &curves : section_curves) {
-        ProElement holder = node(holders, PRO_E_STD_CHAIN_HOLDER);
-        J refs = J::array();
-        for (int curve_id : curves)
-            refs.push_back({{"kind", "curve"}, {"id", curve_id}});
-        curve_collection(node(holder, PRO_E_STD_CURVE_COLLECTION_APPL), refs);
-    }
-    if (!guide_curves.empty()) {
+    for (const auto &input : section_inputs)
+        surface_loft_chain(holders, input, details);
+    if (!guide_inputs.empty()) {
         ProElement direction2 = node(curves, PRO_E_BNBLN_2DIR);
         ProElement gholders = node(direction2, PRO_E_BNBLN_DIR_CURVES);
-        for (auto &guide : guide_curves) {
-            ProElement holder = node(gholders, PRO_E_STD_CHAIN_HOLDER);
-            J refs = J::array();
-            for (int curve_id : guide)
-                refs.push_back({{"kind", "curve"}, {"id", curve_id}});
-            curve_collection(node(holder, PRO_E_STD_CURVE_COLLECTION_APPL), refs);
-        }
+        for (const auto &input : guide_inputs)
+            surface_loft_chain(gholders, input, details);
     }
-
-    J curve_json = J::array();
-    for (int curve_id : curve_ids)
-        curve_json.push_back(curve_id);
-    J guide_json = J::array();
-    for (int curve_id : guide_curve_ids)
-        guide_json.push_back(curve_id);
-    J details = {{"op", "surface_loft"},
-                 {"sections", sections},
-                 {"section_count", (int)section_curves.size()},
-                 {"section_curve_ids", curve_json},
-                 {"piecewise_ruled", section_curves.size() == 2},
-                 {"interpolation", interpolation},
-                 {"guides", has_guides ? op["guides"] : J::array()},
-                 {"guide_count", (int)guide_curves.size()},
-                 {"guide_curve_ids", guide_json},
-                 {"route", "probbl_boundary_blend"}};
 
     // INCOMPLETE lets the kernel fill the defaults it owns; the extracted tree
     // is then the completed tree for ProFeatureWithoptionsRedefine. A failed
@@ -335,7 +730,7 @@ static void generic_surface_loft(const J &op) {
         throw std::runtime_error("surface_loft boundary blend create failed (code " +
                                  std::to_string((int)created) +
                                  ", sections=" + std::to_string((int)curve_ids.size()) +
-                                 ", section_curve_ids=[" + listed + "])");
+                                 ", section_curve_ids=[" + listed + "])" + unverified_note);
     }
     ProElementFree(&root);
 
@@ -433,7 +828,7 @@ static void generic_surface_loft(const J &op) {
             "surface_loft boundary blend regeneration failed (feature_status=" +
             std::to_string((int)status) + ", feature_id=" + std::to_string((int)feature.id) +
             ", quilt_count=" + std::to_string((int)quilts.size()) +
-            "); the created tree did not produce a regenerated surface");
+            "); the created tree did not produce a regenerated surface" + unverified_note);
     }
     if (feature_type != PRO_FEAT_DATUM_SURF)
         throw std::runtime_error("surface_loft produced feature type " +
