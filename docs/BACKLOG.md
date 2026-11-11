@@ -24,6 +24,8 @@
 
 2026-11-11（FEAT-065 M3/M4 登记）：用户确认本轮范围后，[FEAT-065](work-items/FEAT-065.md) 登记 M3（`surface_loft` 截面/导线接受已有曲线、边与首末收敛点）与 M4（边界相切/曲率条件），并在开发分支 `codex/FEAT-065-m3-m4-surface-loft` 建立[计划](superpowers/plans/2026-11-11-feat065-m3-m4-surface-loft.md)（T0 文档对账、T1 M3、T2a M4 离线候选由子 agent 实施，T2b 参照树取证与 T3 实机须用户当次确认）。分类调整：FEAT-065 由「部分交付，剩余待规划」移入「开发中」，计数 部分交付剩余待规划 4→3、开发中 7→8，总数仍 177。登记时未连 Creo、未编译执行器、未合 main、未发布。
 
+2026-11-11（FEAT-065 计划 T0 文档对账）：逐分节统计表行，发现 [FEAT-033](work-items/FEAT-033.md) 的「当前状态」为「部分交付，剩余待规划」，行却仍在「待规划」分节（2026-11-10 B 批已按该移动调整计数，表行未随之移动），致「部分交付，剩余待规划」分节只有 2 行、「待规划」分节 42 行。现把该行移入「部分交付，剩余待规划」分节；分类表数字不变（部分交付剩余待规划 3、待规划 41），九个分类与各分节行数逐类一致，总数仍 177（BUG 77 / FEAT 62 / DEV 38）。同次按 [FEAT-065](work-items/FEAT-065.md) M1/M2（0.21.0）更正 FEAT-009 行的多截面口径，该行仍留「待规划」分节。只改文档，未连 Creo、未改代码。
+
 2026-11-10：用户当次确认可发布 `main` 新版本并选定 MINOR 后，[DEV-081](work-items/DEV-081.md) B 批四项连同 C1 契约冻结与 BUG-001 规则修订按 0.20.0 发布（[版本说明](RELEASE_NOTES_0.20.0.md)、[发布记录](validation/RELEASE-0.20.0.md)）：B1/F01 seed 兼容性前置预检与无 callback 路线说明、B2/F11 零去料切除结构化几何回执、B3/F06 compact 阶段进度与日志体积字段、B4/F08 选择性切除作用域公开 `scope` 参数与 `scope_applied` 特征树回读，均在 Creo 12.4.0.0 + 匹配 SDK 实机验收。B4 实机：两实体零件只切 body 52（面数 6→8），body 90 面数与包围盒不变，总体积 39214.6018 mm³ = 40000 − 250π，保存重载通过，未知 body id 失败回滚且 revision 不前进。公开工具仍 107，新增参数不新增工具，按 MINOR 递增。未完成项：B5/F09 着色预览与 B6/F10 锥台未实现，C 批 WorkBuddy 黑盒未执行，Creo 9/10 未复测，B4 的回读不匹配路径、装配内切除、三体以上与 compact 32 KiB 预算未验。计数仍 172（BUG 75 / FEAT 61 / DEV 36）。发布结果：`main` = `origin/main` = `2d7b498cd793a3f4693a561df6ae0df8f809d0f7`，annotated 标签 `v0.20.0`（`3f4ed82`）指向该提交，Release <https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.20.0>（id `RE_kwDOU_ueTM4aPLew`，非草稿非预发布，2026-11-10T09:56:06Z）；四附件源码包 9 398 084 字节 `896e03ff…c83d`、种子包 493 442 字节 `6cde6888…0697` 及两个 sidecar，`check_release_assets.py --tag v0.20.0` exit 0；源码包解压后全量单测 `Ran 3263 tests ... OK (skipped=5)`。
 2026-11-09：按用户决定修订本机实机测试放行条件，[BUG-001/FEAT-018 工作卡](work-items/BUG-001-FEAT-018-RECOVERY.md)追加「用户明确确认后即可用 Creo 进行实机测试」，不再以卡死根因核对/事前会话可操作判定为阻断前置；根因未定、历史失败与恢复原件仍逐字节保留，安全底线（不擅自结束Creo/清锁或unknown保护、故障注入需单独授权）不变，确认按次生效。当前规则见 [AGENTS.md](../AGENTS.md) 与 [DEVELOPMENT.md](DEVELOPMENT.md)。本条为规则修订，不新增ID、不改计数（仍172），未合main、未发布；本轮未据此执行任何 Creo 实机测试。
 
@@ -233,6 +235,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | --- | --- | --- | --- | --- |
 | [FEAT-027](BACKLOG_COMPLETED.md#legacy-feat-027) | P3 | 部分交付，剩余待规划 | 未排期 | 墓碑与旧别名拒绝已交付；显式释放/重绑定接口和跨版本历史核对待规划。 |
 | [DEV-066](work-items/DEV-066.md) | P2 | 部分交付，剩余待规划 | 未排期 | 0.18.2已交付来源降级子项；当前分支8def1e4已补齐其余Git读取、报告字段、负例捕获和runtime日志取消跟踪，未发布增量及H08—H09见DEV-075-HANDOFF。 |
+| [FEAT-033](work-items/FEAT-033.md) | P1 | 部分交付，剩余待规划 | 未排期（0.19.3 B 批 opt-in 已交付） | small/large 基准已有；`execute_plan(timeout_seconds)` 受控覆盖（60—7200，默认=服务配置）与 job 回执 `timeout_seconds`/`timeout_source`、看门狗按作业预算判定已交付；自动预算公式、阶段耗时公开契约与到期动作仍待规划，不以取消保存重载缩时。 |
 
 <a id="未来能力候选"></a>
 <a id="当前优先功能"></a>
@@ -258,7 +261,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [FEAT-001](work-items/FEAT-001.md) | P1 | 待规划 | 未排期 | 启动/重连/多会话状态检测及普通 retry、损坏通道恢复完整验收仍开放。 |
 | [FEAT-002](BACKLOG_COMPLETED.md#legacy-feat-002) | P2 | 待规划 | 未排期 | 遇到 DLL 提示等需要人工处理的情况时，说明正在等什么。测试等待超时后，任务上下文是否保留、相关模块能否清理。 |
 | [FEAT-003](BACKLOG_COMPLETED.md#legacy-feat-003) | P2 | 待规划 | 未排期 | 支持并测试带单位的关系式，例如 `8[mm]`。确认它能真实驱动尺寸、带动相关参数变化，并保留用户对单位的检查设置。 |
-| [FEAT-009](work-items/FEAT-009.md) | P2 | 已交付 0.18.3 子项；动态准入已补；多截面/连续性/非平面未排期 | 0.18.3（子项已交付） | 两截面直纹曲面放样 `creo_surface_loft` 在Creo12.4已实机验收（quilt 800 mm²、trim 两侧各 400、2 mm 加厚 1600 mm³）；H13 worker构建身份/动态准入与提交前拒绝已实现并在Creo12.4核验，Creo10缺Probbl.h实机与完整放样路线仍未验；≥3 截面、smooth/闭合、非平行/扭转/圆弧截面仍不公开。 |
+| [FEAT-009](work-items/FEAT-009.md) | P2 | 已交付 0.18.3 子项；动态准入已补；多截面/导线已由 FEAT-065 M1/M2 随 0.21.0 交付；闭合/连续性/非平面未排期 | 0.18.3（子项已交付） | 两截面直纹曲面放样 `creo_surface_loft` 在Creo12.4已实机验收（quilt 800 mm²、trim 两侧各 400、2 mm 加厚 1600 mm³）；H13 worker构建身份/动态准入与提交前拒绝已实现并在Creo12.4核验，Creo10缺Probbl.h实机与完整放样路线仍未验。2026-11-11 更正：多截面已由 [FEAT-065](work-items/FEAT-065.md) M1/M2 随 0.21.0 发布并在 Creo 12.4 实机验收——2—32 截面（两截面 straight 直纹，3 截面以上必须 smooth）、可选 2—8 条第二方向导线；闭合曲面、相切/曲率连续性、非平行/扭转/任意正交平面截面、圆弧截面、端点收敛仍不公开或未测，Creo 9/10 未验。 |
 | [FEAT-011](BACKLOG_COMPLETED.md#legacy-feat-011) | P2 | 待规划 | 未排期 | 增加复合轨迹、可变截面和螺旋扫掠，分别明确范围并测试。 |
 | [FEAT-013](BACKLOG_COMPLETED.md#legacy-feat-013) | P2 | 待规划 | 未排期 | 增加剖视、局部放大、装配图和 BOM（物料清单），逐项检查模型变化后图纸能否同步更新。 |
 | [FEAT-015](BACKLOG_COMPLETED.md#legacy-feat-015) | P3 | 待规划 | 未排期 | 评估模具、NC 加工和仿真能力，先选一个最小场景做完整流程，暂不承诺支持全部模块。 |
@@ -270,7 +273,6 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [FEAT-026](BACKLOG_COMPLETED.md#legacy-feat-026) | P3 | 待规划 | 未排期 | 提供 create_feature_tree 能运行的最小 dict 示例，说明 dump XML 能否转换或导入。先让示例建模、参数、几何和重载通过，非法树能指出问题元素，再评估导出后重新导入。无效示例失败不能证明工具不可用。 |
 | [FEAT-028](BACKLOG_COMPLETED.md#legacy-feat-028) | P3 | 待规划 | 未排期 | 评估一次性 create_plate 的注册/后续编辑范围；不能把无 model_id 产物当受管源件。 |
 | [FEAT-032](work-items/FEAT-032.md) | P2 | 待规划 | 未排期 | 评估原生沿曲线阵列：先简单平面，再闭环弧长、相位、切向、种子计数和跳站，最后履带63站与多特征；多次切除不算原生阵列验收。 |
-| [FEAT-033](work-items/FEAT-033.md) | P1 | 部分交付，剩余待规划 | 未排期（0.19.3 B 批 opt-in 已交付） | small/large 基准已有；`execute_plan(timeout_seconds)` 受控覆盖（60—7200，默认=服务配置）与 job 回执 `timeout_seconds`/`timeout_source`、看门狗按作业预算判定已交付；自动预算公式、阶段耗时公开契约与到期动作仍待规划，不以取消保存重载缩时。 |
 | [FEAT-037](work-items/FEAT-037.md) | P3 | 待规划 | 未排期 | 先补参数误写的最小输入，再明确模型/特征参数目标与同名规则，评估少量建议；不自动猜改，验证关系、revision及重载。 |
 | [FEAT-038](BACKLOG_COMPLETED.md#legacy-feat-038) | P2 | 待规划 | 未排期 | 提供不建立 Toolkit 连接的安装自检路径：校验部署产物与配置一致性（常量表、执行器与源码指纹、种子哈希与清单、protk/loader 注册文件），让按约束停止 Toolkit 连接的受限环境也能确认安装正确性，不必冒卡死风险连 Creo。先确定自检覆盖哪些项、怎样判定"一致"，以及自检通过与实机就绪的关系（自检通过不等于通道可用）。来源见Creo 10 反馈，关联 FEAT-022。 |
 | [FEAT-040](work-items/FEAT-040.md) | P2 | 待规划 | 未排期 | 核对SDK后评估变半径表与收尾控制，补真实冲突边/可行半径诊断；恒定半径行为及回滚保持，与 FEAT-039 联动。 |

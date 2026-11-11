@@ -1,5 +1,16 @@
 # FEAT-055：Q08–Q10 三曲面操作链重规划
 
+## 当前摘要（2026-11-11）
+
+本卡状态与剩余范围不变：H08（`creo_surface_round`、只读 `creo_measure_surface_curvature`）为已交付子项（0.18.4 可行性、0.19.0 公开），其余未排期。下面两处关于 `surface_loft` 的说法已过时，原文作为当时记录保留：
+
+- 「建卡与 2026-11-08 时点摘要」中「Q08 边界混合/`surface_loft` 路线仍不成立，没有公开工具或已注册操作」：2026-11-07 [FEAT-009](FEAT-009.md) H02 用「INCOMPLETE 骨架 → 抽取 → redefine」路线推翻了 2026-11-01 的探针结论，`surface_loft` 是已注册操作，公开工具 `creo_surface_loft` **自 0.18.3 起公开**（Creo 12.4.0.0 实机两截面 800.0 mm²）。
+- 「现状」节（2026-11-02）中 `surface_loft` 探针「路线不成立」：同上，已被 H02 取代；0.21.0 起 [FEAT-065](FEAT-065.md) M1/M2 又扩为 2—32 截面（3 截面以上 smooth）与 2—8 条第二方向导线，Creo 12.4.0.0 实机验收。连续性、闭合曲面、Creo 9/10 等边界以 FEAT-009 与 FEAT-065 的当前摘要为准。
+
+公开工具数以 `creo_capabilities` 的 `tool_count` 为准（0.21.1 为 107）。
+
+## 建卡与 2026-11-08 时点摘要（历史）
+
 日期：2026-11-02。类型：功能/技术路线。优先级：P2。状态：已交付 0.18.4/0.19.0 子项（H08 曲线边圆角 + 数值曲率/G1，均已公开）；**2026-11-08 实机验收通过**：`surface_round` / `creo_surface_round`（相邻面 R3 → 5 面 1187.1238898038469 mm²、开放、保存重载不变；非相邻失败回滚）与 `surface_curvature` / `creo_measure_surface_curvature`（平面 0、R8 球面 0.125 1/mm、G1 90°、只读 revision 不变；不提供斑马纹/曲率梳图像）。公开工具 107（104 + `creo_surface_round` 与 `creo_measure_surface_curvature` + 重新公开的 `creo_quilt_merge`；`creo_surface_boundary_fill` 已实机反证并门禁）；其余未排期（0.11.5/0.11.7/0.12.0 反馈批的归档与逐条映射挂在本卡下，派工编号 Q00—Q07；0.13.0 反馈批见修复计划）。Q00 归档已完成；Q09 投影曲线与 Q10 曲面修剪/加厚测量已由 [FEAT-039](FEAT-039.md) 在 **0.13.0** 实机公开（`creo_project_curve`、`creo_surface_trim`）；Q08 边界混合/`surface_loft` 路线仍不成立，没有公开工具或已注册操作；Q01—Q07 尚未整体实现，按 [0.13.0 修复计划](../superpowers/plans/2026-11-06-0.13.0-feedback-repair-plan.md) 分批推进（本轮仅完成 R07 契约文档的离线部分）。**H08（0.18.4，2026-11-08 实机验收完成）**：曲面边圆角可行（`PRO_FEAT_ROUND` + 两相邻面，结果留在 quilt 上，R3 后 5 面 1187.1238898038469 mm²），`surface_round` / `creo_surface_round` 与数值曲率/G1 均已实机通过，见文末 H08 段。目标版本：0.18.4 / 0.19.0（H08 子项已交付）；剩余未排期。关联 [DEV-053](DEV-053.md)、[FEAT-053](FEAT-053.md)、[FEAT-039](FEAT-039.md)、[FEAT-054](FEAT-054.md)、[DEV-064](DEV-064.md)。
 
 ## 来源
