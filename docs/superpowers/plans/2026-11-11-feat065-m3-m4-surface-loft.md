@@ -23,9 +23,10 @@
 
 | 任务 | 负责 | 依赖 | 状态 | 交付 / 验收 |
 | --- | --- | --- | --- | --- |
-| T0 文档对账 | 子 agent「文档对账」 | 无 | 待执行 | 见 §3。`tools/check_backlog_counts.py` exit 0，分类表与各分节行数一致 |
-| T1 M3 离线实现 | 子 agent「M3 实现」 | 无 | 待执行 | 见 §4。定向单测通过、离线驱动 PASS、Ruff 无新增诊断 |
-| T2a M4 离线候选 | 子 agent「M4 候选」 | T1 | 待执行 | 见 §5。门禁关闭状态下提交前拒绝；候选代码与取证输出就绪 |
+| T0 文档对账 | 子 agent「文档对账」 | 无 | 完成（`5ba2cf5`） | 见 §3。`tools/check_backlog_counts.py` exit 0，分类表与各分节行数一致 |
+| T1 M3 离线实现 | 子 agent「M3 实现」 | 无 | 完成（`b0a0bfa`） | 见 §4。定向单测通过、离线驱动 PASS、Ruff 无新增诊断 |
+| T1b quilt 开放边 ID 通道 | 子 agent「开放边清单」 | T1 | 执行中 | `creo_measure_surface_group` 回执加有上限的开放边清单（ID、所属面与 quilt、长度、端点）；驱动 (a) 改用该通道取边 |
+| T2a M4 离线候选 | 子 agent「M4 候选」 | T1 | 执行中 | 见 §5。门禁关闭状态下提交前拒绝；候选代码与取证输出就绪 |
 | T2b M4 参照树取证 | 主会话 + 用户 | T2a；用户在 Creo 界面建参照件 | 需用户当次确认 | 见 §6 |
 | T3 实机验收 | 主会话 | T1（M4 另需 T2b） | 需用户当次确认 | `tools/test_surface_loft_inputs.py --live --confirm-session-usable` 全 PASS，保存重载 verified |
 | T4 收尾 | 主会话 | T0、T1、T2a | 待执行 | 全量 `tools/dev_check.py --work-item FEAT-065` success；工作卡与台账回填；分支提交 |
@@ -87,4 +88,10 @@ T0 与 T1 改的文件互不重叠，可以并行。T2a 与 T1 改同一批文�
 
 ## 8. 执行记录
 
-（由主会话在各任务完成后回填。）
+- **T0（`5ba2cf5`）**：FEAT-033 移入与其状态一致的「部分交付，剩余待规划」分节，九类计数与分节行数逐类一致（177）；FEAT-009、FEAT-055 首页与 COMPATIBILITY 按 0.21.x 更正，旧文保留在带日期标题下。发现但未改的问题已转入 T4 待办（见下）。
+- **T1（`b0a0bfa`）**：`sections`/`guides` 接受 `{kind:'curve'}`、`{kind:'edge'}`，首末截面可为收敛点；草图来源的解析和报错与 M1/M2 一致。原生拒绝带 `SURFACE_LOFT_INPUT_REJECTED` 与 `failed_loft_input`；回执新增来源种类、几何 ID、边的相邻面、`convergence_point`、`unverified_input_forms`。收敛点使用 `ProCrvcollection.h` 文档化的 `PRO_CURVCOLL_ADD_POINT_INSTR`，但它能否放进边界混合链容器，Probbl.h 没有写，属于实验路线。证据：定向单测 74 项 OK、受影响模块 537 项 OK、四个离线驱动 PASS、`cl /Zs` 语法检查 exit 0；未编译执行器、未连 Creo。
+- **旧驱动修正（`b8e80e7`）**：`tools/test_surface_loft.py` 仍要求两截面拒绝 `smooth`（M1 遗留），改为正向检查。
+- **T1 发现的两个限制**：
+  1. quilt 边没有公开 ID 通道，`creo_inspect_model` 的 `edges` 只列实体面上的边。由 T1b 处理：`surface_group.cpp` 测量时已逐条收集开放边，只是没有输出。
+  2. 原生 `has_solid` 检查看的是整个模型有没有实体，所以模型里已有实体时 `surface_loft` 一律失败，「用实体边补面」走不通。本轮未改，记入 FEAT-065 剩余范围。
+- **T4 待办（来自 T0/T1 报告）**：0.21.0 版本说明漏列 M1，按发布核对台账的勘误方式补记，不改已发布原文；FEAT-065 工作卡中场景 E（799.94 mm²）与验收段曲线导线（600.0 mm²）的数值关系需要说明；BACKLOG 中状态写法与分节名不符的行（DEV-077/079/080、DEV-081、FEAT-055、DEV-074、FEAT-014、FEAT-039、FEAT-058）留给台账维护者判断，本轮不移动。
