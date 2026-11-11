@@ -9,8 +9,10 @@ Offline only: no Creo, no Toolkit. The projection rules, the compact budget
 and the public text are tested in Python; the native record builder is
 compiled on its own with stand-in inputs (``tests/native/
 test_surface_group_open_edges.cpp``) when a local compiler configuration
-exists. Whether Creo 12.4 names quilt edges and evaluates their endpoints is
-not proven here (live acceptance pending, FEAT-065 T3).
+exists. Creo 12.4.0.0 named the quilt edges and evaluated their endpoints in
+the FEAT-065 T3 live run (2026-11-11: 8 open edges of two strips listed, the
+two top edges picked by endpoint); that evidence belongs to
+``tools/test_surface_loft_inputs.py --live``, not to these tests.
 """
 
 from __future__ import annotations
@@ -322,7 +324,7 @@ class OpenEdgeRecordPublicTextTests(unittest.IsolatedAsyncioTestCase):
         text = " ".join(tools["creo_measure_surface_group"].description.split())
         for phrase in (
             "group.open_edge_records",
-            "live acceptance pending",
+            "live-verified on Creo 12.4.0.0",
             "{kind:'edge',id:N}",
             "At most 32 records",
             "open_edge_records_total always equals open_edges",
@@ -331,12 +333,14 @@ class OpenEdgeRecordPublicTextTests(unittest.IsolatedAsyncioTestCase):
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
+        self.assertNotIn("live acceptance pending", text)
 
     def test_capability_limits_publish_the_edge_id_channel(self):
         limits = capabilities.families()["surface_chain"]["limits"]
         self.assertIn("open_edge_records", limits)
         self.assertIn("quilt edge id channel", limits)
-        self.assertIn("not live-verified on Creo 12.4", limits)
+        self.assertIn("FEAT-065 T1b, live-verified on Creo 12.4.0.0", limits)
+        self.assertNotIn("not live-verified", limits)
 
     def test_reference_syntax_points_quilt_edges_at_the_measurement(self):
         text = (ROOT / "docs" / "REFERENCE_SYNTAX.md").read_text(encoding="utf-8")

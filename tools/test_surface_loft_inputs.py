@@ -4,8 +4,10 @@ Default mode is offline: it checks the published contract without any Creo
 session - schema admission of curve/edge references and of one convergence
 point at the first or last section, the refusals that can be decided before a
 job (a point in the middle or in the guides, two points, repeated references),
-the capability/reference text that marks every new form "Creo 12.4 live
-acceptance pending", and the native source route.
+the capability/reference text that marks every form "live-verified on Creo
+12.4.0.0" (FEAT-065 T3, 2026-11-11, 40 live checks), and the native source
+route (every source record live_verified=true, unverified_input_forms kept but
+always empty).
 
 ``--live --confirm-session-usable`` drives the public MCP tools against the
 local Creo session. It must only be run after the user has confirmed the live
@@ -30,7 +32,8 @@ run for that session (AGENTS.md). The cases are:
 (c) bulbous-bow simplification: three YZ ellipse sections along X (x = 0, 20,
     40) as a smooth blend without a point (c0, the arbitrary orthogonal plane
     case), then the same sections converging to a single-point datum_points
-    tip at x = 60 (c, the experimental point holder).
+    tip at x = 60 (c, the PRO_CURVCOLL_ADD_POINT_INSTR holder that Probbl.h
+    does not document; proved live on 2026-11-11).
 (d) negatives: a nonexistent edge id fails the job with
     SURFACE_LOFT_INPUT_REJECTED and a failed_loft_input block; a point in a
     middle section is refused before a job exists.
@@ -482,17 +485,39 @@ def case_offline() -> dict:
     family = capabilities.families()["surface_loft"]
     limits = family["limits"]
     for name, phrase in (
-        ("live_status", "not live-verified on Creo 12.4"),
+        ("live_status", "live-verified on Creo 12.4.0.0 on 2026-11-11"),
         ("curve_form", "{kind:'curve',id:N}"),
         ("edge_form", "{kind:'edge',id:N}"),
         ("point_position", "first or last section only"),
         ("receipt_marker", "unverified_input_forms"),
+        ("receipt_marker_empty", "always empty"),
     ):
         check(f"capability_limits_name_{name}", phrase in limits)
-    check("capability_scope_marks_live_pending", "live acceptance pending" in family["scope"])
+    check(
+        "capability_scope_marks_live_verified",
+        "Creo 12.4.0.0 live-verified" in family["scope"]
+        and "live acceptance pending" not in family["scope"],
+    )
+    check(
+        "capability_text_has_no_pending_marker",
+        not any(
+            stale in text
+            for stale in ("live acceptance pending", "not live-verified")
+            for text in (
+                limits,
+                family["scope"],
+                capabilities.families()["surface_chain"]["scope"],
+                capabilities.families()["surface_chain"]["limits"],
+            )
+        ),
+    )
     check("capability_prefix_unchanged", limits.startswith("2-32 sections and, optionally, 2-8"))
     entry = reference_capabilities()["by_tool"].get("creo_surface_loft") or {}
-    check("references_publish_the_loft_shapes", "not live-verified" in entry.get("live_status", ""))
+    live_status = entry.get("live_status", "")
+    check(
+        "references_publish_the_loft_shapes",
+        "live-verified" in live_status and "not live-verified" not in live_status,
+    )
 
     server = (ROOT / "server.py").read_text(encoding="utf-8")
     check(
@@ -507,7 +532,12 @@ def case_offline() -> dict:
         "PRO_CURVCOLL_ADD_POINT_INSTR" in code,
     )
     check("native_rejects_inputs_with_a_structured_block", "failed_loft_input" in code)
-    check("native_reports_unverified_forms", "unverified_input_forms" in code)
+    check(
+        "native_reports_live_verified_forms",
+        '{"unverified_input_forms", J::array()}' in code
+        and '{"live_verified", true}' in code
+        and '{"live_verified", false}' not in code,
+    )
 
     # (a) edge discovery: creo_measure_surface_group publishes the open edges
     # (FEAT-065 T1b) and the driver picks the section edges by their endpoints.
@@ -556,10 +586,12 @@ def case_offline() -> dict:
         records[:2],
     )
     tool = server[server.index("async def creo_measure_surface_group(") :]
-    tool = tool[: tool.index('"""', tool.index('"""') + 3)]
+    tool = " ".join(tool[: tool.index('"""', tool.index('"""') + 3)].split())
     check(
         "measure_tool_documents_the_open_edge_records",
-        "group.open_edge_records" in tool and "live acceptance pending" in tool,
+        "group.open_edge_records" in tool
+        and "live-verified on Creo 12.4.0.0" in tool
+        and "live acceptance pending" not in tool,
     )
     group_native = (ROOT / "native" / "surface_group.cpp").read_text(encoding="utf-8")
     group_code = "\n".join(
@@ -731,11 +763,17 @@ async def case_a_edge_bridge(client, rec: Recorder, bridge_edges: list[int] | No
     ):
         return
     rec.check("a_saved_file_reloaded_and_verified", harness.saved_verified(bridged))
+    # FEAT-065 T3 closed the M3 acceptance: an edge source is live-verified, so
+    # its record says live_verified=true and unverified_input_forms is empty.
     rec.check(
         "a_sources_are_edges",
         loft.get("section_source_kinds") == ["edge", "edge"]
         and loft.get("guide_source_kinds") == ["sketch", "sketch"]
-        and "edge" in (loft.get("unverified_input_forms") or []),
+        and loft.get("unverified_input_forms") == []
+        and all(
+            isinstance(item, dict) and item.get("live_verified") is True
+            for item in loft.get("section_sources") or [None]
+        ),
         {
             "section_source_kinds": loft.get("section_source_kinds"),
             "section_geometry_ids": loft.get("section_geometry_ids"),
@@ -882,7 +920,8 @@ async def case_b_projected_curve(client, rec: Recorder) -> None:
         "b_sources_are_curve_then_sketch",
         loft.get("section_source_kinds") == ["curve", "sketch"]
         and (loft.get("section_geometry_ids") or [[None]])[0] == [curve_id]
-        and loft.get("unverified_input_forms") == ["curve"],
+        and loft.get("unverified_input_forms") == []
+        and ((loft.get("section_sources") or [{}])[0] or {}).get("live_verified") is True,
         {
             "section_source_kinds": loft.get("section_source_kinds"),
             "section_geometry_ids": loft.get("section_geometry_ids"),
@@ -942,8 +981,8 @@ async def case_c_bulb_convergence(client, rec: Recorder) -> None:
             rec.check(
                 "c_convergence_point_reported",
                 point.get("position") == "end"
-                and point.get("live_verified") is False
-                and loft.get("unverified_input_forms") == ["point"],
+                and point.get("live_verified") is True
+                and loft.get("unverified_input_forms") == [],
                 {"convergence_point": point, "unverified": loft.get("unverified_input_forms")},
             )
         box = (await quilt_record(client, state["model_id"], loft.get("quilt_id"))).get("bbox_mm")

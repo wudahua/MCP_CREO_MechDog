@@ -153,7 +153,7 @@
 
 `creo_surface_loft`（`surface_loft`）自 0.18.3 起公开，**取代**了「多截面放样未发布」的旧说法：2—32 个截面草图按提交顺序建一张边界混合曲面，两截面为直纹（`interpolation="straight"`），三截面及以上由内核拟合成一张光滑面，必须显式 `interpolation="smooth"`。`guides` 是可选第二方向：2—8 个草图、每条恰好一条非复合曲线、不得与截面重复；只给一条导线在校验层直接拒绝（实测单条 2DIR 曲线能建特征但不再生）。导线是否穿过截面由内核判定，不穿过就再生失败而不是被忽略。`creo_loft` 本身仍只接受 `mode="add"`，`mode="surface"`、`cut` 与 `new_body=true` 都在入队前拒绝，实体放样与曲面放样是两条独立路线。
 
-**截面/导线的已有几何引用（FEAT-065 M3，2026-11-11 开发分支，Creo 12.4 实机未验收）**：`sections`/`guides` 的元素除草图标签或特征 ID 外，还接受下列既有裸引用，不加 `reference`/`chain` 包装，每个元素对应一个链容器：
+**截面/导线的已有几何引用（FEAT-065 M3；2026-11-11 Creo 12.4.0.0 实机验收通过）**：`sections`/`guides` 的元素除草图标签或特征 ID 外，还接受下列既有裸引用，不加 `reference`/`chain` 包装，每个元素对应一个链容器：
 
 ```json
 // 截面：已有曲线（如 project_curve 回执的 curve_id）或边；首/末截面可为一个收敛点
@@ -165,11 +165,29 @@
 ```
 
 - `{"kind":"curve","id":N}`：一条 `PRO_CURVE` 几何 ID（`creo_inspect_model(section="feature_geometry")` 中 type 62，或 `project_curve` 的 `curve_id`）；复合曲线不拒绝，回执 `section_sources[i].composite` 标出。
-- `{"kind":"edge","id":N}`：一条边的几何 ID；回执给出 `adjacent_surface_ids`（边两侧的面，quilt 边界边只有一侧）。`creo_inspect_model` 的 `edges` 只枚举实体面上的边；**quilt 边的 ID 从 `creo_measure_surface_group` 回执的 `group.open_edge_records` 取**（2026-11-11 开发分支，Creo 12.4 实机未验收）：每条开放边给出 `edge_id`、`surface_id`、所属 `quilt_id`、`length_mm` 与两端点 `endpoints_mm`，按端点坐标挑边。最多列 32 条，`open_edge_records_total` 恒等于 `open_edges`，`open_edge_records_truncated=true` 表示有边没列出，减少一次测量的 quilt 数即可看到其余边；模型单位换算未知时 mm 值为 null、ID 照列。
-- 收敛点 `{"kind":"point","id":N}` 或 `{"kind":"datum_point_feature","label":...}`（单点 `datum_points` 特征）：只能放在 `sections` 第一项或最后一项，每个放样最多一个，不能作导线。原生用 `ProCrvcollection.h` 文档化的 `PRO_CURVCOLL_ADD_POINT_INSTR` 把点放进链容器，但 `Probbl.h` 没有说明链容器能装点，因此这是**未经实机证明的实验路线**。
+- `{"kind":"edge","id":N}`：一条边的几何 ID；回执给出 `adjacent_surface_ids`（边两侧的面，quilt 边界边只有一侧）。`creo_inspect_model` 的 `edges` 只枚举实体面上的边；**quilt 边的 ID 从 `creo_measure_surface_group` 回执的 `group.open_edge_records` 取**（FEAT-065 T1b，2026-11-11 Creo 12.4.0.0 实机验证：两张曲面带的 8 条开放边全部列出，按端点取到两条顶边）：每条开放边给出 `edge_id`、`surface_id`、所属 `quilt_id`、`length_mm` 与两端点 `endpoints_mm`，按端点坐标挑边。最多列 32 条，`open_edge_records_total` 恒等于 `open_edges`，`open_edge_records_truncated=true` 表示有边没列出，减少一次测量的 quilt 数即可看到其余边；模型单位换算未知时 mm 值为 null、ID 照列。
+- 收敛点 `{"kind":"point","id":N}` 或 `{"kind":"datum_point_feature","label":...}`（单点 `datum_points` 特征）：只能放在 `sections` 第一项或最后一项，每个放样最多一个，不能作导线。原生用 `ProCrvcollection.h` 文档化的 `PRO_CURVCOLL_ADD_POINT_INSTR` 把点放进链容器；`Probbl.h` 没有说明链容器能装点，这条路线由 2026-11-11 实机证明可用。
 - 每个元素一个几何项：一个截面只装一条曲线或一条边，多条边拼成的闭合截面暂不支持（草图截面仍可是两条曲线的闭合轮廓）。
 - 提交前拒绝：点出现在中间位置或导线里、两个点、几何 kind 带 `label`、多余字段、`quilt`/`surface` 等非链 kind、同一引用重复或既作截面又作导线。只有原生能判定的（ID 不存在、类型不对、标签不是单点基准点）在作业中以 `SURFACE_LOFT_INPUT_REJECTED` 失败并回滚，失败记录带 `failed_loft_input`（`role`、`index`、`slot`、`request`、`reason`、`query_code`、`use_instead`）；ID 实际是另一种几何时，消息直接给出可用写法。
-- 回执新增 `section_source_kinds`/`guide_source_kinds`（`sketch`/`curve`/`edge`/`point`）、`section_geometry_ids`/`guide_geometry_ids`（每个链容器实际装入的几何 ID）、`section_sources`/`guide_sources`（逐项来源记录）、`convergence_point` 与 `unverified_input_forms`（本次用到、尚无实机证据的形态）。`section_curve_ids`/`guide_curve_ids` 保持原义，只列曲线 ID。旧的纯草图计划行为与回执原有字段不变。
+- 回执新增 `section_source_kinds`/`guide_source_kinds`（`sketch`/`curve`/`edge`/`point`）、`section_geometry_ids`/`guide_geometry_ids`（每个链容器实际装入的几何 ID）、`section_sources`/`guide_sources`（逐项来源记录，曲线/边/点来源带 `live_verified=true`）与 `convergence_point`。`unverified_input_forms` 为兼容旧回执保留，四种形态均已实机验证，恒为 `[]`。`section_curve_ids`/`guide_curve_ids` 保持原义，只列曲线 ID。旧的纯草图计划行为与回执原有字段不变。
+- 实机数值（2026-11-11，Creo 12.4.0.0，40 项检查全部通过）：两条曲面带顶边作截面、两条草图导线，补面 800 mm²，接缝 gap 0，截面边不再是开放边；`project_curve` 曲线作首截面，直纹面积 1131.37 mm²；三个 YZ 椭圆截面沿 X 排列 2075.38 mm²，末端加收敛点后 2415.05 mm²、x 延伸到 60 mm；不存在的边 ID 以 `SURFACE_LOFT_INPUT_REJECTED` 失败，中间位置的点在提交前拒绝。四个成功用例均通过保存重载核验。
+
+**边界相切（FEAT-065 M4，`boundary_conditions`；2026-11-11 Creo 12.4.0.0 实机测定）**：截面来源是边时，可以让放样面在首、末截面处与该边所在的面相切。
+
+```json
+// 两张曲面带的顶边作首、末截面，两端都与各自曲面带相切
+{"sections": [{"kind": "edge", "id": 53}, {"kind": "edge", "id": 85}],
+ "boundary_conditions": [{"boundary": "first_section", "condition": "tangent"},
+                         {"boundary": "last_section", "condition": "tangent"}]}
+```
+
+- 每项是 `{"boundary": ..., "condition": ...}`，最多 4 项，同一边界只能出现一次。
+- 只公开 `condition="tangent"`，且只能用于 `first_section`/`last_section`；该截面必须是 `{"kind":"edge","id":N}`，且这条边只有一个相邻面（quilt 边界边，ID 从 `open_edge_records` 取）。相邻面由原生按边自动解析，不另给参数。
+- 相切方向固定为「顺着相邻面延伸」，没有翻转或权重参数。方向由边界决定，与边的走向、面的法向无关：把其中一张曲面带的草图线反画（边方向和面法向都翻转），结果完全相同。
+- `condition="free"` 可用于任何边界，不写入任何元素，等同于省略。
+- 提交前拒绝：`curvature`（候选值实测把形状改成 915.99 mm²，但接缝仍是 90°，不是曲率连续）、`normal`（候选值在实测几何上与 `free` 一样仍是平面，无法区分）、`first_guide`/`last_guide` 上的非 `free` 条件（导线边界未测）、来源不是边的截面上的 `tangent`。原生在建特征之前再检查一次，手写计划绕过校验时以 `SURFACE_LOFT_BOUNDARY_CONDITION_REJECTED`（`reason="not_available"`）拒绝；边有两个相邻面时以同一前缀、`reason="adjacent_face_count"` 失败，均不产生特征。
+- 回执 `boundary_conditions[]` 逐项回显 `boundary`、`condition`、`edge_id`、`surface_id`；写入的项另有 `status="written"`、`tnc_index`、`tan_cond_type`、`stretch`、`connect_chain="kernel_default"`。
+- 实测：两张 40×10 mm 竖直曲面带相距 20 mm，用两条顶边作截面、不加导线。自由时补面为 800 mm² 平面，与曲面带成 90°；两端 `tangent` 时补面成拱形，982.5888 mm²，包围盒 z 最高 15.12 mm，与两张曲面带分别 JOIN 后用 `creo_measure_surface_curvature` 测得接缝法向夹角均为 0.0°（`within_g1=true`）。
 
 `extrude(mode="surface")`、`revolve(mode="surface")`（含局部角度）以及曲面特征上的 `axis_pattern` 已有 Creo 10 报告方实机正证据；它们不替代多截面放样或 quilt 合并。`creo_quilt_merge` 自 0.19.0（FEAT-039 H03）起已公开：只支持两片相接/相交 quilt 的 JOIN，在 `target` 上原地重剪（`result_quilt_source="retrimmed_target_quilt"`）。**merge 的结果没有可独立引用的 quilt 标签**：下一次 merge、`solidify` 或 `thicken` 必须继续引用**原始 target** 的标签或几何 ID，用 merge 特征标签会得到 `ProFeatureGeomitemVisit -4`（2026-11-10 Creo 10 上报，同计划与跨计划均复现，见 [BUG-115](work-items/BUG-115.md)）。修剪结果 quilt 通过特征标签再次引用、弯曲 quilt 的偏置距离读回与保留侧的几何判据仍未闭环；需要从当前模型的 `inspect_model(section="quilts")` 获取实际几何 ID，不能把请求值当成实测值。
 
@@ -191,7 +209,8 @@
 | thicken.reference | 裸 quilt 或 quilt_feature 引用 |
 | surface_trim.target/tool | target 一个 quilt；tool 一个 quilt、基准面标签或曲线几何 ID；`keep_side` 只用 `one`/`two`，实际依据见 `kept_side_basis`；`offset_mm` 仍拒绝 |
 | project_curve.target/source/direction_ref | target 一个 quilt；source 只接受 `{"kind":"curve","id":N}`（不接受 edge/axis 或曲线标签）；direction_ref 接受 `datum_feature`/`datum_axis_feature` 标签或曲线 ID，不接受 `datum_plane` 标签或裸向量 |
-| surface_loft.sections/guides | 每个元素是草图标签/特征 ID，或裸引用 `{"kind":"curve","id":N}`、`{"kind":"edge","id":N}`；只有首/末截面可为一个收敛点 `{"kind":"point","id":N}` / `{"kind":"datum_point_feature","label":...}`。引用形态为 FEAT-065 M3，Creo 12.4 实机未验收 |
+| surface_loft.sections/guides | 每个元素是草图标签/特征 ID，或裸引用 `{"kind":"curve","id":N}`、`{"kind":"edge","id":N}`；只有首/末截面可为一个收敛点 `{"kind":"point","id":N}` / `{"kind":"datum_point_feature","label":...}`。引用形态为 FEAT-065 M3，2026-11-11 Creo 12.4.0.0 实机验收通过 |
+| surface_loft.boundary_conditions | 最多 4 个 `{"boundary","condition"}`，每个边界一次；只公开 `tangent`，限 `first_section`/`last_section` 且该截面是只有一个相邻面的 `{"kind":"edge","id":N}`，方向固定为顺着相邻面延伸；`free` 任意边界可用；`curvature`、`normal`、导线边界上的非 `free` 在提交前拒绝（FEAT-065 M4） |
 | surface_offset.reference | 裸 quilt 或 quilt_feature 引用；距离字段是 `distance`，结果为会增加实体体积的偏置壁；源 quilt id 不是新结果 quilt，实测距离可用性见 offset_distance_status |
 | sheetmetal_flange.edge | 裸引用（计划路径 `operations[i].edge`），两种形态：`{"kind":"edge","id":N}`，`id` 取当前 `creo_inspect_model` 的边 ID；或 `{"kind":"edge_geometry","endpoints_mm":[[x,y,z],[x,y,z]],"tolerance_mm":1e-6}`，用当前模型坐标毫米的两端点点名一条直线边，原生在执行每个 op 时重查当前几何、要求无向唯一匹配，因此计划可跨边 ID 重排。`tolerance_mm` 可省略（默认 1e-6，范围 1e-9..1000），不接受单位字段；0/多候选、非有限坐标、退化边或无法换算模型长度单位时明确拒绝。两种形态都不得再加 edge/reference 包装。首壁来源为 `native_planar` 时，报错只指向 `creo_sheetmetal_planar_wall` 的 frame/envelope；只有 `sheetmetal_wall` 转换首壁才引用 `wall_contract`；来源未知不给旧首壁配方 |
 | sheetmetal_unbend/flat_pattern/bend_back.fixed_surface | 裸面引用，如 `{"kind":"surface","id":N}`，取自当前巡检；`references` 省略时作用全部折弯，能否固定由原生执行判定 |

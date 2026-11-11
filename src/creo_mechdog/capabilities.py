@@ -134,17 +134,11 @@ UNAVAILABLE_OPERATIONS: dict[str, str] = {
 # FEAT-065/M4: optional fields of a published operation whose native route is
 # not proved, keyed "<op>.<field>". A non-empty value is refused before a job
 # exists, in the same words as UNAVAILABLE_OPERATIONS. Deleting an entry is the
-# only switch; native/surface_loft.cpp still refuses an unmapped condition
-# (SURFACE_LOFT_BOUNDARY_CONDITION_UNMAPPED) until its tables are filled.
-UNAVAILABLE_FIELDS: dict[str, str] = {
-    "surface_loft.boundary_conditions": (
-        "FEAT-065 M4 boundary continuity is an offline candidate only; Probbl.h documents "
-        "only TAN_COND_FREE for PRO_E_BNBLN_TAN_COND_TYPE and gives it no parsable value, so "
-        "the tangent/curvature/normal integers and which PRO_E_BNBLN_TNC_BNDRY entry is "
-        "which boundary must first be read from a Creo-built reference part (FEAT-065 T2b); "
-        "omit boundary_conditions to keep the kernel's own default"
-    ),
-}
+# only switch. Empty since 2026-11-11: surface_loft.boundary_conditions left
+# after FEAT-065 T2b measured 'tangent' on Creo 12.4.0.0; the conditions that
+# were not proved (curvature, normal, any non-free guide boundary) are refused
+# by the SurfaceLoftOp schema and again by native/surface_loft.cpp.
+UNAVAILABLE_FIELDS: dict[str, str] = {}
 
 
 def require_available(operations: list[dict]) -> None:
@@ -908,7 +902,8 @@ def families() -> dict:
             "scope": (
                 "boundary-blend a quilt from 2-32 sketch sections (two ruled, three or more "
                 "one smooth blend) with optional guides, plus curve/edge ids and one "
-                "convergence point as FEAT-065 M3 inputs that are not yet live-verified "
+                "convergence point as FEAT-065 M3 inputs (Creo 12.4.0.0 live-verified) and "
+                "tangency to the face next to an edge first/last section (FEAT-065 M4) "
                 "(measured area and closure); trim one quilt "
                 "with another quilt, a datum-plane label or a curve geometry id; "
                 "project one curve geometry id onto one quilt along an explicit "
@@ -956,8 +951,10 @@ def families() -> dict:
                 "blend through every section) with an optional second direction of 2-8 guide "
                 "sketches that bend the surface; one guide alone does not regenerate; curve/"
                 "edge id inputs and a first/last convergence point (FEAT-065 M3) are "
-                "implemented but not live-verified on Creo 12.4; no "
-                "closed, continuity or solid output; conditional on Probbl.h in the "
+                "live-verified on Creo 12.4.0.0; boundary continuity is 'tangent' only, at a "
+                "first/last edge section with one adjacent face (FEAT-065 M4; curvature, "
+                "normal and guide boundaries are refused before a job); no "
+                "closed or solid output; conditional on Probbl.h in the "
                 "worker build SDK; intersection with a trim tool does not by itself prove "
                 "that it partitions a removable region (a closed loop or connections to "
                 "target boundaries may be needed); intersection curves are not measured; "
@@ -981,7 +978,9 @@ def families() -> dict:
                 "its open_edge_records (edge_id, surface_id, quilt_id, length_mm, "
                 "endpoints_mm; at most 32, with open_edge_records_total and "
                 "open_edge_records_truncated) are the quilt edge id channel for "
-                "surface_loft {kind:'edge',id:N} (FEAT-065, not live-verified on Creo 12.4); "
+                "surface_loft {kind:'edge',id:N} (FEAT-065 T1b, live-verified on Creo "
+                "12.4.0.0: the 8 open edges of two strips listed and two top edges picked by "
+                "endpoint); "
                 "an unknown unit scale keeps their mm values null; "
                 "surface_round is one constant radius on two member faces of one quilt "
                 "(no variable radius, edge chain, transitions or solid target) and the "
@@ -1047,9 +1046,11 @@ def families() -> dict:
                 "submitted order, optionally guided by a second direction of 2-8 guide "
                 "sketches: exactly two sections are ruled (interpolation=straight), three or "
                 "more are one smooth blend through every section (interpolation=smooth), and "
-                "guides bend the surface through their curves. FEAT-065 M3 (Creo 12.4 live "
-                "acceptance pending): sections and guides may also name an existing curve or "
-                "edge id, and the first or last section may be one convergence point"
+                "guides bend the surface through their curves. FEAT-065 M3 (Creo 12.4.0.0 "
+                "live-verified 2026-11-11): sections and guides may also name an existing "
+                "curve or edge id, and the first or last section may be one convergence point. "
+                "FEAT-065 M4: an edge section at the first or last position may be made "
+                "tangent to the face next to it (boundary_conditions)"
             ),
             "limits": (
                 "2-32 sections and, optionally, 2-8 guides (PRO_E_BNBLN_2DIR); straight is "
@@ -1061,25 +1062,45 @@ def families() -> dict:
                 "and guides, and one guide alone never regenerates (2DIR needs two curves; "
                 "measured 2026-11-11); whether a guide crosses every section is the kernel's "
                 "decision and a non-crossing guide fails regeneration instead of being "
-                "silently dropped; no closed surface, continuity/tangency, control points or "
-                "solid output; section order is the loft direction; closure comes from "
+                "silently dropped; no closed surface, control points or solid output, and "
+                "continuity is 'tangent' only (below); section order is the loft direction; "
+                "closure comes from "
                 "ProQuiltVolumeEval, so an open quilt is reported open instead of assumed. "
-                "FEAT-065 M3 input forms are implemented offline and not live-verified on "
-                "Creo 12.4: {kind:'curve',id:N} and {kind:'edge',id:N} as one-item sections or "
-                "guides (one geometry item per holder, no multi-edge chain per slot), and one "
-                "convergence point {kind:'point',id:N} / {kind:'datum_point_feature',label} "
-                "at the first or last section only (never a guide, never two points); the point "
-                "is placed with PRO_CURVCOLL_ADD_POINT_INSTR, which Probbl.h does not document "
-                "for a chain holder, so it is an experiment; the receipt lists these forms in "
-                "unverified_input_forms and a bad id fails with SURFACE_LOFT_INPUT_REJECTED and "
-                "failed_loft_input; creo_inspect_model enumerates solid edges only, so read a "
-                "quilt edge id from creo_measure_surface_group group.open_edge_records (FEAT-065 "
-                "T1b, not live-verified). FEAT-065 M4 boundary_conditions "
+                "FEAT-065 M3 input forms, live-verified on Creo 12.4.0.0 on 2026-11-11 (40 live "
+                "checks): {kind:'curve',id:N} and {kind:'edge',id:N} as one-item sections or "
+                "guides (one geometry item per holder, no multi-edge chain per slot) - two "
+                "strip top edges plus two sketch guides bridged at 800 mm2 with a 0 mm seam "
+                "gap, a projected-curve "
+                "section ruled at 1131.37 mm2, three YZ ellipse sections along X at "
+                "2075.38 mm2 - and one convergence point {kind:'point',id:N} / "
+                "{kind:'datum_point_feature',label} at the first or last section only (never a "
+                "guide, never two points); the point is placed with "
+                "PRO_CURVCOLL_ADD_POINT_INSTR, which Probbl.h does not document for a chain "
+                "holder, and the same ellipses closed at x = 60 mm measured 2415.05 mm2; each "
+                "source record carries live_verified=true and unverified_input_forms stays in "
+                "the receipt for compatibility, always empty; a bad id fails with "
+                "SURFACE_LOFT_INPUT_REJECTED and failed_loft_input; creo_inspect_model "
+                "enumerates solid edges only, so read a quilt edge id from "
+                "creo_measure_surface_group group.open_edge_records (FEAT-065 T1b, "
+                "live-verified in the same run). FEAT-065 M4 boundary_conditions "
                 "([{boundary: first_section|last_section|first_guide|last_guide, condition: "
-                "free|tangent|curvature|normal}], at most 4, each boundary once, non-free only "
-                "where that boundary is an edge) is validated but gated: any non-empty list is "
-                "refused before a job (UNAVAILABLE_FIELDS) until FEAT-065 T2b reads the "
-                "TAN_COND integers from a reference part"
+                "free|tangent|curvature|normal}], at most 4, each boundary once): 'tangent' is "
+                "published at first_section/last_section only, where that section is an edge "
+                "{kind:'edge',id:N} with a single adjacent face (a quilt boundary edge); the "
+                "direction is fixed - the surface leaves the boundary continuing the "
+                "neighbouring face, with no flip or weight (PRO_E_BNBLN_TAN_COND_TYPE 2 and "
+                "PRO_E_BNBLN_STRETCH -1 at the first / +1 at the last section, kernel-default "
+                "connect chain); measured on Creo 12.4.0.0: two vertical 40x10 mm strips 20 mm "
+                "apart bridged by their top edges became an arch of 982.5888 mm2 (bounding box "
+                "z up to 15.12 mm) with G1 0.0 deg at both seams, where the free bridge is the "
+                "800 mm2 plane at 90 deg, and reversing one strip's sketch gave the same "
+                "result; 'free' is accepted on any boundary and writes nothing; 'curvature' is "
+                "refused because the candidate value 3 kept a 90 deg seam (915.99 mm2), "
+                "'normal' because value 4 built the same plane as free, and a non-free guide "
+                "boundary because guide boundaries were not measured; these are refused before "
+                "a job, and the native executor repeats the refusal "
+                "(SURFACE_LOFT_BOUNDARY_CONDITION_REJECTED, reason not_available) before any "
+                "feature exists"
             ),
             "unavailable_fields": {
                 key.split(".", 1)[1]: reason

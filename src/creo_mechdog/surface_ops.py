@@ -126,11 +126,12 @@ def _normalize_feature_refs(values: Any, what: str) -> Any:
 #: sketch label or feature id. A chain kind names one existing geometry item
 #: that becomes one chain holder; a point kind is a convergence end and is
 #: accepted only as the first or last section. The native executor proves each
-#: id exists and has that type. None of these forms has Creo 12.4 live evidence
-#: yet (FEAT-065 T3), so the receipt lists them in ``unverified_input_forms``.
+#: id exists and has that type. All four forms were live-verified on Creo
+#: 12.4.0.0 on 2026-11-11 (FEAT-065 T3), so the receipt's
+#: ``unverified_input_forms`` stays for compatibility and is always empty.
 LOFT_CHAIN_KINDS = ("curve", "edge")
 LOFT_POINT_KINDS = ("point", "datum_point_feature")
-LOFT_INPUT_LIVE_STATUS = "Creo 12.4 live acceptance pending (FEAT-065 M3)"
+LOFT_INPUT_LIVE_STATUS = "Creo 12.4.0.0 live-verified on 2026-11-11 (FEAT-065 M3/T3)"
 
 LOFT_INPUT_FORMS = (
     "a sketch label or integer feature id, {kind:'curve',id:N} (a PRO_CURVE geometry id, "
@@ -241,15 +242,39 @@ LOFT_BOUNDARY_SLOTS = {
     "last_guide": ("guides", -1),
 }
 
+#: FEAT-065/M4 (T2b, 2026-11-11, Creo 12.4.0.0): the boundaries where a
+#: non-free condition was measured. Two vertical 40 x 10 mm strips 20 mm apart
+#: bridged by their top edges became an arch (982.5888 mm2) meeting both strips
+#: at G1 0.0 deg with ``tangent`` at both sections; the free bridge is the
+#: 800 mm2 plane at 90 deg. Guide boundaries were not measured.
+LOFT_TANGENT_BOUNDARIES = ("first_section", "last_section")
+
+#: FEAT-065/M4: why a condition the field can spell is still refused. Probbl.h
+#: documents only TAN_COND_FREE, so each reason is the measured result of the
+#: one candidate value tried for it on the same two-strip bridge.
+LOFT_CONDITION_REFUSALS = {
+    "curvature": (
+        "the candidate PRO_E_BNBLN_TAN_COND_TYPE value 3 changed the bridge (915.99 mm2) but "
+        "kept a 90 deg seam on Creo 12.4.0.0, so it is not curvature continuity"
+    ),
+    "normal": (
+        "the candidate value 4 built the same 800 mm2 plane as 'free' on Creo 12.4.0.0, so "
+        "normal cannot be told apart from free"
+    ),
+}
+
 
 class LoftBoundaryCondition(StrictModel):
     """FEAT-065/M4: continuity between one loft boundary and its neighbour face.
 
-    ``free`` keeps the kernel's own default. ``tangent``/``curvature``/
-    ``normal`` need the boundary to be an edge ``{kind:'edge',id:N}``: the
-    neighbour is that edge's single adjacent face, resolved natively. The
-    whole field is gated in ``capabilities.UNAVAILABLE_FIELDS`` until FEAT-065
-    T2b reads the PRO_E_BNBLN_TAN_COND_TYPE integers from a reference part.
+    ``free`` keeps the kernel's own default and is accepted on any boundary.
+    ``tangent`` is the only published non-free condition: it needs a
+    ``first_section``/``last_section`` boundary whose source is an edge
+    ``{kind:'edge',id:N}``, and the neighbour is that edge's single adjacent
+    face, resolved natively. The surface leaves the boundary continuing that
+    face; the direction is fixed (measured, not a parameter). ``curvature`` and
+    ``normal`` stay spellable so the refusal can name the measured reason
+    (``LOFT_CONDITION_REFUSALS``); guide boundaries take ``free`` only.
     """
 
     boundary: Literal["first_section", "last_section", "first_guide", "last_guide"]
@@ -261,9 +286,9 @@ class SurfaceLoftOp(StrictModel):
 
     Two to 32 sections. Each section is an MCP-owned sketch that owns one
     non-composite curve (two for one closed profile), or - FEAT-065/M3, Creo
-    12.4 live acceptance pending - one existing curve ``{kind:'curve',id:N}``
-    or edge ``{kind:'edge',id:N}``; the first or the last section may instead
-    be one convergence point ``{kind:'point',id:N}`` /
+    12.4.0.0 live-verified on 2026-11-11 - one existing curve
+    ``{kind:'curve',id:N}`` or edge ``{kind:'edge',id:N}``; the first or the
+    last section may instead be one convergence point ``{kind:'point',id:N}`` /
     ``{kind:'datum_point_feature',label:...}``. The sections feed the same
     PRO_E_BNBLN_1DIR tree the two-section release used, so a third (or more)
     section is one more chain holder rather than a new feature family.
@@ -282,9 +307,9 @@ class SurfaceLoftOp(StrictModel):
     shape follows the guides (2026-11-11: semicircular guides widened the quilt
     to x = 44.24 mm on a 40 mm section). Closed surfaces and solid output are
     still refused before a job exists, and the operator never falls back to a
-    solid Blend. ``boundary_conditions`` (FEAT-065/M4) is validated here but
-    gated in ``capabilities.UNAVAILABLE_FIELDS``: a non-empty list is refused
-    before a job until the TAN_COND integers are read from a reference part.
+    solid Blend. ``boundary_conditions`` (FEAT-065/M4) publishes ``tangent``
+    at an edge first/last section only; curvature, normal and any non-free
+    guide boundary are refused here with the measured reason.
     """
 
     op: Literal["surface_loft"]
@@ -297,8 +322,7 @@ class SurfaceLoftOp(StrictModel):
     # is an MCP-owned sketch holding one curve, or (M3) one curve/edge id; every
     # guide must cross every section, and that crossing is the kernel's call.
     guides: Annotated[list[LoftInput], Field(max_length=8)] = []
-    # FEAT-065/M4 offline candidate, gated before a job exists. None keeps the
-    # dumped plan of every earlier request unchanged.
+    # FEAT-065/M4: None keeps the dumped plan of every earlier request unchanged.
     boundary_conditions: Annotated[list[LoftBoundaryCondition], Field(max_length=4)] | None = None
 
     @field_validator("sections", mode="before")
@@ -402,9 +426,12 @@ class SurfaceLoftOp(StrictModel):
 
     @model_validator(mode="after")
     def boundary_conditions_name_edge_boundaries(self):
-        # FEAT-065/M4: one entry per boundary; a guide boundary needs guides;
-        # a non-free condition needs an edge there, because the neighbour face
-        # is the edge's own adjacent face and a sketch or curve has none.
+        # FEAT-065/M4: one entry per boundary; only the measured conditions
+        # pass (free anywhere, tangent at an edge first/last section); a guide
+        # boundary needs guides; tangent needs an edge there, because the
+        # neighbour face is the edge's own adjacent face and a sketch or curve
+        # has none. native/surface_loft.cpp repeats these refusals before any
+        # feature exists, for a hand-written plan that skips this model.
         seen: dict[str, int] = {}
         for index, item in enumerate(self.boundary_conditions or []):
             where = f"surface_loft boundary_conditions[{index}]"
@@ -414,6 +441,18 @@ class SurfaceLoftOp(StrictModel):
                     f"boundary_conditions[{seen[item.boundary]}]; give each boundary once"
                 )
             seen[item.boundary] = index
+            refusal = LOFT_CONDITION_REFUSALS.get(item.condition)
+            if refusal:
+                raise ValueError(
+                    f"{where} condition '{item.condition}' is not available: {refusal}; use "
+                    "'tangent' at an edge first_section/last_section, or 'free'"
+                )
+            if item.condition != "free" and item.boundary not in LOFT_TANGENT_BOUNDARIES:
+                raise ValueError(
+                    f"{where} '{item.condition}' on '{item.boundary}' is not available: guide "
+                    "boundaries were not measured on Creo 12.4.0.0 (FEAT-065 T2b), so they "
+                    "accept 'free' only; tangent applies to first_section/last_section"
+                )
             field, position = LOFT_BOUNDARY_SLOTS[item.boundary]
             slots = self.sections if field == "sections" else self.guides
             if not slots:

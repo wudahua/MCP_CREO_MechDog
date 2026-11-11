@@ -4,9 +4,9 @@ Sections and guides may name an existing curve ``{kind:'curve',id:N}`` or edge
 ``{kind:'edge',id:N}``, and the first or last section may be one convergence
 point. These tests lock the admission rules, the unchanged sketch path, the
 receipt projection/protection and the native source contract. None of them
-builds geometry: every new form is still "Creo 12.4 live acceptance pending",
-and the live evidence belongs to
-``tools/test_surface_loft_inputs.py --live --confirm-session-usable``.
+builds geometry: every form was live-verified on Creo 12.4.0.0 on 2026-11-11
+by ``tools/test_surface_loft_inputs.py --live --confirm-session-usable`` (40
+checks), and that driver remains the place for live evidence.
 """
 
 from __future__ import annotations
@@ -251,31 +251,49 @@ class PublicSurfaceTests(unittest.TestCase):
                 self.assertIn("'object'", text)
                 self.assertIn("'integer'", text)
                 self.assertIn("'string'", text)
-        description = tools["creo_surface_loft"].description
-        self.assertIn("live acceptance pending", description)
+        description = " ".join(tools["creo_surface_loft"].description.split())
+        self.assertIn("FEAT-065 M3 (Creo 12.4.0.0 live-verified)", description)
+        self.assertNotIn("live acceptance pending", description)
+        self.assertNotIn("unproven", description)
         self.assertIn("SURFACE_LOFT_INPUT_REJECTED", description)
 
     def test_model_annotation_carries_the_reference_form(self):
         annotation = repr(SurfaceLoftOp.model_fields["sections"].annotation)
         self.assertIn("dict", annotation)
 
-    def test_capability_limits_name_the_unverified_forms(self):
+    def test_capability_limits_name_the_live_verified_forms(self):
         limits = capabilities.families()["surface_loft"]["limits"]
         for phrase in (
             "FEAT-065 M3",
-            "not live-verified on Creo 12.4",
+            "live-verified on Creo 12.4.0.0 on 2026-11-11",
             "{kind:'curve',id:N}",
             "{kind:'edge',id:N}",
             "first or last section only",
             "PRO_CURVCOLL_ADD_POINT_INSTR",
             "unverified_input_forms",
+            "always empty",
+            "live_verified=true",
             "SURFACE_LOFT_INPUT_REJECTED",
             "creo_measure_surface_group group.open_edge_records",
+            "1131.37 mm2",
+            "2075.38 mm2",
+            "2415.05 mm2",
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, limits)
-        self.assertIn("live acceptance pending", capabilities.families()["surface_loft"]["scope"])
-        self.assertIn("not live-verified", capabilities.families()["surface_chain"]["limits"])
+        scope = capabilities.families()["surface_loft"]["scope"]
+        self.assertIn("Creo 12.4.0.0 live-verified", scope)
+        chain_limits = capabilities.families()["surface_chain"]["limits"]
+        self.assertIn("are live-verified on Creo 12.4.0.0", chain_limits)
+        for text in (
+            limits,
+            scope,
+            chain_limits,
+            capabilities.families()["surface_chain"]["scope"],
+        ):
+            for stale in ("live acceptance pending", "not live-verified", "not yet live-verified"):
+                with self.subTest(stale=stale):
+                    self.assertNotIn(stale, text)
         self.assertNotIn(
             "exactly two single-curve", capabilities.families()["surface_chain"]["scope"]
         )
@@ -298,15 +316,23 @@ class PublicSurfaceTests(unittest.TestCase):
             loft(sections=["loft_a", entry["convergence_point_by_label"]]),
             loft(guides=entry["guides"]),
             loft(guides=entry["guide_curve_or_edge"]),
+            loft(
+                sections=entry["tangent_sections"],
+                boundary_conditions=entry["boundary_conditions"],
+            ),
         ]
         for operation in operations:
             with self.subTest(operation=operation):
                 validate_operations([operation])
-        self.assertIn("not live-verified", entry["live_status"])
+        self.assertIn("live-verified", entry["live_status"])
+        self.assertNotIn("not live-verified", entry["live_status"])
+        self.assertIn("unverified_input_forms is always empty", entry["live_status"])
+        self.assertNotIn("live acceptance pending", entry["edge_ids"])
         self.assertIn("SURFACE_LOFT_INPUT_REJECTED", entry["rejected"]["unknown_id"])
 
     def test_live_status_marker_is_published(self):
-        self.assertIn("pending", LOFT_INPUT_LIVE_STATUS)
+        self.assertIn("live-verified", LOFT_INPUT_LIVE_STATUS)
+        self.assertNotIn("pending", LOFT_INPUT_LIVE_STATUS)
 
 
 def loft_record(**extra) -> dict:
@@ -337,7 +363,8 @@ def loft_record(**extra) -> dict:
         "guide_geometry_ids": [[51], [52]],
         "guide_sources": [],
         "convergence_point": None,
-        "unverified_input_forms": ["edge"],
+        # Kept for receipt compatibility; every M3 form is live-verified.
+        "unverified_input_forms": [],
     }
     record.update(extra)
     return record
@@ -361,7 +388,7 @@ class ReceiptProjectionTests(unittest.TestCase):
         compact = compact_operation(loft_record())
         self.assertEqual(compact["section_source_kinds"], ["edge", "edge"])
         self.assertEqual(compact["section_geometry_ids"], [[12], [13]])
-        self.assertEqual(compact["unverified_input_forms"], ["edge"])
+        self.assertEqual(compact["unverified_input_forms"], [])
         self.assertEqual(compact["section_sources"][0]["adjacent_surface_ids"], [40])
 
     def test_source_identity_is_protected_from_the_budget_trim(self):
@@ -383,7 +410,7 @@ class ReceiptProjectionTests(unittest.TestCase):
         self.assertNotIn("section_sources", kept)
         self.assertEqual(kept["section_source_kinds"], ["edge", "edge"])
         self.assertEqual(kept["section_geometry_ids"], [[12], [13]])
-        self.assertEqual(kept["unverified_input_forms"], ["edge"])
+        self.assertEqual(kept["unverified_input_forms"], [])
         self.assertEqual(kept["surface_area_mm2"], 800.0)
 
     def test_a_failed_input_block_survives_the_trim(self):
@@ -491,11 +518,22 @@ class NativeContractTests(unittest.TestCase):
             with self.subTest(key=key):
                 self.assertIn(f'{{"{key}", ', code)
 
-    def test_point_chain_is_the_documented_instruction_and_marked_unproven(self):
+    def test_point_chain_is_the_documented_instruction_and_marked_live_verified(self):
         code = _code(self.gated)
         self.assertIn("ProCrvcollinstrAlloc(PRO_CURVCOLL_ADD_POINT_INSTR, &instruction)", code)
         self.assertIn("SURFACE_LOFT_POINT_CHAIN_REFUSED", code)
-        self.assertIn('{"live_verified", false}', code)
+        # FEAT-065 T3 (2026-11-11): curve, edge and point records, and the
+        # convergence block, all carry live_verified=true; nothing is false.
+        self.assertGreaterEqual(code.count('{"live_verified", true}'), 3)
+        self.assertNotIn('{"live_verified", false}', code)
+        self.assertIn("proved on Creo 12.4.0.0", code)
+        self.assertNotIn("unproven", code)
+
+    def test_unverified_input_forms_is_kept_and_always_empty(self):
+        code = _code(self.gated)
+        self.assertIn('{"unverified_input_forms", J::array()}', code)
+        self.assertNotIn("std::set<std::string> unverified", code)
+        self.assertNotIn("unverified_note", code)
 
     def test_receipt_fields_are_written(self):
         code = _code(self.gated)

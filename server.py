@@ -2382,11 +2382,11 @@ async def creo_measure_surface_group(
     status, group.state_reason (for example contour_edge_visit_failed) and a
     re-read hint instead of a bare message.
 
-    group.open_edge_records lists the open boundary edges themselves (FEAT-065,
-    Creo 12.4 live acceptance pending): edge_id, surface_id, quilt_id, length_mm
-    and endpoints_mm [[x,y,z],[x,y,z]] per edge. This is where a quilt edge id
-    for creo_surface_loft {kind:'edge',id:N} comes from, since creo_inspect_model
-    lists solid edges only; pick the edge by its endpoints. At most 32 records
+    group.open_edge_records lists the open boundary edges themselves (FEAT-065
+    T1b, live-verified on Creo 12.4.0.0): edge_id, surface_id, quilt_id,
+    length_mm and endpoints_mm [[x,y,z],[x,y,z]] per edge. This is where a quilt
+    edge id for creo_surface_loft {kind:'edge',id:N} comes from, since
+    creo_inspect_model lists solid edges only; pick the edge by its endpoints. At most 32 records
     are listed; open_edge_records_total always equals open_edges and
     open_edge_records_truncated=true means some were left out, so measure fewer
     quilts to see the rest. An unknown unit scale keeps length_mm/endpoints_mm
@@ -2914,12 +2914,12 @@ async def creo_surface_loft(
     ruled, so interpolation='straight' is exact there; three or more are one
     smooth blend through every section and require 'smooth'.
 
-    FEAT-065 M3 (Creo 12.4 live acceptance pending): a section may also be one
+    FEAT-065 M3 (Creo 12.4.0.0 live-verified): a section may also be one
     existing curve {kind:'curve',id:N} (e.g. a project_curve curve_id) or edge
     {kind:'edge',id:N}, and the first or last section may be one convergence
-    point {kind:'point',id:N} or {kind:'datum_point_feature',label:...}; the
-    point chain is an unproven experiment. A wrong id fails the job with
-    SURFACE_LOFT_INPUT_REJECTED and a failed_loft_input block.
+    point {kind:'point',id:N} or {kind:'datum_point_feature',label:...}. A wrong
+    id fails the job with SURFACE_LOFT_INPUT_REJECTED and a failed_loft_input
+    block.
 
     guides is the optional second direction: 2-8 distinct sketches (one curve
     each) or curve/edge references, never points, that the surface is built
@@ -2927,16 +2927,26 @@ async def creo_surface_loft(
     every section is the kernel's decision, so a non-crossing guide fails
     regeneration instead of being ignored. The result is one open datum-surface
     quilt (quilt_id, surface_area_mm2, quilt_closed_native, guide_count,
-    section_source_kinds, unverified_input_forms); no solid material is created.
-    Closed surfaces are refused before a job is queued.
+    section_source_kinds, boundary_conditions); no solid material is created.
+    unverified_input_forms stays in the receipt for compatibility and is always
+    empty. Closed surfaces are refused before a job is queued.
 
-    boundary_conditions (FEAT-065 M4, NOT AVAILABLE in this release): up to 4
-    {boundary: first_section|last_section|first_guide|last_guide, condition:
-    free|tangent|curvature|normal}, each boundary once; a non-free condition
-    needs that boundary to be an edge {kind:'edge',id:N}. Any non-empty list is
-    refused before a job is queued, because the TAN_COND integers are not
-    documented in Probbl.h and still have to be read from a reference part
-    (FEAT-065 T2b). Omit it to keep the kernel's default.
+    boundary_conditions (FEAT-065 M4): up to 4 {boundary, condition}, each
+    boundary once. Only condition='tangent' is published, at
+    boundary='first_section' or 'last_section', and that section must be an
+    edge {kind:'edge',id:N} with a single adjacent face (a quilt boundary edge,
+    e.g. from creo_measure_surface_group open_edge_records). The direction is
+    fixed: the surface leaves the boundary continuing the neighbouring face;
+    there is no flip or weight. Example: sections=[{kind:'edge',id:53},
+    {kind:'edge',id:85}], boundary_conditions=[{boundary:'first_section',
+    condition:'tangent'}, {boundary:'last_section', condition:'tangent'}].
+    Measured on Creo 12.4.0.0: two vertical 40x10 mm strips 20 mm apart bridged
+    this way became a 982.5888 mm2 arch with G1 0.0 deg at both seams (the free
+    bridge is the 800 mm2 plane at 90 deg). condition='free' is accepted on any
+    boundary and keeps the kernel default. 'curvature' (the candidate value kept
+    a 90 deg seam), 'normal' (indistinguishable from free on that geometry) and
+    any non-free condition on first_guide/last_guide (not measured) are refused
+    before a job is queued.
     """
     operation: dict[str, Any] = dict(
         op="surface_loft", label=label, sections=sections, interpolation=interpolation

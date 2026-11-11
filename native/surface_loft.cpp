@@ -175,12 +175,13 @@ static std::vector<int> surface_loft_curves(const J &reference, const char *role
     return simple;
 }
 
-// FEAT-065/M3 (2026-11-11, offline): one loft input is one chain holder. A
-// sketch label/id keeps the M1/M2 resolution above unchanged; an explicit
+// FEAT-065/M3 (2026-11-11): one loft input is one chain holder. A sketch
+// label/id keeps the M1/M2 resolution above unchanged; an explicit
 // {kind:'curve'|'edge',id} goes straight into the curve collection; a point
 // ({kind:'point',id} or {kind:'datum_point_feature',label}) is a convergence
-// end at the first or last section only. Only the sketch form has Creo 12.4
-// live evidence; every other form is reported in unverified_input_forms.
+// end at the first or last section only. All four forms have Creo 12.4.0.0
+// live evidence (FEAT-065 T3: edge bridge, projected-curve section, YZ
+// sections with a convergence point), so unverified_input_forms stays empty.
 struct SurfaceLoftInput {
     std::string source; // sketch | curve | edge | point
     ProType type = PRO_CURVE;
@@ -326,10 +327,8 @@ static SurfaceLoftInput surface_loft_input(const J &reference, const char *role,
         input.source = kind;
         input.type = type;
         input.ids = {id};
-        input.record = {{"source", kind},
-                        {"geometry_type", kind},
-                        {"ids", input.ids},
-                        {"live_verified", false}};
+        input.record = {
+            {"source", kind}, {"geometry_type", kind}, {"ids", input.ids}, {"live_verified", true}};
         if (type == PRO_CURVE) {
             ProCurve curve = nullptr;
             ProEnttype curve_type = PRO_ENT_NONE;
@@ -425,7 +424,7 @@ static SurfaceLoftInput surface_loft_input(const J &reference, const char *role,
                     {"ids", input.ids},
                     {"point_mm", xyz_json(xyz, scale)},
                     {"chain_instruction", "PRO_CURVCOLL_ADD_POINT_INSTR"},
-                    {"live_verified", false}};
+                    {"live_verified", true}};
     if (point_feature >= 0)
         input.record["feature_id"] = point_feature;
     return input;
@@ -479,7 +478,7 @@ static void surface_loft_point_chain(ProElement element, int point_id, J &detail
         throw std::runtime_error(
             "SURFACE_LOFT_POINT_CHAIN_REFUSED: surface_loft could not place point " +
             std::to_string(point_id) + " in a chain holder (code " + std::to_string((int)code) +
-            "); the PRO_CURVCOLL_ADD_POINT_INSTR holder is an unproven FEAT-065 M3 route. No "
+            "); the PRO_CURVCOLL_ADD_POINT_INSTR holder is a route Probbl.h does not document. No "
             "feature was created");
     }
 }
@@ -497,21 +496,32 @@ static void surface_loft_chain(ProElement holders, const SurfaceLoftInput &input
     curve_collection(collection, refs);
 }
 
-// FEAT-065/M4 (2026-11-11, offline candidate): continuity between one loft
-// boundary and the face next to it. Probbl.h documents only TAN_COND_FREE for
-// PRO_E_BNBLN_TAN_COND_TYPE and gives it no parsable value, and the
-// kernel-completed PRO_E_BNBLN_TAN_COND array (four PRO_E_BNBLN_TNC_BNDRY,
-// TAN_COND_TYPE=1,1,0,0 on 2026-11-07) does not say which entry is which
-// boundary. Both tables stay empty until FEAT-065 T2b reads a Creo-built
-// reference part: an empty entry refuses the request after extraction and
-// before redefine, so nothing is guessed into the kernel. The public field is
-// also refused before a job by capabilities.UNAVAILABLE_FIELDS.
-static const std::map<std::string, int> SURFACE_LOFT_TAN_COND_TYPE_VALUES = {};
-static const std::map<std::string, int> SURFACE_LOFT_TNC_BOUNDARY_INDEX = {};
-// PRO_E_SURF_CHAIN_METHOD of the connect chain. ProSweep.h's ProSurfChainMethod
-// is not documented for Probbl.h, so -1 leaves the element unwritten until the
-// reference tree shows the value Creo stores.
-static const int SURFACE_LOFT_CONNECT_CHAIN_METHOD = -1;
+// FEAT-065/M4: continuity between one loft boundary and the face next to it.
+// Probbl.h documents only TAN_COND_FREE for PRO_E_BNBLN_TAN_COND_TYPE, so the
+// tables below are measured, not read from the SDK (FEAT-065 T2b, 2026-11-11,
+// Creo 12.4.0.0): two vertical 40 x 10 mm strips 20 mm apart, bridged by their
+// top edges with no guides, then each strip JOINed with the bridge and the
+// seam normal angle read by surface_curvature.
+// - The kernel completes four PRO_E_BNBLN_TNC_BNDRY entries with
+//   TAN_COND_TYPE 1,1,0,0; the free bridge is the 800 mm2 plane meeting both
+//   strips at 90 deg. Entry 0 governs the first section, entry 1 the last.
+// - TAN_COND_TYPE 2 plus PRO_E_BNBLN_STRETCH 1 makes the boundary tangent:
+//   stretch -1 at the first section and +1 at the last gave an arch
+//   (982.5888 mm2, z 10..15) with 0.0 deg at both seams. The opposite sign
+//   folds the bridge back onto the strip (180 deg, z down to 4.88), and stretch
+//   0 (the kernel default) leaves the plane. Reversing one strip's sketch (edge
+//   direction and face normal flipped) gave the identical result, so the sign
+//   follows the boundary, not the edge or face orientation.
+// - Value 3 changed the shape (915.99 mm2) but kept a 90 deg seam, so it is
+//   not curvature continuity; value 4 stayed the free plane, which cannot tell
+//   normal from free on this geometry. Guide boundaries (entries 2, 3) were
+//   not measured. Curvature, normal and guide boundaries are therefore refused
+//   before any feature is created.
+static const std::map<std::string, int> SURFACE_LOFT_TAN_COND_TYPE_VALUES = {{"tangent", 2}};
+static const std::map<std::string, int> SURFACE_LOFT_TNC_BOUNDARY_INDEX = {{"first_section", 0},
+                                                                           {"last_section", 1}};
+static const std::map<std::string, double> SURFACE_LOFT_TANGENT_STRETCH = {{"first_section", -1.0},
+                                                                           {"last_section", 1.0}};
 // The TAN_COND subtree has its own budget: in a large loft the shared
 // 160-element sample runs out before the walk reaches it.
 static constexpr int SURFACE_LOFT_TAN_COND_SAMPLE_LIMIT = 64;
@@ -581,6 +591,12 @@ static std::vector<SurfaceLoftCondition> surface_loft_conditions(
                    "condition must be free, tangent, curvature or normal");
         if (!seen.insert(item.boundary).second)
             refuse("repeated_boundary", PRO_TK_NO_ERROR, "each boundary may be named once");
+        if (item.condition != "free" && (!SURFACE_LOFT_TAN_COND_TYPE_VALUES.count(item.condition) ||
+                                         !SURFACE_LOFT_TNC_BOUNDARY_INDEX.count(item.boundary)))
+            refuse("not_available", PRO_TK_NO_ERROR,
+                   "only 'tangent' on first_section/last_section is measured on Creo 12.4.0.0; "
+                   "curvature (value 3 kept a 90 deg seam), normal (indistinguishable from "
+                   "free on the measured geometry) and guide boundaries are not available");
         const std::vector<SurfaceLoftInput> &slots = section ? sections : guides;
         if (slots.empty())
             refuse("no_guides", PRO_TK_NO_ERROR, "the loft has no guides");
@@ -625,9 +641,13 @@ static J surface_loft_tan_cond_json(ProElement tree) {
     return sample;
 }
 
-// Mapping unknown: refuse before any element of the extracted tree is touched.
-// Mapping known: rewrite that TNC_BNDRY entry's TAN_COND_TYPE and rebuild its
-// connect chain around the edge's single adjacent face.
+// Writes each measured condition into its PRO_E_BNBLN_TNC_BNDRY entry of the
+// extracted tree: TAN_COND_TYPE and STRETCH. The kernel already fills that
+// entry's PRO_E_BNBLN_CONNECT_SURF_CHAIN (SURF_CHAIN_METHOD 1) with the face
+// next to an edge section; FEAT-065 T2b measured G1 at exactly those faces, so
+// the chain is kept rather than rebuilt. surface_loft_conditions has already
+// refused unmeasured conditions and proved the edge has one adjacent face; the
+// lookups below are a second guard for a hand-written plan.
 static void surface_loft_apply_conditions(ProElement tree,
                                           const std::vector<SurfaceLoftCondition> &conditions,
                                           J &details) {
@@ -638,13 +658,12 @@ static void surface_loft_apply_conditions(ProElement tree,
             continue;
         any = true;
         if (!SURFACE_LOFT_TAN_COND_TYPE_VALUES.count(item.condition) ||
-            !SURFACE_LOFT_TNC_BOUNDARY_INDEX.count(item.boundary))
-            surface_loft_condition_reject(
-                details, unmapped, item, "unmapped", PRO_TK_NO_ERROR,
-                "the PRO_E_BNBLN_TAN_COND_TYPE value of '" + item.condition +
-                    "' and the PRO_E_BNBLN_TNC_BNDRY entry of '" + item.boundary +
-                    "' are unknown (Probbl.h documents only TAN_COND_FREE); FEAT-065 T2b must "
-                    "read them from a reference part. The feature is rolled back");
+            !SURFACE_LOFT_TNC_BOUNDARY_INDEX.count(item.boundary) ||
+            !SURFACE_LOFT_TANGENT_STRETCH.count(item.boundary))
+            surface_loft_condition_reject(details, unmapped, item, "unmapped", PRO_TK_NO_ERROR,
+                                          "no measured PRO_E_BNBLN_TAN_COND_TYPE value for '" +
+                                              item.condition + "' at '" + item.boundary +
+                                              "'. The feature is rolled back");
     }
     if (!any)
         return;
@@ -678,6 +697,7 @@ static void surface_loft_apply_conditions(ProElement tree,
                     std::to_string(position) + " is not among them. The feature is rolled back");
         ProElement entry = entries[position];
         const int value = SURFACE_LOFT_TAN_COND_TYPE_VALUES.at(item.condition);
+        const double stretch = SURFACE_LOFT_TANGENT_STRETCH.at(item.boundary);
 
         ProError type_code = PRO_TK_NO_ERROR;
         ProElement type = get_optional(entry, {PRO_E_BNBLN_TAN_COND_TYPE}, &type_code);
@@ -685,47 +705,19 @@ static void surface_loft_apply_conditions(ProElement tree,
             type = node(entry, PRO_E_BNBLN_TAN_COND_TYPE);
         CK(ProElementIntegerSet(type, value));
 
-        // Rebuilt from scratch, so no kernel default face survives beside the
-        // requested one.
-        ProError chain_code = PRO_TK_NO_ERROR;
-        if (get_optional(entry, {PRO_E_BNBLN_CONNECT_SURF_CHAIN}, &chain_code) &&
-            chain_code == PRO_TK_NO_ERROR) {
-            ProElempathItem step = {};
-            step.type = PRO_ELEM_PATH_ITEM_TYPE_ID;
-            step.path_item.elem_id = (ProElemId)PRO_E_BNBLN_CONNECT_SURF_CHAIN;
-            ProElempath path = nullptr;
-            ProElement removed = nullptr;
-            ProError remove_code = ProElempathAlloc(&path);
-            if (remove_code == PRO_TK_NO_ERROR)
-                remove_code = ProElempathDataSet(path, &step, 1);
-            if (remove_code == PRO_TK_NO_ERROR)
-                remove_code = ProElemtreeElementRemove(entry, path, &removed);
-            if (path)
-                ProElempathFree(&path);
-            check(remove_code, "ProElemtreeElementRemove(PRO_E_BNBLN_CONNECT_SURF_CHAIN)");
-            if (removed)
-                CK(ProElementFree(&removed));
-        }
-        ProElement chain = node(entry, PRO_E_BNBLN_CONNECT_SURF_CHAIN);
-        ProElement compound = node(chain, PRO_E_SURF_CHAIN_CMPND);
-        if (SURFACE_LOFT_CONNECT_CHAIN_METHOD >= 0)
-            integer(compound, PRO_E_SURF_CHAIN_METHOD, SURFACE_LOFT_CONNECT_CHAIN_METHOD);
-        ProElement surfaces = node(compound, PRO_E_SURF_CHAIN_REF_SURFS);
-        ProElement surface = node(surfaces, PRO_E_SURF_CHAIN_SURF);
-        ProSelection face = selection(item.surface_id, PRO_SURFACE);
-        try {
-            ref(surface, PRO_E_SURF_CHAIN_REF, face);
-        } catch (...) {
-            ProSelectionFree(&face);
-            throw;
-        }
-        ProSelectionFree(&face);
+        // The kernel default stretch is 0, which leaves the boundary free in
+        // shape even with TAN_COND_TYPE 2 (measured: the 800 mm2 plane).
+        ProError stretch_code = PRO_TK_NO_ERROR;
+        ProElement stretch_element = get_optional(entry, {PRO_E_BNBLN_STRETCH}, &stretch_code);
+        if (stretch_code != PRO_TK_NO_ERROR || !stretch_element)
+            stretch_element = node(entry, PRO_E_BNBLN_STRETCH);
+        CK(ProElementDoubleSet(stretch_element, stretch));
+
         record["status"] = "written";
         record["tnc_index"] = position;
         record["tan_cond_type"] = value;
-        record["surf_chain_method"] = SURFACE_LOFT_CONNECT_CHAIN_METHOD >= 0
-                                          ? J(SURFACE_LOFT_CONNECT_CHAIN_METHOD)
-                                          : J(nullptr);
+        record["stretch"] = stretch;
+        record["connect_chain"] = "kernel_default";
     }
 }
 
@@ -867,10 +859,9 @@ static void generic_surface_loft(const J &op) {
     J guide_json = J::array();
     for (int curve_id : guide_curve_ids)
         guide_json.push_back(curve_id);
-    std::set<std::string> unverified;
     J convergence = nullptr;
-    auto describe = [&unverified, &convergence](const std::vector<SurfaceLoftInput> &inputs,
-                                                bool section, J &kinds, J &ids, J &records) {
+    auto describe = [&convergence](const std::vector<SurfaceLoftInput> &inputs, bool section,
+                                   J &kinds, J &ids, J &records) {
         kinds = J::array();
         ids = J::array();
         records = J::array();
@@ -881,32 +872,21 @@ static void generic_surface_loft(const J &op) {
             J record = input.record;
             record["index"] = (int)index;
             records.push_back(record);
-            if (input.source != "sketch")
-                unverified.insert(input.source);
             if (section && input.source == "point")
                 convergence = {{"section_index", (int)index},
                                {"position", index == 0 ? "start" : "end"},
                                {"point_id", input.ids.front()},
                                {"point_mm", input.record["point_mm"]},
                                {"chain_instruction", "PRO_CURVCOLL_ADD_POINT_INSTR"},
-                               {"live_verified", false},
+                               {"live_verified", true},
                                {"note", "a point in a boundary-blend chain holder is not "
-                                        "documented in Probbl.h; unproven on Creo 12.4"}};
+                                        "documented in Probbl.h; proved on Creo 12.4.0.0 "
+                                        "(FEAT-065 T3, 2026-11-11)"}};
         }
     };
     J section_kinds, section_ids, section_records, guide_kinds, guide_ids, guide_records;
     describe(section_inputs, true, section_kinds, section_ids, section_records);
     describe(guide_inputs, false, guide_kinds, guide_ids, guide_records);
-    std::string unverified_text;
-    J unverified_json = J::array();
-    for (const auto &form : unverified) {
-        unverified_text += (unverified_text.empty() ? "" : ",") + form;
-        unverified_json.push_back(form);
-    }
-    const std::string unverified_note = unverified_text.empty()
-                                            ? std::string()
-                                            : "; unverified input forms: " + unverified_text +
-                                                  " (FEAT-065 M3, no Creo 12.4 live evidence yet)";
     details.update({{"section_count", (int)section_inputs.size()},
                     {"section_curve_ids", curve_json},
                     {"section_source_kinds", section_kinds},
@@ -919,7 +899,8 @@ static void generic_surface_loft(const J &op) {
                     {"guide_geometry_ids", guide_ids},
                     {"guide_sources", guide_records},
                     {"convergence_point", convergence},
-                    {"unverified_input_forms", unverified_json}});
+                    // Kept for receipt compatibility: every M3 form is live-verified.
+                    {"unverified_input_forms", J::array()}});
 
     // FEAT-065/M4: refused shapes and non-edge boundaries stop here, before
     // any feature exists. The TAN_COND sample is published whenever a
@@ -988,7 +969,7 @@ static void generic_surface_loft(const J &op) {
         throw std::runtime_error("surface_loft boundary blend create failed (code " +
                                  std::to_string((int)created) +
                                  ", sections=" + std::to_string((int)curve_ids.size()) +
-                                 ", section_curve_ids=[" + listed + "])" + unverified_note);
+                                 ", section_curve_ids=[" + listed + "])");
     }
     ProElementFree(&root);
 
@@ -1104,7 +1085,7 @@ static void generic_surface_loft(const J &op) {
             "surface_loft boundary blend regeneration failed (feature_status=" +
             std::to_string((int)status) + ", feature_id=" + std::to_string((int)feature.id) +
             ", quilt_count=" + std::to_string((int)quilts.size()) +
-            "); the created tree did not produce a regenerated surface" + unverified_note);
+            "); the created tree did not produce a regenerated surface");
     }
     if (feature_type != PRO_FEAT_DATUM_SURF)
         throw std::runtime_error("surface_loft produced feature type " +

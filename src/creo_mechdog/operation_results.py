@@ -363,8 +363,8 @@ OUTCOME_OPERATION_KEYS = (
     "guide_count",
     "guide_curve_ids",
     # FEAT-065/M3: which form each loft slot used and which geometry ids went
-    # into its chain holder, plus the forms that still lack live evidence. A
-    # trimmed receipt must still say "these were edges/points, unverified".
+    # into its chain holder. ``unverified_input_forms`` stays protected for
+    # receipt compatibility; every form is live-verified, so it is always [].
     "section_source_kinds",
     "section_geometry_ids",
     "guide_source_kinds",

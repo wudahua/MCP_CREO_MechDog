@@ -569,8 +569,9 @@ def reference_capabilities() -> dict[str, Any]:
                     'every section (interpolation="smooth" is required). An optional guides '
                     "list of 2-8 single-curve guide sketches adds a second direction that bends "
                     "the surface (a single guide never regenerates); curve/edge ids and one "
-                    "first/last convergence point are FEAT-065 M3 inputs that are not yet "
-                    "live-verified (see by_tool.creo_surface_loft). Closed surfaces stay "
+                    "first/last convergence point are FEAT-065 M3 inputs (Creo 12.4.0.0 "
+                    "live-verified), and an edge section at either end can be made tangent to "
+                    "the face next to it (see by_tool.creo_surface_loft). Closed surfaces stay "
                     "unpublished, and the operation is conditional on Probbl.h in the worker "
                     "build SDK"
                 ),
@@ -579,8 +580,9 @@ def reference_capabilities() -> dict[str, Any]:
                     "resolved Blend callback registration"
                 ),
             },
-            # FEAT-065/M3: the surface loft's own section/guide shapes. The
-            # sketch forms are live-verified; curve/edge/point are not yet.
+            # FEAT-065/M3/M4: the surface loft's own section/guide shapes and
+            # its boundary conditions; all of them were live-verified on Creo
+            # 12.4.0.0 on 2026-11-11.
             "creo_surface_loft": {
                 "sections": ["section_a", 42],
                 "section_curve": {"kind": "curve", "id": 41},
@@ -589,6 +591,11 @@ def reference_capabilities() -> dict[str, Any]:
                 "convergence_point_by_label": {"kind": "datum_point_feature", "label": "tip"},
                 "guides": ["guide_left", "guide_right"],
                 "guide_curve_or_edge": [{"kind": "curve", "id": 43}, {"kind": "edge", "id": 13}],
+                "tangent_sections": [edge, {"kind": "edge", "id": 14}],
+                "boundary_conditions": [
+                    {"boundary": "first_section", "condition": "tangent"},
+                    {"boundary": "last_section", "condition": "tangent"},
+                ],
                 "requires": (
                     "2-32 sections in loft order and optionally 2-8 guides. Each entry is a "
                     "sketch label or integer feature ID (one curve, or two for one closed "
@@ -599,10 +606,24 @@ def reference_capabilities() -> dict[str, Any]:
                     "single-point datum_points feature). Every entry names different geometry"
                 ),
                 "live_status": (
-                    "sketch sections and guides are Creo 12.4 live-verified; curve, edge and "
-                    "point inputs (FEAT-065 M3) are implemented offline and not live-verified, "
-                    "the point holder is an undocumented experiment, and the receipt names "
-                    "them in unverified_input_forms"
+                    "sketch sections and guides, and the curve, edge and point inputs of "
+                    "FEAT-065 M3, are Creo 12.4.0.0 live-verified (2026-11-11: edge bridge "
+                    "800 mm2 with a 0 mm seam gap, projected-curve section 1131.37 mm2, YZ "
+                    "ellipses along X 2075.38 mm2 and 2415.05 mm2 with a convergence point); "
+                    "every source record carries live_verified=true and unverified_input_forms "
+                    "is always empty"
+                ),
+                "boundary_condition_rules": (
+                    "boundary_conditions is at most 4 {boundary, condition} objects, each "
+                    "boundary once. condition='tangent' is accepted only at first_section or "
+                    "last_section, and only when that section is an edge {kind:'edge',id:N} "
+                    "with a single adjacent face (a quilt boundary edge, e.g. from "
+                    "open_edge_records): the surface then leaves the boundary continuing that "
+                    "face. The direction is fixed by the boundary, not by the edge or face "
+                    "orientation, and has no flip or weight. 2026-11-11 Creo 12.4.0.0: two "
+                    "vertical 40x10 mm strips 20 mm apart bridged by their top edges became a "
+                    "982.5888 mm2 arch with G1 0.0 deg at both seams (free: the 800 mm2 plane "
+                    "at 90 deg). condition='free' is accepted on any boundary and writes nothing"
                 ),
                 "rejected": {
                     "point_position": (
@@ -623,12 +644,27 @@ def reference_capabilities() -> dict[str, Any]:
                         "SURFACE_LOFT_INPUT_REJECTED and a failed_loft_input block naming the "
                         "slot, reason, query code and the form to use instead"
                     ),
+                    "curvature_or_normal": (
+                        "condition 'curvature' (the candidate value kept a 90 deg seam) and "
+                        "'normal' (indistinguishable from free on the measured geometry) are "
+                        "refused before a job"
+                    ),
+                    "guide_boundary_condition": (
+                        "a non-free condition on first_guide/last_guide is refused before a "
+                        "job: guide boundaries were not measured"
+                    ),
+                    "tangent_on_a_non_edge": (
+                        "tangent on a sketch, curve or point section is refused before a job "
+                        "(the neighbour face is the edge's own adjacent face); an edge with "
+                        "two adjacent faces fails the job with "
+                        "SURFACE_LOFT_BOUNDARY_CONDITION_REJECTED before any feature exists"
+                    ),
                 },
                 "edge_ids": (
                     "creo_inspect_model edges enumerate solid faces only; read quilt edge ids "
                     "from creo_measure_surface_group group.open_edge_records (edge_id, "
-                    "surface_id, quilt_id, length_mm, endpoints_mm; FEAT-065 T1b, Creo 12.4 "
-                    "live acceptance pending) and pick edges by endpoint"
+                    "surface_id, quilt_id, length_mm, endpoints_mm; FEAT-065 T1b, Creo "
+                    "12.4.0.0 live-verified) and pick edges by endpoint"
                 ),
             },
             "creo_sheetmetal_flange": {
