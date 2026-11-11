@@ -22,6 +22,8 @@
 
 2026-11-11（0.21.1 交付）：[BUG-118](work-items/BUG-118.md) 修复 compact 预算裁剪丢曲面放样测量值——`OUTCOME_OPERATION_KEYS`（面积/闭合/计数/曲线与夸特 ID 等标量）并入保护集合，大块 `profile`/`surface_group`/`native_section` 仍可裁、`RESPONSE_BUDGET` 32 KiB 上限不变；`tools/test_surface_loft_guides.py` 的 3 截面 + 2 导线用例由 2 项 FAIL 转为全 PASS（job `2a2ee086…`，1599.9999999999995 mm²、单张开放 quilt、保存重载 verified），同批回填 0.21.0 的 3 截面复跑与发布记录。发布结果：`main` 提交 `8622f1b`（`origin/main` 同值），附注标签 `v0.21.1`（`f2ffc75`），[Release v0.21.1](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.21.1) 非 draft 非 prerelease，四附件逐个上传，`tools\check_release_assets.py --tag v0.21.1` exit 0 且两个 sidecar 与对应 ZIP 摘要一致；源码包解压后全量单测 `Ran 3315 tests ... OK (skipped=5)`。BUG-118 直接归入[完成档案](BACKLOG_COMPLETED.md)，未占用活跃表行，计数仍 177（BUG 77 / FEAT 62 / DEV 38）。未测：其他可能被整体剥掉的 op 类型、保护标量后的极端预算压测、Creo 9/10 与 WorkBuddy。
 
+2026-11-11（FEAT-065 M3/M4 登记）：用户确认本轮范围后，[FEAT-065](work-items/FEAT-065.md) 登记 M3（`surface_loft` 截面/导线接受已有曲线、边与首末收敛点）与 M4（边界相切/曲率条件），并在开发分支 `codex/FEAT-065-m3-m4-surface-loft` 建立[计划](superpowers/plans/2026-11-11-feat065-m3-m4-surface-loft.md)（T0 文档对账、T1 M3、T2a M4 离线候选由子 agent 实施，T2b 参照树取证与 T3 实机须用户当次确认）。分类调整：FEAT-065 由「部分交付，剩余待规划」移入「开发中」，计数 部分交付剩余待规划 4→3、开发中 7→8，总数仍 177。登记时未连 Creo、未编译执行器、未合 main、未发布。
+
 2026-11-10：用户当次确认可发布 `main` 新版本并选定 MINOR 后，[DEV-081](work-items/DEV-081.md) B 批四项连同 C1 契约冻结与 BUG-001 规则修订按 0.20.0 发布（[版本说明](RELEASE_NOTES_0.20.0.md)、[发布记录](validation/RELEASE-0.20.0.md)）：B1/F01 seed 兼容性前置预检与无 callback 路线说明、B2/F11 零去料切除结构化几何回执、B3/F06 compact 阶段进度与日志体积字段、B4/F08 选择性切除作用域公开 `scope` 参数与 `scope_applied` 特征树回读，均在 Creo 12.4.0.0 + 匹配 SDK 实机验收。B4 实机：两实体零件只切 body 52（面数 6→8），body 90 面数与包围盒不变，总体积 39214.6018 mm³ = 40000 − 250π，保存重载通过，未知 body id 失败回滚且 revision 不前进。公开工具仍 107，新增参数不新增工具，按 MINOR 递增。未完成项：B5/F09 着色预览与 B6/F10 锥台未实现，C 批 WorkBuddy 黑盒未执行，Creo 9/10 未复测，B4 的回读不匹配路径、装配内切除、三体以上与 compact 32 KiB 预算未验。计数仍 172（BUG 75 / FEAT 61 / DEV 36）。发布结果：`main` = `origin/main` = `2d7b498cd793a3f4693a561df6ae0df8f809d0f7`，annotated 标签 `v0.20.0`（`3f4ed82`）指向该提交，Release <https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.20.0>（id `RE_kwDOU_ueTM4aPLew`，非草稿非预发布，2026-11-10T09:56:06Z）；四附件源码包 9 398 084 字节 `896e03ff…c83d`、种子包 493 442 字节 `6cde6888…0697` 及两个 sidecar，`check_release_assets.py --tag v0.20.0` exit 0；源码包解压后全量单测 `Ran 3263 tests ... OK (skipped=5)`。
 2026-11-09：按用户决定修订本机实机测试放行条件，[BUG-001/FEAT-018 工作卡](work-items/BUG-001-FEAT-018-RECOVERY.md)追加「用户明确确认后即可用 Creo 进行实机测试」，不再以卡死根因核对/事前会话可操作判定为阻断前置；根因未定、历史失败与恢复原件仍逐字节保留，安全底线（不擅自结束Creo/清锁或unknown保护、故障注入需单独授权）不变，确认按次生效。当前规则见 [AGENTS.md](../AGENTS.md) 与 [DEVELOPMENT.md](DEVELOPMENT.md)。本条为规则修订，不新增ID、不改计数（仍172），未合main、未发布；本轮未据此执行任何 Creo 实机测试。
 
@@ -48,9 +50,9 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 | 已有修复但待验收 | 29 |
 | 观察中 | 3 |
 | 其它 agent 处理范围 | 20 |
-| 开发中 | 7 |
+| 开发中 | 8 |
 | 部分交付，剩余待验收 | 38 |
-| 部分交付，剩余待规划 | 4 |
+| 部分交付，剩余待规划 | 3 |
 | 待规划 | 41 |
 
 BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与真实缺口，勿重复派工。
@@ -180,6 +182,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [DEV-079](work-items/DEV-079.md) | P1 | 离线子项已随 0.19.2 交付；Creo 10/钣金/黑盒待接手 | 0.19.2 | 0.19.0三份Creo 10反馈归档与对照；quilt_merge描述同步、曲率默认摘要/`include_samples`、surface_group结构化失败回执、`profile.method`、POSTCHECK旧句已修；`state_reason`与裸名导入等0.19.1已修项不重复；H01—H09（Probbl.h替代、开放弧trim、残留quilt、原生截面面积、大作业compact、连续顶边选边、entities_file、native_bundle、负origin resize）待实机。 |
 | [DEV-080](work-items/DEV-080.md) | P1 | 首批离线收口已随 0.19.3 交付；原生/实机余项待接手 | 0.19.3 | 接手0.19.0三份报告复核后仍未闭环的H01—H09及未编号缺口；首批交付手写TU头门控契约测试、COMPATIBILITY缺头降级说明、计数自检进CI；原生解耦/等价元素树、开放弧trim、残留quilt、原生截面面积、大作业compact、连续顶边选边、entities_file、native_bundle、负origin resize待Creo10 SDK或实机；解压单测发布前阻断与verify_stages优先留后续。 |
 | [DEV-082](work-items/DEV-082.md) | P1 | 开发中 | 未排期 | 0.19.3反馈P1-1/P1-2：`surface_boundary_fill.cpp` 已按 `MECHDOG_HAS_PROBBL_HEADER` 门控并给缺头 stub，新增跨TU符号可见性契约测试；`-DMECHDOG_HAS_PROBBL_HEADER=0` 聚合语法检查EXIT=0。H01抽 `element_tree_json.h`、单一真值源与真实Creo10 SDK整包编译仍开放。 |
+| [FEAT-065](work-items/FEAT-065.md) | P1 | 开发中（M1/M2 已随 0.21.0 发布；M3/M4 在 `codex/FEAT-065-m3-m4-surface-loft`） | 未排期 | M3：`surface_loft` 截面/导线接受已有曲线、边与首末收敛点；M4：边界相切/曲率条件（`Probbl.h` 仅文档化 `TAN_COND_FREE`，先离线候选并保持门禁，参照件取证后再定）。计划与分派见 [2026-11-11 计划](superpowers/plans/2026-11-11-feat065-m3-m4-surface-loft.md)；实机须用户当次确认。M1/M2 实机证据见工作卡；仍开放 `ADV_VIA_CRV`、导线形状可视化核对、Creo9/10 差异。 |
 
 ## 部分交付，剩余待验收
 
@@ -279,7 +282,6 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [FEAT-060](work-items/FEAT-060.md) | P2 | 待规划 | 未排期 | 骨架驱动首壁参数；依赖 FEAT-059 真实骨架，先冻结日志/依赖闭包与 revision 契约。 |
 | [FEAT-061](work-items/FEAT-061.md) | P2 | 待规划 | 未排期 | 单层受管装配配置切换/抑制恢复；保留身份、约束和位姿，尚未实施。 |
 | [FEAT-062](work-items/FEAT-062.md) | P2 | 待规划 | 未排期 | 独立零件 rename/derive；统一名称冲突、身份与检查点恢复，尚未实施。 |
-| [FEAT-065](work-items/FEAT-065.md) | P1 | 部分交付（M1/M2 已随 0.21.0 发布），后续待规划 | 未排期 | M1（同方向 2—32 截面）已实机验收（2026-11-11 Creo 12.4）：三截面 40/60/40 实测 2101.25 mm²、开放 quilt、保存重载稳定、thicken 体积=面积×2，两截面 800 mm² 回归通过。实机证明 3 截面以上是单张光滑面而非分段直纹，故 `interpolation` 扩为 `straight|smooth`、3 截面以上强制 `smooth`、回执加 `section_count`/`piecewise_ruled`。2026-11-11 M2 导线（第二方向 2DIR）已实机验收并随 **0.21.0** 发布：`surface_loft.guides` 2-8 条（单导线在校验层拒绝，实测单 2DIR 曲线不再生），直导线基线 800.0 mm²/x 止 40 mm（job `900fa9b3…`），曲线导线 600.0 mm²/包围盒 x 达 44.24 mm（job `4d0f3e10…`），3 截面 + 直导线 1600.0 mm²（job `2fd4ab48…`，一次性探针），均保存重载通过；驱动 `tools/test_surface_loft_guides.py` 离线 10 项 + 实机 17 项全 PASS。仍开放：`ADV_VIA_CRV`、任意正交平面截面、端点收敛、G1/G2、导线形状未做可视化核对、驱动中 3 截面用例发布前未复跑、Creo9/10 差异未裁定。 |
 | [FEAT-064](work-items/FEAT-064.md) | P3 | 待规划 | 未排期 | 受管世代清理 inspect/apply；冻结证据/幂等与引用保护后实施，不自动删除。 |
 
 ## 历史资料
