@@ -11,6 +11,7 @@
   - **M4**：`boundary_conditions` 只开放首/末截面上的 `tangent`，且该截面来源必须是边。实现为 `TAN_COND_TYPE` 2，`STRETCH` 首截面 -1、末截面 +1；这组值是用试值法在实机上测出来的（T2b）。两条接缝实测 G1 都是 0.0°。`curvature`、`normal` 和导线边界没有实测依据，在提交前拒绝。
   - 证据：下文「T3 实机验收与 T2b 试值取证」与「最终代码实机复核」两节，以及 [T2b 证据](../validation/feat065-t2b-tangency-2026-11-11/EVIDENCE.md)。
 - **验收环境**：本机 Creo 12.4.0.0 + 匹配 SDK，用户当次授权。Creo 9/10 未测。
+- **交接**：合入与发布步骤、当天过程与方法见 [FEAT-065-HANDOFF-2026-11-11](../development/FEAT-065-HANDOFF-2026-11-11.md)。
 - **仍开放**：
   - `curvature`、`normal` 和导线边界上的连续条件：没找到有实测依据的值。
   - 非平面相邻面（如圆柱）上的相切，以及两端相邻面朝向不同的情形，都没有测。
