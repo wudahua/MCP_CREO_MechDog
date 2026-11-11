@@ -61,4 +61,20 @@
 
 ## 发布核对
 
-待发布后回填（标签指向、Release id/时间、四附件名称与摘要、`tools\check_release_assets.py --tag v0.22.0` 结果、源码包解压单测）。
+- 核对时间：2026-11-12 00:36（+08:00）/ 2026-11-11T16:36Z。
+- 标签对象：`v0.22.0` → annotated tag `e2e33bd1423eb33d097016d9cff68ffae3508809` → 提交 `2de2fa8d4e48a8ea0dbadb6c7c4cd7058513f280`（`main`，`ea753be..2de2fa8` 已推送）。
+- Release：[v0.22.0](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.22.0)，id `441943346`，非 draft、非 prerelease；`created_at=2026-11-11T16:34:20Z`，`published_at=2026-11-11T16:35:24Z`，`target_commitish=main`。
+- 核对命令：`tools\check_release_assets.py --tag v0.22.0` → exit 0，「v0.22.0: four assets downloaded and verified; both sidecars match」。
+- 四附件逐个列出（未使用通配）；API `assets[].digest`、下载后本地实算 SHA256 与 sidecar 内容三者一致：
+
+| 附件 | 字节 | SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.22.0-source.zip` | 9 636 010 | `5db68fe932019eebef3ad5b59e8ddc7f38f1f3c35e93122bb014e174a81af3ab` |
+| `MCP_CREO_MechDog-0.22.0-source.zip.sha256` | 101 | `3dd87ec404b06cfb86c0171b01681f2914ea83b8e35a0cd23e5eee15ba7f3a42` |
+| `MCP_CREO_MechDog-0.22.0-seed-library.zip` | 493 442 | `9fe456f2855fc165984e1bf715effd092f0d088a1551a50bcfda073d316e7743` |
+| `MCP_CREO_MechDog-0.22.0-seed-library.zip.sha256` | 107 | `832968dced37a7e889e13ce043d05e51659a5a2935b8cbbf0243d319533e7000` |
+
+- 种子包：先在回填前构建一次（exit 2，保留归档并打印应回填摘要 `9fe456f2…`），回填 `docs/seed_package.json` 后重建确认哈希不变（`docs/seed_package.json matches this rebuild`），再以该归档制作源码包。
+- 源码包解压门禁：解压到短路径 `E:\r220\MCP_CREO_MechDog`、`pip install --no-deps -e .` 后 `python -m unittest discover -s tests` → `Ran 3413 tests in 394.264s ... OK (skipped=6)`（exit 0）。跳过项为源码包无 `.git/` 的 git 依赖用例；与工作树 `dev_check` 的 3413 项同口径。核完已把可编辑安装恢复回 `E:\Projects\MCP_CREO_MechDog`，临时目录已删除。
+- 历史标签 `v0.22` 与 `docs/RELEASE_NOTES_0.22.md` 未改动。
+- 本段在标签提交之后回填，不改变已发布包内容；源码包内的本文件为打包时点快照。
