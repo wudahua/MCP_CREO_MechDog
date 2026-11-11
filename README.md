@@ -1,8 +1,8 @@
-# MCP_CREO_MechDog 0.20.0
+# MCP_CREO_MechDog 0.21.0
 
-![version](https://img.shields.io/badge/version-0.20.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
+![version](https://img.shields.io/badge/version-0.21.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.20.0**（MINOR——DEV-081 B 批原生/实机四项已在 Creo 12.4 实机验收：F01 无 callback 放样前置 seed 兼容性预检、F11 零去料切除的结构化几何回执、F06 compact 阶段进度 `operation_index`/`operation_total`、F08 选择性切除作用域 `scope` 与特征树回读回执 `scope_applied`；同批含 F08/F09/F10 契约冻结与 BUG-001 实机放行规则修订；公开工具仍 107，新增参数不新增工具） · [版本说明](docs/RELEASE_NOTES_0.20.0.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
+当前正式版 **0.21.0**（MINOR——FEAT-065 `surface_loft` 新增第二方向 `guides`：2—8 条导线草图、单导线在校验层拒绝、直导线复现直纹基线、曲线导线改变几何；同批入 0.19.3 反馈批曲面链与引用修复、`execute_plan` 超时预算与作业完成度复核；公开工具仍 107，新增参数不新增工具） · [版本说明](docs/RELEASE_NOTES_0.21.0.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 
@@ -105,7 +105,7 @@ Creo 软件、SDK、模板与许可需自行取得；MIT 只覆盖本项目原�
 | 确认哪些功能已实测 | [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) |
 | 种子库 / 换电脑换 Agent | [docs/SEED_LIBRARY.md](docs/SEED_LIBRARY.md)、[docs/MIGRATION.md](docs/MIGRATION.md) |
 | 直接混合的一次性回调 | [docs/CALLBACK_LIFECYCLE.md](docs/CALLBACK_LIFECYCLE.md) |
-| 查看版本变更 | [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)、[0.20.0 版本说明](docs/RELEASE_NOTES_0.20.0.md) |
+| 查看版本变更 | [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)、[0.21.0 版本说明](docs/RELEASE_NOTES_0.21.0.md) |
 | 参与开发 / 看台账 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)、[docs/BACKLOG.md](docs/BACKLOG.md) |
 
 ## 已知限制
