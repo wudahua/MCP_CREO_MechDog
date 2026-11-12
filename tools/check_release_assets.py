@@ -22,6 +22,7 @@ from creo_mechdog.release_integrity import (
     read_sidecar,
     validate_asset_paths,
     validate_directory,
+    validate_release_records,
 )
 
 __all__ = [
@@ -54,6 +55,10 @@ def main(argv: list[str] | None = None) -> int:
         except OSError as error:
             print(f"{args.tag}: could not read {args.dir}: {error}", file=sys.stderr)
             return 2
+        if not problems:
+            problems = validate_release_records(
+                version, args.dir.resolve() / expected_assets(version)[0]
+            )
     else:
         with tempfile.TemporaryDirectory() as temp:
             try:
@@ -73,6 +78,10 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 return 2
             problems = validate_directory(Path(temp), version)
+            if not problems:
+                problems = validate_release_records(
+                    version, Path(temp) / expected_assets(version)[0]
+                )
     if problems:
         print(f"{args.tag}: release assets are incomplete or inconsistent", file=sys.stderr)
         for problem in problems:

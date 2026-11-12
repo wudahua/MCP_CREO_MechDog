@@ -227,6 +227,38 @@
 
 - 本版含 `native/surface_group.cpp` 与 `native/surface_loft.cpp` 变更（FEAT-065 M3/M4）；源码包解压后独立门禁 `Ran 3413 tests ... OK (skipped=6)`。本段只做远端附件与标签核对，不重新验证包内功能；功能验收与未测范围以 [RELEASE-0.22.0](../validation/RELEASE-0.22.0.md) 与 Release 正文为准。
 
+## v0.21.1（2026-11-11）
+
+- 记录时间：2026-11-12（DEV-083 补齐历史缺口）。`main` 提交 `8622f1b3d11808d3c9c2cf76ebb1e3c937183a18`（`990c88a..8622f1b`）；附注标签对象 `f2ffc75ed7e95fd66bf7b1150797cd620e554955`（`v0.21.1`，指向上述提交）。
+- Release：[v0.21.1](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.21.1)，id `441312185`，非 draft、非 prerelease，`created_at=2026-11-11T06:30:15Z`，`published_at=2026-11-11T06:31:05Z`，target `main`。
+- 核对命令：`tools\check_release_assets.py --tag v0.21.1` → exit 0，「v0.21.1: four assets downloaded and verified; both sidecars match」。
+- 四附件逐个列出（未用通配）；数据取自 [RELEASE-0.21.1](../validation/RELEASE-0.21.1.md) 的发布时记录，本轮未联网重下重算：
+
+| 附件 | 字节 | SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.21.1-source.zip` | 9 520 388 | `13952311b47b16dd0a6d90d6aca942d14245d660be3ae2e3264816d3a1b07add` |
+| `MCP_CREO_MechDog-0.21.1-source.zip.sha256` | 101 | `f11fd5b9eebd620a8aff17131be47a1c65f9dbb52cb30676aaadb193767d4366` |
+| `MCP_CREO_MechDog-0.21.1-seed-library.zip` | 493 442 | `49cfe0fdd691fd83796e05dc9a765f10189622d30a2645bbb87b8f42f511a736` |
+| `MCP_CREO_MechDog-0.21.1-seed-library.zip.sha256` | 107 | `1ba5e65a6b4155aba788dfb81673e046b1f0d79895998af24633ab0fc2753364` |
+
+- 包内快照与 `main` 的差异：源码包内的 `RELEASE-0.21.1.md`、`RELEASE_NOTES_0.21.1.md` 与 POSTCHECK 均为打包时点内容（当时没有本段）；本段与「源码包解压门禁 3315 项」只存在于 `main`，按冻结规则不回写、不重发已发布附件。本段只做远端附件与标签核对，不重新验证包内功能。
+
+## v0.23.1（2026-11-12）
+
+- Release：[v0.23.1](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.23.1)。标签提交、附注标签对象、Release id 与发布时间在发布后补记到本段；包内源码是打包时点快照。
+- 打包顺序：`tools\package_seeds.py` → 回填 `docs/seed_package.json` → 重建确认摘要不变 → `tools\package.py`（内置发布记录门禁）→ 标签/发布 → `tools\check_release_assets.py --tag v0.23.1`。
+- 种子包 SHA256 `46d8d1f5024a05c4585f051bab1243791a7a9149a9eb90e1764a5ec9afb6a926`（24 个文件、9 个种子，两次构建一致）。
+- 四附件逐个列出（未用通配）；`source.zip` 的摘要见同名 sidecar，不写入包内：
+
+| 附件 | 摘要 |
+| --- | --- |
+| `MCP_CREO_MechDog-0.23.1-source.zip` | 摘要见同名 `.sha256` sidecar 与 Release 正文 |
+| `MCP_CREO_MechDog-0.23.1-source.zip.sha256` | 一行 `<64-hex SHA256>  <文件名>` |
+| `MCP_CREO_MechDog-0.23.1-seed-library.zip` | `46d8d1f5024a05c4585f051bab1243791a7a9149a9eb90e1764a5ec9afb6a926` |
+| `MCP_CREO_MechDog-0.23.1-seed-library.zip.sha256` | 一行 `<64-hex SHA256>  <文件名>` |
+
+- 本版含 `native/surface_loft.cpp`、`src/creo_mechdog/job_projection.py`、`src/creo_mechdog/operation_results.py`、`src/creo_mechdog/release_integrity.py` 与打包工具变更（BUG-119、DEV-083），升级后必须重编译 worker。Creo 12.4.0.0 实机：已有实体模型放样 8 项、YZ/XZ 正交平面 13 项、guides 回归 38 项全 PASS（报告见 `docs/validation/RELEASE-0.23.1.md`）。
+
 ## 未覆盖
 
 - 本核对只证明**远端附件与 sidecar、摘要三者一致**，不重新验证包内功能、Creo 实机或安装结果；这些结论分别属于各版 `docs/validation/RELEASE-*.md` 的实际范围。

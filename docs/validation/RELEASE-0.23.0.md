@@ -2,6 +2,8 @@
 
 本文件是 0.23.0 的发布记录。发布后结论以 GitHub Release `v0.23.0` 正文、[统一 POSTCHECK](../development/RELEASE-POSTCHECK-2026-11-07.md#v02302026-11-12) 与本文件「发布核对」段为准；源码包内的本文件是打包时点的快照。
 
+> 2026-11-12 补记（DEV-083）：0.23.0 的发布核对段与 POSTCHECK `## v0.23.0` 段在标签之后才回填，因此已发布 `source.zip` 内仍是回填前快照。本文件正文与已发布附件保持原样，仅在本条补记说明；0.23.1 起 `tools/package.py` 与 `tools/check_release_assets.py` 会在打包和远端核对时拒绝同类过期记录，历史附件不重传。
+
 ## 版本与范围
 
 - 版本：`0.23.0`（MINOR），源码版本以 [version.py](../version.py) 为准。

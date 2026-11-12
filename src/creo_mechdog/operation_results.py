@@ -356,6 +356,15 @@ OUTCOME_OPERATION_KEYS = (
     "quilt_count",
     "quilt_closed_native",
     "has_solid",
+    # BUG-119: the pre/post material snapshot must survive the budget trim, or
+    # a compact poll cannot judge whether this loft added solid material.
+    "has_solid_before",
+    "has_solid_after",
+    "created_solid_material",
+    "material_bodies_before",
+    "material_bodies_after",
+    "volume_mm3_before",
+    "volume_mm3_after",
     "surface_area_mm2",
     "surface_area_status",
     "section_count",

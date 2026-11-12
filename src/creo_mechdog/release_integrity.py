@@ -22,6 +22,14 @@ TRUSTED_RECORD = "docs/seed_package.json"
 SEED_LIBRARY = "seed_library"
 SEED_MANIFEST = "seed_manifest.json"
 DOCUMENTATION_MANIFEST = "docs/seed_manifest.json"
+POSTCHECK = "docs/development/RELEASE-POSTCHECK-2026-11-07.md"
+
+# DEV-083 (0.22.0 feedback): 0.22.0 and 0.23.0 were tagged before their
+# POSTCHECK/release records were backfilled, so the distributed source.zip still
+# carried a placeholder. The record gate starts with 0.23.1 and refuses to
+# produce or verify such a package.
+RECORDS_ENFORCED_FROM = (0, 23, 1)
+_PLACEHOLDERS = ("待回填", "待发布后回填", "发布后在此段回填", "PENDING", "准备态")
 
 RELEASE_ASSET_NAME = "MCP_CREO_MechDog"
 _HEX = set("0123456789abcdefABCDEF")
@@ -411,3 +419,284 @@ def validate_release_inputs(root: Path, seed_archive: Path) -> dict[str, object]
         "readme_current_version": readme["current"],
         "manifest_seed_count": summary["seed_count"],
     }
+
+
+def _release_version_tuple(version: str) -> tuple[int, int, int]:
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version.strip())
+    if match is None:
+        raise ValueError(f"Release version {version!r} is not MAJOR.MINOR.PATCH")
+    return int(match.group(1)), int(match.group(2)), int(match.group(3))
+
+
+def _postcheck_section(text: str, version: str) -> str | None:
+    """The body of ``## v<version>`` in the POSTCHECK file, or ``None``."""
+    lines = text.splitlines()
+    header = f"## v{version}"
+    start = None
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped == header or stripped.startswith((header + " ", header + "（", header + "(")):
+            start = index + 1
+            break
+    if start is None:
+        return None
+    end = len(lines)
+    for index in range(start, len(lines)):
+        if lines[index].startswith("## "):
+            end = index
+            break
+    return "\n".join(lines[start:end])
+
+
+def _declared_version(text: str) -> str | None:
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return None
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        targets = [target for target in node.targets if isinstance(target, ast.Name)]
+        if not any(target.id == "VERSION" for target in targets):
+            continue
+        try:
+            value = ast.literal_eval(node.value)
+        except ValueError:
+            return None
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _work_item_status(backlog: str, work_id: str) -> str | None:
+    """The status cell of ``work_id``'s table row in the main backlog."""
+    for line in backlog.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            continue
+        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+        if len(cells) < 3 or f"[{work_id}]" not in cells[0]:
+            continue
+        return cells[2]
+    return None
+
+
+def _id_rows(text: str) -> list[tuple[str, list[str]]]:
+    """Rows of the ``## 逐 ID 状态核对`` table as ``(id, cells)`` pairs."""
+    lines = text.splitlines()
+    start = None
+    for index, line in enumerate(lines):
+        if line.strip().startswith("## 逐 ID"):
+            start = index + 1
+            break
+    if start is None:
+        return []
+    rows: list[tuple[str, list[str]]] = []
+    for line in lines[start:]:
+        stripped = line.strip()
+        if stripped.startswith("## "):
+            break
+        if not stripped.startswith("|"):
+            continue
+        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+        if not cells:
+            continue
+        match = re.search(r"\b[A-Z]+-\d+\b", cells[0])
+        if match is not None:
+            rows.append((match.group(0), cells))
+    return rows
+
+
+def _record_problems(
+    text: str,
+    version: str,
+    origin: str,
+    seed_digest: str | None,
+    *,
+    require_sidecar_note: bool,
+) -> list[str]:
+    """Problems in one POSTCHECK section or ``RELEASE-<version>.md`` record."""
+    problems = []
+    for name in expected_assets(version):
+        if name not in text:
+            problems.append(f"{origin}: missing release asset {name}")
+    release_url = f"https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v{version}"
+    if release_url not in text:
+        problems.append(f"{origin}: missing Release URL {release_url}")
+    if seed_digest is None:
+        problems.append(f"{origin}: no trusted seed archive SHA256 to match")
+    elif seed_digest not in text:
+        problems.append(f"{origin}: missing seed archive SHA256 {seed_digest}")
+    if _DIGEST_PATTERN.search(text) is None:
+        problems.append(f"{origin}: missing a 64-character SHA256")
+    for placeholder in _PLACEHOLDERS:
+        if placeholder in text:
+            problems.append(f"{origin}: contains placeholder {placeholder!r}")
+    if require_sidecar_note and not re.search(
+        r"摘要[^\n]{0,24}sidecar|sidecar[^\n]{0,24}摘要", text
+    ):
+        problems.append(f"{origin}: must state that the source.zip digest is in its sidecar")
+    return problems
+
+
+def _work_item_problems(version: str, record: str, read, origin: str) -> list[str]:
+    """Cross-check every row of the record's per-ID table against the backlog."""
+    backlog = read("docs/BACKLOG.md")
+    if backlog is None:
+        return [f"{origin}: missing docs/BACKLOG.md for the per-ID check"]
+    rows = _id_rows(record)
+    if not rows:
+        return [f"{origin}: RELEASE-{version}.md has no '逐 ID 状态核对' table rows"]
+    problems = []
+    for work_id, cells in rows:
+        status = _work_item_status(backlog, work_id)
+        if status is None:
+            problems.append(f"{origin}: {work_id} is missing from docs/BACKLOG.md")
+        card = read(f"docs/work-items/{work_id}.md")
+        if card is None:
+            problems.append(f"{origin}: missing docs/work-items/{work_id}.md")
+        elif version not in "\n".join(card.splitlines()[:12]):
+            problems.append(
+                f"{origin}: docs/work-items/{work_id}.md first 12 lines do not mention {version}"
+            )
+        if f"已交付 {version}" in " | ".join(cells) and status in ("开发中", "未排期"):
+            problems.append(
+                f"{origin}: {work_id} claims 已交付 {version} but docs/BACKLOG.md says {status}"
+            )
+    return problems
+
+
+def _version_problems(version: str, read, origin: str) -> list[str]:
+    """The package's own version declarations must all agree."""
+    problems = []
+    source = read("version.py")
+    if source is None:
+        problems.append(f"{origin}: missing version.py")
+    else:
+        declared = _declared_version(source)
+        if declared != version:
+            problems.append(f"{origin}: version.py declares {declared}, expected {version}")
+    readme = read("README.md")
+    if readme is None:
+        problems.append(f"{origin}: missing README.md")
+    else:
+        title = _README_TITLE_PATTERN.search(readme)
+        current = _README_CURRENT_PATTERN.search(readme)
+        if title is None or title.group(1) != version:
+            problems.append(f"{origin}: README title is not {version}")
+        if current is None or current.group(1) != version:
+            problems.append(f"{origin}: README current release section is not {version}")
+    for name in (DOCUMENTATION_MANIFEST, f"{SEED_LIBRARY}/{SEED_MANIFEST}"):
+        text = read(name)
+        if text is None:
+            problems.append(f"{origin}: missing {name}")
+            continue
+        try:
+            manifest = json.loads(text)
+        except ValueError:
+            problems.append(f"{origin}: {name} is not readable JSON")
+            continue
+        declared = manifest.get("compatible_server_version")
+        if declared != version:
+            problems.append(f"{origin}: {name} declares {declared}, expected {version}")
+    return problems
+
+
+def _records_problems(version: str, read, origin: str) -> list[str]:
+    problems = _version_problems(version, read, origin)
+    seed_digest = None
+    record = read(TRUSTED_RECORD)
+    if record is None:
+        problems.append(f"{origin}: missing {TRUSTED_RECORD}")
+    else:
+        try:
+            seed_digest = json.loads(record).get("seed_archive_sha256")
+        except ValueError:
+            problems.append(f"{origin}: {TRUSTED_RECORD} is not readable JSON")
+        if not isinstance(seed_digest, str) or _DIGEST_PATTERN.fullmatch(seed_digest) is None:
+            problems.append(f"{origin}: {TRUSTED_RECORD} has no valid seed_archive_sha256")
+            seed_digest = None
+    postcheck = read(POSTCHECK)
+    if postcheck is None:
+        problems.append(f"{origin}: missing {POSTCHECK}")
+    else:
+        section = _postcheck_section(postcheck, version)
+        if section is None:
+            problems.append(f"{origin}: {POSTCHECK} has no '## v{version}' section")
+        else:
+            problems.extend(
+                _record_problems(
+                    section,
+                    version,
+                    f"{origin}:POSTCHECK v{version}",
+                    seed_digest,
+                    require_sidecar_note=False,
+                )
+            )
+    release = read(f"docs/validation/RELEASE-{version}.md")
+    if release is None:
+        problems.append(f"{origin}: missing docs/validation/RELEASE-{version}.md")
+    else:
+        problems.extend(
+            _record_problems(
+                release,
+                version,
+                f"{origin}:RELEASE-{version}.md",
+                seed_digest,
+                require_sidecar_note=True,
+            )
+        )
+        problems.extend(_work_item_problems(version, release, read, origin))
+    return problems
+
+
+def validate_release_records(
+    version: str,
+    source_zip: Path | None = None,
+    root: Path | None = None,
+) -> list[str]:
+    """Problems that keep ``version`` from being packaged or published.
+
+    DEV-083: 0.22.0 and 0.23.0 were tagged before their POSTCHECK and release
+    records were backfilled, so the distributed ``source.zip`` carried a
+    placeholder. From :data:`RECORDS_ENFORCED_FROM` on, the packager refuses to
+    write such an archive and the remote check refuses to accept one. When
+    ``source_zip`` is given, the same checks run against the archive's own copies
+    and its version declarations must agree with ``version``. Versions before the
+    enforcement point return no problems; their historical tags only get the
+    four-asset check.
+    """
+    try:
+        enforced = _release_version_tuple(version) >= RECORDS_ENFORCED_FROM
+    except ValueError as error:
+        return [str(error)]
+    if not enforced:
+        return []
+    base: Path | None = None
+    if root is not None:
+        base = Path(root)
+    elif source_zip is None:
+        base = Path(__file__).resolve().parents[2]
+
+    def read_tree(name: str) -> str | None:
+        path = Path(base) / name
+        if not path.is_file():
+            return None
+        return path.read_text(encoding="utf-8-sig")
+
+    problems = [] if base is None else _records_problems(version, read_tree, "source tree")
+    if source_zip is None:
+        return problems
+    archive_path = Path(source_zip)
+    try:
+        with zipfile.ZipFile(archive_path) as archive:
+            members = archive_members(archive)
+    except (OSError, zipfile.BadZipFile) as error:
+        return problems + [f"source.zip is not a readable ZIP: {error}"]
+    prefix = f"{RELEASE_ASSET_NAME}/"
+
+    def read_archive(name: str) -> str | None:
+        data = members.get(prefix + name)
+        return None if data is None else data.decode("utf-8-sig")
+
+    return problems + _records_problems(version, read_archive, f"{archive_path.name}")

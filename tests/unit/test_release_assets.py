@@ -18,7 +18,9 @@ from tools import check_release_assets, package
 class ReleaseAssetGateTests(unittest.TestCase):
     def setUp(self):
         self.directory = Path(self.enterContext(tempfile.TemporaryDirectory()))
-        self.version = "9.9.9"
+        # Below RECORDS_ENFORCED_FROM, so these tests keep covering the
+        # four-asset gate itself; the record gate has its own test module.
+        self.version = "0.23.0"
         (
             self.source,
             self.source_sidecar,
@@ -83,9 +85,11 @@ class ReleaseAssetGateTests(unittest.TestCase):
 
     def test_extra_asset_is_reported(self):
         self.publish_complete_release()
-        self.write_asset("MCP_CREO_MechDog-9.9.9-extra.zip", b"extra")
+        self.write_asset(f"MCP_CREO_MechDog-{self.version}-extra.zip", b"extra")
         problems = check_release_assets.validate_directory(self.directory, self.version)
-        self.assertIn("unexpected release asset: MCP_CREO_MechDog-9.9.9-extra.zip", problems)
+        self.assertIn(
+            f"unexpected release asset: MCP_CREO_MechDog-{self.version}-extra.zip", problems
+        )
 
     def test_sidecar_with_two_lines_is_rejected(self):
         self.publish_complete_release()
@@ -280,7 +284,9 @@ class SourcePackageAssetGateTests(unittest.TestCase):
 
     def setUp(self):
         self.temp = Path(self.enterContext(tempfile.TemporaryDirectory()))
-        self.version = "9.9.9"
+        # Below RECORDS_ENFORCED_FROM: this class tests the four-asset packaging
+        # gate, not the release-record gate.
+        self.version = "0.23.0"
         self.root = self.temp / "source"
         self.root.mkdir()
         (self.root / "version.py").write_text(f'VERSION = "{self.version}"\n', encoding="utf-8")

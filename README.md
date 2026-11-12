@@ -1,8 +1,8 @@
-# MCP_CREO_MechDog 0.23.0
+# MCP_CREO_MechDog 0.23.1
 
-![version](https://img.shields.io/badge/version-0.23.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
+![version](https://img.shields.io/badge/version-0.23.1-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.23.0**（MINOR——FEAT-066/DEV-082：`sketch`/`creo_create_sketch` 新增精确 NURBS 实体 `b_spline`，按 `degree`/`control_points`/`knots`/`weights` 直传 `Pro2dBSplinedef`，实机控制点回读偏差 2.6e-31 mm、两截面面积 1058.017278 mm² 对齐独立 de Boor oracle；`surface_loft`/`surface_boundary_fill` 门禁从 `Probbl.h` 改为 `ProElemId.h` 的 `PRO_E_BNBLN_*` 元素 ID，Creo 10 缺该文档头不再整段剔除；公开工具仍 107） · [版本说明](docs/RELEASE_NOTES_0.23.0.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
+当前正式版 **0.23.1**（PATCH——BUG-119：已有实体的模型上 `surface_loft` 不再因模型级 `has_solid` 被误判为“创建实体”而回滚，改为比较操作前后的实体状态、带材料实体数与体积增量；同时补 YZ@X、XZ@Y 两组正交平面截面的实机面积与开放 quilt 证据；发布流程新增机器门禁，`package.py` 与 `check_release_assets.py` 会拒绝包内 POSTCHECK/发布记录过期或含占位词；公开工具仍 107） · [版本说明](docs/RELEASE_NOTES_0.23.1.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 

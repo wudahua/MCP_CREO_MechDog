@@ -18,6 +18,8 @@
 // ProElemId.h, so the feature gate is "does this SDK declare the tree" rather
 // than "does this SDK ship the optional documentation header". Creo 10 has no
 // Probbl.h but does declare all five ids, so this route now compiles there.
+#include <optional>
+
 #if defined(__has_include)
 #if __has_include(<ProElemId.h>)
 #include <ProElemId.h>
@@ -56,6 +58,34 @@ static constexpr int SURFACE_LOFT_TREE_SAMPLE_LIMIT = 160;
 // FEAT-065/M1: an upper bound that keeps one element tree (and one receipt)
 // bounded; the kernel has no documented maximum of its own.
 static constexpr int SURFACE_LOFT_SECTION_LIMIT = 32;
+
+// BUG-119 (0.22.0 feedback P2): `has_solid` from inspection() describes the
+// whole model, so a part that already contained a solid made every surface loft
+// look like it had created material. Compare the state before and after the
+// operation instead: only a local increase in solid/material/volume is a
+// failure.
+struct SurfaceLoftMaterialState {
+    bool has_solid = false;
+    int material_bodies = 0;
+    std::optional<double> volume_mm3;
+};
+
+static SurfaceLoftMaterialState surface_loft_material_state() {
+    SurfaceLoftMaterialState state;
+    J inspected = inspection(false);
+    state.has_solid = inspected["has_solid"].get<bool>();
+    if (inspected.contains("body_counts") && !inspected["body_counts"].is_null())
+        state.material_bodies = inspected["body_counts"]["with_material"].get<int>();
+    try {
+        J mass = mass_properties_json(J::object());
+        if (mass.contains("volume_mm3") && !mass["volume_mm3"].is_null())
+            state.volume_mm3 = mass["volume_mm3"].get<double>();
+    } catch (...) {
+        // No solid/material yet, or an assembly: volume stays unknown and the
+        // solid/body delta still carries the decision.
+    }
+    return state;
+}
 // FEAT-065/M2 experiment: the second direction (guides) is bounded the same way.
 static constexpr int SURFACE_LOFT_GUIDE_LIMIT = 8;
 
@@ -925,6 +955,7 @@ static void generic_surface_loft(const J &op) {
             publish_tan_cond = publish_tan_cond || input.source == "edge";
 
     ProElement root = node(nullptr, PRO_E_FEATURE_TREE);
+    const SurfaceLoftMaterialState material_before = surface_loft_material_state();
     integer(root, PRO_E_FEATURE_TYPE, PRO_FEAT_DATUM_SURF);
     integer(root, PRO_E_FEATURE_FORM, PRO_USE_SURFS);
     integer(root, PRO_E_DTM_SRF_TYPE, PRO_E_DTM_SRF_TYPE_BND_BLEND);
@@ -1080,7 +1111,24 @@ static void generic_surface_loft(const J &op) {
     // null with a reason instead of a fabricated zero.
     details["surface_group"] =
         quilt_id >= 0 ? surface_group_receipt({quilt_id}, 0.01, 1.0) : J(nullptr);
-    details["has_solid"] = inspection(false)["has_solid"];
+    const SurfaceLoftMaterialState material_after = surface_loft_material_state();
+    const bool created_solid_material =
+        (material_after.has_solid && !material_before.has_solid) ||
+        material_after.material_bodies > material_before.material_bodies ||
+        (material_after.volume_mm3.has_value() &&
+         ((material_before.volume_mm3.has_value() &&
+           *material_after.volume_mm3 - *material_before.volume_mm3 > 1e-6) ||
+          (!material_before.volume_mm3.has_value() && *material_after.volume_mm3 > 1e-6)));
+    details["has_solid"] = material_after.has_solid;
+    details["has_solid_before"] = material_before.has_solid;
+    details["has_solid_after"] = material_after.has_solid;
+    details["created_solid_material"] = created_solid_material;
+    details["material_bodies_before"] = material_before.material_bodies;
+    details["material_bodies_after"] = material_after.material_bodies;
+    details["volume_mm3_before"] =
+        material_before.volume_mm3 ? J(*material_before.volume_mm3) : J(nullptr);
+    details["volume_mm3_after"] =
+        material_after.volume_mm3 ? J(*material_after.volume_mm3) : J(nullptr);
     details["surface_type"] =
         feature_type == PRO_FEAT_DATUM_SURF ? J("datum_surface") : J("unknown");
     stage_operation_result(details);
@@ -1108,8 +1156,13 @@ static void generic_surface_loft(const J &op) {
     if (!area.available)
         throw std::runtime_error(std::string("surface_loft surface is not measurable") +
                                  (area.reason ? ": " : "") + (area.reason ? area.reason : ""));
-    if (details["has_solid"].get<bool>())
-        throw std::runtime_error("surface_loft created solid material; a surface loft must not");
+    if (created_solid_material)
+        throw std::runtime_error(
+            "surface_loft created solid material; a surface loft must not (has_solid " +
+            std::string(material_before.has_solid ? "true" : "false") + " -> " +
+            (material_after.has_solid ? "true" : "false") + ", material bodies " +
+            std::to_string(material_before.material_bodies) + " -> " +
+            std::to_string(material_after.material_bodies) + ")");
     if (!quilt_closed_is_open(closed))
         throw std::runtime_error(
             "surface_loft result must be an open quilt; ProQuiltVolumeEval reported " +

@@ -166,6 +166,15 @@ SURFACE_LOFT_KEYS = (
     "closure",
     "surface_group",
     "has_solid",
+    # BUG-119: the pre/post material snapshot. Without these the client cannot
+    # tell "the model already had a solid" from "this loft created one".
+    "has_solid_before",
+    "has_solid_after",
+    "created_solid_material",
+    "material_bodies_before",
+    "material_bodies_after",
+    "volume_mm3_before",
+    "volume_mm3_after",
 )
 
 #: Keys produced by native/surface_boundary_fill.cpp (DEV-074/H09): the echoed

@@ -2,6 +2,8 @@
 
 本文件是 0.22.0 的发布记录。结论以 [GitHub Release v0.22.0](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.22.0) 正文与本文件「发布核对」段为准；源码包内的本文件是打包时点的快照。
 
+> 2026-11-12 补记（DEV-083）：0.22.0 标签与附件发布时，包内 POSTCHECK 与发布记录仍是回填前的准备态。本文件正文与已发布附件保持原样，仅在本条补记说明；当前事实以 `main` 与本文件「发布核对」段为准。0.23.1 起由 `tools/package.py` 的发布记录门禁阻止同类情况，历史附件不重传。
+
 ## 版本与范围
 
 - 版本：`0.22.0`（MINOR），源码版本以 [version.py](../version.py) 为准。

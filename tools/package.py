@@ -14,6 +14,7 @@ from creo_mechdog.release_integrity import (
     seed_library_files,
     validate_asset_paths,
     validate_release_inputs,
+    validate_release_records,
     write_sidecar,
 )
 from version import VERSION
@@ -159,6 +160,14 @@ def main():
             print(f"  - {problem}", file=sys.stderr)
         return 1
     print("Release asset gate: four assets present; both sidecars match their ZIP digests")
+    problems = validate_release_records(VERSION, archive)
+    if problems:
+        print("Release record gate rejected this package:", file=sys.stderr)
+        for problem in problems:
+            print(f"  - {problem}", file=sys.stderr)
+        print(f"Delete {archive} and rebuild it after fixing the records.", file=sys.stderr)
+        return 1
+    print("Release record gate: POSTCHECK, release record and per-ID states are current")
     return 0
 
 
