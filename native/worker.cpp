@@ -331,9 +331,14 @@ int wmain(int argc, wchar_t *argv[]) {
              {{"surface_loft",
                {{"available", std::string(loft_state) == "compiled"},
                 {"state", loft_state},
-                {"sdk_requirements", J::array({"Probbl.h"})},
+                {"sdk_requirements",
+                 J::array({"PRO_E_BNBLN_CURVES", "PRO_E_BNBLN_1DIR", "PRO_E_BNBLN_2DIR",
+                           "PRO_E_BNBLN_DIR_CURVES", "PRO_E_BNBLN_TAN_COND"})},
                 {"missing_sdk_requirements",
-                 std::string(loft_state) == "compiled" ? J::array() : J::array({"Probbl.h"})}}}}},
+                 std::string(loft_state) == "compiled"
+                     ? J::array()
+                     : J::array({"PRO_E_BNBLN_CURVES", "PRO_E_BNBLN_1DIR", "PRO_E_BNBLN_2DIR",
+                                 "PRO_E_BNBLN_DIR_CURVES", "PRO_E_BNBLN_TAN_COND"})}}}}},
         };
         printf("%s\n", info.dump().c_str());
         return 0;

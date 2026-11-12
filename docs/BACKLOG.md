@@ -1,5 +1,7 @@
 # 统一开发台账
 
+2026-11-12（0.21.0 反馈批）：归档下载目录 `0.21.0` 三份原件（[manifest](validation/feedback-0.21.0-2026-11-11/manifest.json)、[MAPPING](validation/feedback-0.21.0-2026-11-11/MAPPING.md)）。P1 门禁修复归 [DEV-082](work-items/DEV-082.md)：`surface_loft`/`surface_boundary_fill` 从「是否有 `Probbl.h`」改为 `MECHDOG_HAS_BNBLN_TREE`（`ProElemId.h` 的五个元素 ID），worker 与能力文案同步。新增 [FEAT-066](work-items/FEAT-066.md)：`sketch` 接受 `b_spline`（degree/control_points/knots/weights），映射 `Pro2dBSplinedef` 精确复现 NURBS。表行 177→**178**（BUG 77 / FEAT 63 / DEV 38）。P3-4 更正 `RELEASE-0.20.0.md` 的「不触及 native」措辞。用户当次授权后在 Creo 12.4 实机验收：`tools/test_b_spline.py --live` 20 项全 PASS（控制点回读偏差 2.6e-31 mm、两截面面积 1058.017278 mm² 对齐独立 de Boor oracle 1058.017814 mm²、保存重载一致），`tools/test_surface_loft_guides.py --live` 全 PASS。证据 [feat066-b-spline-2026-11-12](validation/feat066-b-spline-2026-11-12/EVIDENCE.md)。未合 main、未发布。
+
 2026-11-08：[DEV-076](work-items/DEV-076.md)在当前分支合入本地v0.18.4并修三件反馈。标签导入时实际表行为166（原文167偏大1）；新增本卡后实际为167，不是沿用错误数字。该句为DEV-076时点，尚未合main或发布。
 
 2026-11-08：本分支合并已发布的 [v0.19.0](validation/RELEASE-0.19.0.md)（DEV-074 曲面与整链批），保留 DEV-076/DEV-077 与另一 AI 的工作树改动；本分支自身仍未合 main、未发布。
@@ -39,7 +41,7 @@
 
 2026-11-09：上述 12 个开发分支提交连同版本元数据合入 `main`，按 PATCH 发布 [v0.19.3](validation/RELEASE-0.19.3.md)（[版本说明](RELEASE_NOTES_0.19.3.md)，公开工具仍 107）：DEV-081 A 批离线六项与 B/C 批规划、DEV-080 首批离线收口、BUG-001 实机放行规则修订及台账/证据同步。本批未连 Creo、未编译原生、未执行 WorkBuddy 黑盒；B1—B6 原生/实机与 C0—C5 黑盒仍开放。标签指向合入后的 `main` 提交，四附件与两个 `.sha256` sidecar 由该提交源码生成，发布后运行 `tools\check_release_assets.py --tag v0.19.3` 核对。计数仍 172（BUG 75 / FEAT 61 / DEV 36）。发布结果：`main` 提交 `096e86a`（`origin/main` 同值），附注标签对象 `61d1d2b`，[Release v0.19.3](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.19.3) 已发布（非 draft），四附件逐个上传，`tools\check_release_assets.py --tag v0.19.3` exit 0 且两个 sidecar 与对应 ZIP 摘要一致。
 
-建立：2026-10-13；最近复核：2026-11-11（0.22.0 发布，[FEAT-065](work-items/FEAT-065.md) M3/M4）。本文件是唯一当前台账，按“开发入口 → 本表 ID → 工作卡当前摘要 → 相关源码”读取，历史证据按需打开。当前源码版本以 [version.py](../version.py) 为准；逐版交付记录见 [版本说明目录](../README.md) 与 `docs/validation/RELEASE-*.md`，不在本表重复回填。
+建立：2026-10-13；最近复核：2026-11-12（0.23.0 发布，[FEAT-066](work-items/FEAT-066.md) `b_spline` 与 [DEV-082](work-items/DEV-082.md) 门禁修复）。本文件是唯一当前台账，按“开发入口 → 本表 ID → 工作卡当前摘要 → 相关源码”读取，历史证据按需打开。当前源码版本以 [version.py](../version.py) 为准；逐版交付记录见 [版本说明目录](../README.md) 与 `docs/validation/RELEASE-*.md`，不在本表重复回填。
 
 DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交（[RELEASE-0.18.0](validation/RELEASE-0.18.0.md)）。0.18.0 已发布的结论以该发布记录与远端 Release 核对为准。DEV-074 的 0.18.3 子项交付以 [0.18.3 发布记录](validation/RELEASE-0.18.3.md)为准，0.18.4 子项以 [0.18.4 发布记录](validation/RELEASE-0.18.4.md)为准，0.19.0 子项以 [0.19.0 发布记录](validation/RELEASE-0.19.0.md)为准；两版发布状态来源和空白字段勘误以[统一POSTCHECK](development/RELEASE-POSTCHECK-2026-11-07.md)及其所链新勘误为准。
 
@@ -49,7 +51,7 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 
 诊断交付不等于根因修复；部分交付不关整卡；缺其他版本证据不自动判未修。观察项等自然新现场，不制造故障。已完成且无保留范围的行移入 [完成档案](BACKLOG_COMPLETED.md#2026-11-07dev-073-归档与历史进展)。原进展/证据保留日期，不再回填第二份待办。小修复沿用卡与证据，复杂跨模块任务才另建完整计划。
 
-当前唯一 ID **177**（BUG **77**、FEAT **62**、DEV **38**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
+当前唯一 ID **178**（BUG **77**、FEAT **63**、DEV **38**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
 
 | 当前分类 | 唯一 ID 数 |
 | --- | --- |
@@ -60,7 +62,7 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 | 其它 agent 处理范围 | 20 |
 | 开发中 | 7 |
 | 部分交付，剩余待验收 | 38 |
-| 部分交付，剩余待规划 | 3 |
+| 部分交付，剩余待规划 | 4 |
 | 待规划 | 42 |
 
 BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与真实缺口，勿重复派工。
@@ -189,7 +191,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [DEV-077](work-items/DEV-077.md) | P1 | R01—R04 已随 0.19.2 交付；实机/黑盒/远端余项待接手 | 0.19.2 | 0.18.2四份反馈对比归档、RELEASING/POSTCHECK回填、台账计数门禁、质量属性诊断与阶段计时回退；R01可配rotation_tolerance、R02质量属性提示/get_job 300s/known_limitations/plan_examples已在0.19.1交付；0.19.2新增草图closure_tolerance/snap_endpoints/偏差断言、mirror feature引用与回执、session_health降级策略、quilt_merge消耗回执；余项见DEV-077-HANDOFF R01—R08。 |
 | [DEV-079](work-items/DEV-079.md) | P1 | 离线子项已随 0.19.2 交付；Creo 10/钣金/黑盒待接手 | 0.19.2 | 0.19.0三份Creo 10反馈归档与对照；quilt_merge描述同步、曲率默认摘要/`include_samples`、surface_group结构化失败回执、`profile.method`、POSTCHECK旧句已修；`state_reason`与裸名导入等0.19.1已修项不重复；H01—H09（Probbl.h替代、开放弧trim、残留quilt、原生截面面积、大作业compact、连续顶边选边、entities_file、native_bundle、负origin resize）待实机。 |
 | [DEV-080](work-items/DEV-080.md) | P1 | 首批离线收口已随 0.19.3 交付；原生/实机余项待接手 | 0.19.3 | 接手0.19.0三份报告复核后仍未闭环的H01—H09及未编号缺口；首批交付手写TU头门控契约测试、COMPATIBILITY缺头降级说明、计数自检进CI；原生解耦/等价元素树、开放弧trim、残留quilt、原生截面面积、大作业compact、连续顶边选边、entities_file、native_bundle、负origin resize待Creo10 SDK或实机；解压单测发布前阻断与verify_stages优先留后续。 |
-| [DEV-082](work-items/DEV-082.md) | P1 | 开发中 | 未排期 | 0.19.3反馈P1-1/P1-2：`surface_boundary_fill.cpp` 已按 `MECHDOG_HAS_PROBBL_HEADER` 门控并给缺头 stub，新增跨TU符号可见性契约测试；`-DMECHDOG_HAS_PROBBL_HEADER=0` 聚合语法检查EXIT=0。H01抽 `element_tree_json.h`、单一真值源与真实Creo10 SDK整包编译仍开放。 |
+| [DEV-082](work-items/DEV-082.md) | P1 | 开发中 | 未排期 | 0.19.3反馈P1-1/P1-2 的跨TU符号门控已交付；0.21.0反馈P1 把 `surface_loft`/`surface_boundary_fill` 从 `__has_include(<Probbl.h>)` 改为 `MECHDOG_HAS_BNBLN_TREE`（`ProElemId.h` 五个 `PRO_E_BNBLN_*`），worker/能力文案同步，随 0.23.0 发布，Creo 12.4 实机放样回归全 PASS。H01抽 `element_tree_json.h`、单一真值源、真实Creo10 SDK整包编译与运行期元素树再生仍开放。 |
 
 ## 部分交付，剩余待验收
 
@@ -241,6 +243,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [FEAT-027](BACKLOG_COMPLETED.md#legacy-feat-027) | P3 | 部分交付，剩余待规划 | 未排期 | 墓碑与旧别名拒绝已交付；显式释放/重绑定接口和跨版本历史核对待规划。 |
 | [DEV-066](work-items/DEV-066.md) | P2 | 部分交付，剩余待规划 | 未排期 | 0.18.2已交付来源降级子项；当前分支8def1e4已补齐其余Git读取、报告字段、负例捕获和runtime日志取消跟踪，未发布增量及H08—H09见DEV-075-HANDOFF。 |
 | [FEAT-033](work-items/FEAT-033.md) | P1 | 部分交付，剩余待规划 | 未排期（0.19.3 B 批 opt-in 已交付） | small/large 基准已有；`execute_plan(timeout_seconds)` 受控覆盖（60—7200，默认=服务配置）与 job 回执 `timeout_seconds`/`timeout_source`、看门狗按作业预算判定已交付；自动预算公式、阶段耗时公开契约与到期动作仍待规划，不以取消保存重载缩时。 |
+| [FEAT-066](work-items/FEAT-066.md) | P1 | 部分交付，剩余待规划 | 0.23.0（已交付子项） | `b_spline` 精确 NURBS 实体随 0.23.0 发布，Creo 12.4 实机控制点回读偏差 2.6e-31 mm、两截面面积 1058.017278 mm² 对齐独立 de Boor oracle、保存重载一致，`surface_loft` 回归 PASS。剩余 `closed`、`dimensioning="coordinates"`、页面编辑未排期；Creo 10 运行期未验。 |
 
 <a id="未来能力候选"></a>
 <a id="当前优先功能"></a>

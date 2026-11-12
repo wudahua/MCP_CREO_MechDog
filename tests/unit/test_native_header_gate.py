@@ -22,9 +22,10 @@ from tools.generate_constants import HEADERS, available_headers, generate
 ROOT = Path(__file__).resolve().parents[2]
 NATIVE_DIR = ROOT / "native"
 
-#: Headers observed missing on a supported SDK generation (Creo 10 has no
-#: boundary-blend tree). H01 will replace this catalogue with the generator's
-#: single truth source once handwritten units consume the emitted macros.
+#: Headers observed missing on a supported SDK generation (Creo 10 ships the
+#: boundary-blend element ids but not the optional Probbl.h documentation
+#: header). Since 2026-11-12 the handwritten gate keys off the element ids, so
+#: this catalogue only guards the generated include list.
 SDK_OPTIONAL_HEADERS = frozenset({"Probbl.h"})
 
 _INCLUDE = re.compile(r"^\s*#\s*include\s*<([^>]+)>")
@@ -105,16 +106,19 @@ class HandwrittenUnitGateTests(unittest.TestCase):
             "gate it with __has_include or MECHDOG_HAS_*",
         )
 
-    def test_surface_loft_probbl_include_is_gated(self):
-        includes = _sdk_includes(NATIVE_DIR / "surface_loft.cpp", {"Probbl.h"})
-        self.assertTrue(includes, "surface_loft.cpp must include Probbl.h when available")
-        self.assertTrue(all(guarded for _, _, guarded in includes))
-
-    def test_missing_header_branch_publishes_sdk_state(self):
+    def test_surface_loft_gates_on_element_ids_not_the_documentation_header(self):
         source = (NATIVE_DIR / "surface_loft.cpp").read_text(encoding="utf-8")
-        self.assertIn("#ifndef MECHDOG_HAS_PROBBL_HEADER", source)
+        self.assertIn("#if defined(PRO_E_BNBLN_CURVES)", source)
+        self.assertIn("MECHDOG_HAS_BNBLN_TREE", source)
+        self.assertNotIn("__has_include(<Probbl.h>)", source)
+        self.assertIn("#ifndef PRO_E_DTM_SRF_TYPE_BND_BLEND", source)
+
+    def test_missing_element_id_branch_publishes_sdk_state(self):
+        source = (NATIVE_DIR / "surface_loft.cpp").read_text(encoding="utf-8")
+        self.assertIn("#define MECHDOG_HAS_BNBLN_TREE 1", source)
+        self.assertIn("#define MECHDOG_HAS_BNBLN_TREE 0", source)
         self.assertIn("mechdog_surface_loft_sdk_state", source)
-        self.assertIn("sdk_header_missing", source)
+        self.assertIn("bnbln_element_ids_missing", source)
 
 
 class GeneratorSourceTests(unittest.TestCase):

@@ -280,6 +280,10 @@ static void generic_sketch_edit(const J &op) {
             for (size_t i = 0; i < expected; ++i)
                 if (!point_matches(e["points"][i], spline->point_arr[i]))
                     return false;
+        } else if (type == "b_spline") {
+            // FEAT-066: creation-only. In-place editing cannot rewrite the
+            // degree/knots/weights, so an edit payload never matches.
+            return false;
         } else
             return false;
         return true;
@@ -312,6 +316,19 @@ static void generic_sketch_edit(const J &op) {
                 for (unsigned i = 0; i < spline->n_points && spline->point_arr; ++i)
                     points.push_back({spline->point_arr[i][0], spline->point_arr[i][1]});
                 item["stored_points"] = points;
+            } else if (def->type == PRO_2D_B_SPLINE) {
+                auto bspline = (Pro2dBSplinedef *)def;
+                item["degree"] = bspline->degree;
+                item["num_c_points"] = bspline->num_c_points;
+                item["rational"] = bspline->weights != nullptr;
+                J knots = J::array();
+                for (int i = 0; bspline->params && i < bspline->num_knots; ++i)
+                    knots.push_back(bspline->params[i]);
+                item["stored_knots"] = knots;
+                J points = J::array();
+                for (int i = 0; bspline->c_pnts && i < bspline->num_c_points; ++i)
+                    points.push_back({bspline->c_pnts[i][0], bspline->c_pnts[i][1]});
+                item["stored_control_points"] = points;
             }
             probe.push_back(item);
         }

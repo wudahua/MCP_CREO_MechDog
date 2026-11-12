@@ -722,6 +722,7 @@ def _capabilities_payload(tool_entries: list[dict[str, Any]]) -> dict[str, Any]:
             "polyline",
             "rectangle",
             "spline",
+            "b_spline",
             "ellipse",
         ],
         "operations": [op for op in REGISTERED_OPERATIONS if op not in UNAVAILABLE_OPERATIONS],
@@ -1175,8 +1176,11 @@ async def creo_create_sketch(
     """Create an independent native dimensioned sketch of arbitrary supported entities.
 
     Coordinates are in the chosen plane's (u,v) frame. Arc angles are degrees CCW.
-    Rectangle/polyline expand to named lines e.g. box_0, box_1. Explicit dimensions
-    have names and entity references; automatic dimensioning fills remaining freedoms.
+    Rectangle/polyline expand to named lines e.g. box_0, box_1. spline fits an
+    interpolating curve through points; b_spline writes an exact NURBS with degree,
+    clamped knots, control_points and optional weights (creation-only, no in-place
+    editing). Explicit dimensions have names and entity references; automatic
+    dimensioning fills remaining freedoms.
     For a dictionary plane, a filter such as {"reference":{"kind":"plane","normal":[0,0,1],
     "offset":10}} matches an existing planar face of the current model with that normal
     and offset; it does not create a new plane from the normal.
@@ -2905,7 +2909,8 @@ async def creo_surface_loft(
 ) -> dict[str, Any]:
     """Create a native boundary-blend surface quilt through section sketches.
 
-    Requires a Toolkit SDK with Probbl.h. Missing boundary-blend support returns
+    Requires a Toolkit SDK whose ProElemId.h declares the PRO_E_BNBLN_* boundary-blend
+    element ids. Missing support returns
     SURFACE_LOFT_SDK_UNAVAILABLE and creates no loft feature.
 
     sections accepts 2-32 entries in loft order (index 0 is the start section).

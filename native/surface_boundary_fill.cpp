@@ -7,24 +7,27 @@
 // DEV-082 / H01 minimal fix (0.19.3 feedback): this TU is compiled after
 // surface_loft.cpp, which hides SURFACE_LOFT_TREE_SAMPLE_LIMIT,
 // loft_element_json() and the whole boundary-blend body behind
-// MECHDOG_HAS_PROBBL_HEADER. Every helper here that reads the boundary blend
-// tree or uses a Probbl-derived element id depends on the same header, so the
+// MECHDOG_HAS_BNBLN_TREE. Every helper here that reads the boundary blend tree
+// or uses a boundary-blend element id depends on the same element ids, so the
 // body is gated identically instead of referencing symbols that no longer
 // exist. A fallback definition keeps this file honest if it is ever included
 // without surface_loft.cpp first (the shared element-tree header tracked under
 // DEV-082 H01 is the real single source of truth).
-#ifndef MECHDOG_HAS_PROBBL_HEADER
+#ifndef MECHDOG_HAS_BNBLN_TREE
 #if defined(__has_include)
-#if __has_include(<Probbl.h>)
-#define MECHDOG_HAS_PROBBL_HEADER 1
+#if __has_include(<ProElemId.h>)
+#include <ProElemId.h>
 #endif
 #endif
-#ifndef MECHDOG_HAS_PROBBL_HEADER
-#define MECHDOG_HAS_PROBBL_HEADER 0
+#if defined(PRO_E_BNBLN_CURVES) && defined(PRO_E_BNBLN_1DIR) && defined(PRO_E_BNBLN_2DIR) &&       \
+    defined(PRO_E_BNBLN_DIR_CURVES) && defined(PRO_E_BNBLN_TAN_COND)
+#define MECHDOG_HAS_BNBLN_TREE 1
+#else
+#define MECHDOG_HAS_BNBLN_TREE 0
 #endif
 #endif
 
-#if MECHDOG_HAS_PROBBL_HEADER
+#if MECHDOG_HAS_BNBLN_TREE
 
 static constexpr double SURFACE_BOUNDARY_FILL_TOLERANCE_MM = 0.01;
 static constexpr double SURFACE_BOUNDARY_FILL_GROUP_TOLERANCE_MM = 0.01;
@@ -382,15 +385,17 @@ static void generic_surface_boundary_fill(const J &op) {
              {{"quilt_id", quilt_id}, {"boundary_curve_ids", details["boundary_curve_ids"]}});
 }
 
-#else // MECHDOG_HAS_PROBBL_HEADER == 0 (SDKs without Probbl.h)
+#else // MECHDOG_HAS_BNBLN_TREE == 0 (SDKs without the boundary-blend element ids)
 
 // The operation stays in UNAVAILABLE_OPERATIONS on such a build; this stub
 // only keeps generic.cpp compiling and states why nothing was created.
 static void generic_surface_boundary_fill(const J &op) {
     (void)op;
     throw std::runtime_error(
-        "SURFACE_BOUNDARY_FILL_SDK_UNAVAILABLE: surface_boundary_fill requires Probbl.h; this "
-        "Toolkit SDK does not provide the boundary-blend element tree. No feature was created");
+        "SURFACE_BOUNDARY_FILL_SDK_UNAVAILABLE: surface_boundary_fill requires the "
+        "boundary-blend element ids (PRO_E_BNBLN_CURVES/PRO_E_BNBLN_1DIR/PRO_E_BNBLN_2DIR/"
+        "PRO_E_BNBLN_DIR_CURVES); this Toolkit SDK's ProElemId.h does not declare them. "
+        "No feature was created");
 }
 
-#endif // MECHDOG_HAS_PROBBL_HEADER
+#endif // MECHDOG_HAS_BNBLN_TREE

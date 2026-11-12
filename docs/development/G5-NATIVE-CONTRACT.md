@@ -217,7 +217,7 @@ PRO_E_BNBLN_CURVES
 
 **门禁**：`src/creo_mechdog/capabilities.py` 的 `UNAVAILABLE_FIELDS["surface_loft.boundary_conditions"]`。`require_available` 对非空列表直接拒绝（`no native job was queued`），原因写明 Probbl.h 只文档化 `TAN_COND_FREE` 以及待 T2b 取证；`creo_capabilities` 的 `families.surface_loft.unavailable_fields` 同步公开这条原因。删除这一项就是解除门禁的全部 Python 改动。
 
-**原生路线**（`native/surface_loft.cpp`，`MECHDOG_HAS_PROBBL_HEADER` 门控内）：
+**原生路线**（`native/surface_loft.cpp`，`MECHDOG_HAS_BNBLN_TREE` 门控内；2026-11-12 前名为 `MECHDOG_HAS_PROBBL_HEADER`，现按 `ProElemId.h` 的五个 `PRO_E_BNBLN_*` 判定）：
 
 1. 解析输入后、建创建树之前：`surface_loft_conditions` 复核形状，把每个非 free 边界解析为（边 id，唯一相邻面 id）。拒绝前缀 `SURFACE_LOFT_BOUNDARY_CONDITION_REJECTED`，并在回执中写 `failed_boundary_condition`。
 2. 创建树不写任何 `PRO_E_BNBLN_TAN_COND*`（2026-11-01 P1 证明创建前写入会停在 `PRO_FEAT_UNREGENERATED`）。

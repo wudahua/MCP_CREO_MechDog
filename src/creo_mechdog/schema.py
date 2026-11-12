@@ -254,6 +254,92 @@ class Polyline(StrictModel):
         return self
 
 
+def clamped_knots(control_points: int, degree: int) -> list[float]:
+    """Clamped uniform knot vector for one open B-spline.
+
+    A clamped B-spline interpolates its first and last control point, which is
+    what a text-driven profile needs; the interior knots are evenly spaced.
+    """
+    inner = control_points - degree - 1
+    return (
+        [0.0] * (degree + 1)
+        + [index / (inner + 1) for index in range(1, inner + 1)]
+        + [1.0] * (degree + 1)
+    )
+
+
+class BSpline(StrictModel):
+    """Exact NURBS curve entity (FEAT-066, 0.21.0 feedback §8-4).
+
+    ``spline`` only carries interpolant points, so the kernel fits a curve and
+    the TXT NURBS (degree + control points + knots + weights) cannot be
+    reproduced 1:1. This entity maps directly to the Toolkit
+    ``Pro2dBSplinedef`` (``PRO_2D_B_SPLINE``), which takes ``degree``,
+    ``params``/``num_knots``, ``c_pnts``/``num_c_points`` and ``weights``.
+
+    Coordinates are sketch-local millimetres, like every other entity. The
+    knot vector is clamped (first/last ``degree + 1`` values equal) and is
+    passed unchanged to Creo when supplied; ``closed`` is intentionally absent
+    because a periodic B-spline needs a periodic knot vector that this release
+    does not model.
+    """
+
+    type: Literal["b_spline"]
+    name: Label
+    degree: Annotated[int, Field(ge=1, le=10)] = 3
+    control_points: Annotated[list[Point2], Field(min_length=2, max_length=200)]
+    knots: list[float] | None = None
+    weights: list[float] | None = None
+    construction: bool = False
+
+    @field_validator("degree", mode="before")
+    @classmethod
+    def degree_is_a_real_integer(cls, value: Any) -> Any:
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError("b_spline degree must be an integer between 1 and 10")
+        return value
+
+    @model_validator(mode="after")
+    def valid_nurbs_data(self):
+        count = len(self.control_points)
+        if self.degree >= count:
+            raise ValueError(
+                f"b_spline degree {self.degree} needs at least {self.degree + 1} control points"
+            )
+        if any(
+            math.dist(a, b) < 1e-8 for a, b in zip(self.control_points, self.control_points[1:])
+        ):
+            raise ValueError("Consecutive b_spline control points must be distinct")
+        if self.knots is None:
+            self.knots = clamped_knots(count, self.degree)
+        else:
+            expected = count + self.degree + 1
+            if len(self.knots) != expected:
+                raise ValueError(
+                    f"b_spline needs {expected} knots for {count} control points at degree "
+                    f"{self.degree} (len(control_points) + degree + 1), got {len(self.knots)}"
+                )
+            if any(not math.isfinite(value) for value in self.knots):
+                raise ValueError("b_spline knots must be finite")
+            if any(a > b for a, b in zip(self.knots, self.knots[1:])):
+                raise ValueError("b_spline knots must be nondecreasing")
+            head = self.knots[: self.degree + 1]
+            tail = self.knots[-(self.degree + 1) :]
+            if len(set(head)) != 1 or len(set(tail)) != 1:
+                raise ValueError(
+                    "b_spline knots must be clamped: the first and last degree+1 values each repeat"
+                )
+        if self.weights is not None:
+            if len(self.weights) != count:
+                raise ValueError(
+                    f"b_spline weights need one value per control point ({count}), got "
+                    f"{len(self.weights)}"
+                )
+            if any(not math.isfinite(value) or value <= 0 for value in self.weights):
+                raise ValueError("b_spline weights must be finite and greater than zero")
+        return self
+
+
 class Rectangle(StrictModel):
     type: Literal["rectangle"]
     name: Label
@@ -278,7 +364,7 @@ class Ellipse(StrictModel):
 
 
 Entity = Annotated[
-    Union[Line, Circle, Arc, Polyline, Rectangle, Ellipse], Field(discriminator="type")
+    Union[Line, Circle, Arc, Polyline, BSpline, Rectangle, Ellipse], Field(discriminator="type")
 ]
 
 
@@ -534,7 +620,9 @@ class SketchGeometryOp(StrictModel):
             for e in self.entities
         ):
             raise ValueError(
-                "In-place editing supports line, centerline, polyline, rectangle, circle, arc, ellipse and spline"
+                "In-place editing supports line, centerline, polyline, rectangle, circle, arc, "
+                "ellipse and spline; b_spline is creation-only (recreate the sketch to change "
+                "its degree, knots or weights)"
             )
         SketchOp(
             op="sketch", label="replacement", entities=self.entities, dimensioning=self.dimensioning

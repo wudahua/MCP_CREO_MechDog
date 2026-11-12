@@ -17,7 +17,16 @@ class SurfaceGroupStateNative(unittest.TestCase):
 
         loft = families()["surface_loft"]
         self.assertEqual(loft["availability"], "sdk_conditional")
-        self.assertEqual(loft["sdk_requirements"], ["Probbl.h"])
+        self.assertEqual(
+            loft["sdk_requirements"],
+            [
+                "PRO_E_BNBLN_CURVES",
+                "PRO_E_BNBLN_1DIR",
+                "PRO_E_BNBLN_2DIR",
+                "PRO_E_BNBLN_DIR_CURVES",
+                "PRO_E_BNBLN_TAN_COND",
+            ],
+        )
         self.assertIn("not verification", loft["enabled_semantics"])
 
     def test_actual_decision_function_keeps_state_and_reason_consistent(self):

@@ -1916,6 +1916,16 @@ static J section_profile_summary(ProSection section, const char *phase) {
                 edge(entity, {spline->point_arr[0][0], spline->point_arr[0][1]},
                      {spline->point_arr[spline->n_points - 1][0],
                       spline->point_arr[spline->n_points - 1][1]});
+        } else if (def->type == PRO_2D_B_SPLINE) {
+            // FEAT-066: a clamped B-spline interpolates its first and last
+            // control point, so the profile contour endpoints are those two.
+            auto bspline = (Pro2dBSplinedef *)def;
+            if (bspline->num_c_points < 2 || !bspline->c_pnts)
+                unsupported++;
+            else
+                edge(entity, {bspline->c_pnts[0][0], bspline->c_pnts[0][1]},
+                     {bspline->c_pnts[bspline->num_c_points - 1][0],
+                      bspline->c_pnts[bspline->num_c_points - 1][1]});
         } else if (def->type == PRO_2D_POLYLINE) {
             auto polyline = (Pro2dPolylinedef *)def;
             if (polyline->n_points < 2)
@@ -2371,6 +2381,45 @@ static J sketch(const J &op) {
             s.n_points = (unsigned)xy.size();
             s.point_arr = (Pro2dPnt *)xy.data();
             CK(ProSectionEntityAdd(section, (Pro2dEntdef *)&s, &id));
+        } else if (type == "b_spline") {
+            // FEAT-066: exact NURBS. Pro2dBSplinedef is the documented carrier
+            // (degree + clamped knots + control points + optional weights), so
+            // the TXT curve is written as given instead of fitted from points.
+            auto control_points = e["control_points"];
+            const int degree = e["degree"].get<int>();
+            if (degree < 1 || degree >= (int)control_points.size())
+                throw std::runtime_error(
+                    "b_spline degree must be between 1 and control_points - 1");
+            std::vector<std::array<double, 2>> control(control_points.size());
+            for (size_t i = 0; i < control.size(); i++)
+                project(control_points[i], control[i].data());
+            std::vector<double> knots;
+            if (e.contains("knots") && !e["knots"].is_null()) {
+                knots = e["knots"].get<std::vector<double>>();
+            } else {
+                const int inner = (int)control.size() - degree - 1;
+                knots.assign((size_t)degree + 1, 0.0);
+                for (int i = 1; i <= inner; i++)
+                    knots.push_back((double)i / (double)(inner + 1));
+                knots.insert(knots.end(), (size_t)degree + 1, 1.0);
+            }
+            if ((int)knots.size() != (int)control.size() + degree + 1)
+                throw std::runtime_error(
+                    "b_spline knot count must be len(control_points) + degree + 1");
+            std::vector<double> weights;
+            if (e.contains("weights") && !e["weights"].is_null())
+                weights = e["weights"].get<std::vector<double>>();
+            if (!weights.empty() && weights.size() != control.size())
+                throw std::runtime_error("b_spline weights need one value per control point");
+            Pro2dBSplinedef b = {};
+            b.type = PRO_2D_B_SPLINE;
+            b.degree = degree;
+            b.num_knots = (int)knots.size();
+            b.params = knots.data();
+            b.num_c_points = (int)control.size();
+            b.c_pnts = (Pro2dPnt *)control.data();
+            b.weights = weights.empty() ? nullptr : weights.data();
+            CK(ProSectionEntityAdd(section, (Pro2dEntdef *)&b, &id));
         } else if (type == "ellipse") {
             Pro2dEllipsedef ell = {};
             ell.type = PRO_2D_ELLIPSE;
@@ -4187,6 +4236,45 @@ static J populate_profile(ProSection section, const J &op) {
             s.n_points = (unsigned)xy.size();
             s.point_arr = (Pro2dPnt *)xy.data();
             CK(ProSectionEntityAdd(section, (Pro2dEntdef *)&s, &id));
+        } else if (type == "b_spline") {
+            // FEAT-066: exact NURBS. Pro2dBSplinedef is the documented carrier
+            // (degree + clamped knots + control points + optional weights), so
+            // the TXT curve is written as given instead of fitted from points.
+            auto control_points = e["control_points"];
+            const int degree = e["degree"].get<int>();
+            if (degree < 1 || degree >= (int)control_points.size())
+                throw std::runtime_error(
+                    "b_spline degree must be between 1 and control_points - 1");
+            std::vector<std::array<double, 2>> control(control_points.size());
+            for (size_t i = 0; i < control.size(); i++)
+                project(control_points[i], control[i].data());
+            std::vector<double> knots;
+            if (e.contains("knots") && !e["knots"].is_null()) {
+                knots = e["knots"].get<std::vector<double>>();
+            } else {
+                const int inner = (int)control.size() - degree - 1;
+                knots.assign((size_t)degree + 1, 0.0);
+                for (int i = 1; i <= inner; i++)
+                    knots.push_back((double)i / (double)(inner + 1));
+                knots.insert(knots.end(), (size_t)degree + 1, 1.0);
+            }
+            if ((int)knots.size() != (int)control.size() + degree + 1)
+                throw std::runtime_error(
+                    "b_spline knot count must be len(control_points) + degree + 1");
+            std::vector<double> weights;
+            if (e.contains("weights") && !e["weights"].is_null())
+                weights = e["weights"].get<std::vector<double>>();
+            if (!weights.empty() && weights.size() != control.size())
+                throw std::runtime_error("b_spline weights need one value per control point");
+            Pro2dBSplinedef b = {};
+            b.type = PRO_2D_B_SPLINE;
+            b.degree = degree;
+            b.num_knots = (int)knots.size();
+            b.params = knots.data();
+            b.num_c_points = (int)control.size();
+            b.c_pnts = (Pro2dPnt *)control.data();
+            b.weights = weights.empty() ? nullptr : weights.data();
+            CK(ProSectionEntityAdd(section, (Pro2dEntdef *)&b, &id));
         } else if (type == "ellipse") {
             Pro2dEllipsedef ell = {};
             ell.type = PRO_2D_ELLIPSE;

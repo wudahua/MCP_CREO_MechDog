@@ -1,4 +1,4 @@
-"""DEV-082: the aggregate TU must compile when Probbl.h is absent.
+"""DEV-082: the aggregate TU must compile without the optional Probbl.h.
 
 The 0.19.3 feedback showed the header-gate contract tests passing while
 ``native/generic.cpp`` still failed with C2065/C3861 on a Creo 10 SDK: the
@@ -6,9 +6,13 @@ guarded symbols lived in ``surface_loft.cpp`` while ``surface_boundary_fill.cpp`
 referenced them unconditionally. Those tests only inspected ``#include`` lines
 and a single isolated TU, so nothing checked cross-file symbol visibility.
 
-This module is the static half of the missing gate. It never compiles: it reads
-the handwritten sources, collects the symbols that only exist inside a
-``MECHDOG_HAS_PROBBL_HEADER`` region, and fails when another file references one
+Since 2026-11-12 the gate is the boundary-blend element ids
+(``MECHDOG_HAS_BNBLN_TREE``), not ``__has_include(<Probbl.h>)``: Creo 10 ships
+the ids in ``ProElemId.h`` and only lacks the documentation header.
+
+This module is the static half of the gate. It never compiles: it reads the
+handwritten sources, collects the symbols that only exist inside a
+``MECHDOG_HAS_BNBLN_TREE`` region, and fails when another file references one
 of them outside an equivalent guard. That is exactly the shape of the C2065 /
 C3861 failure and it runs in CI without a Toolkit SDK.
 """
@@ -23,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 NATIVE = ROOT / "native"
 DEFINING_FILE = "surface_loft.cpp"
 CONSUMER_FILE = "surface_boundary_fill.cpp"
-GATE = "MECHDOG_HAS_PROBBL_HEADER"
+GATE = "MECHDOG_HAS_BNBLN_TREE"
 
 _DIRECTIVE = re.compile(r"^\s*#\s*(if|ifdef|ifndef|elif|else|endif)\b(.*)$")
 # Only file-scope `static` declarations are collected: they are the helpers the

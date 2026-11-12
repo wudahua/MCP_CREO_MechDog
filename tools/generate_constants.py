@@ -62,7 +62,10 @@ def available_headers(inc_dir: Path) -> tuple[list[str], list[str]]:
 
     SDK generations differ: Creo 10 has no ``Probbl.h``, so a listed header can
     be absent. Returning both halves keeps the enumeration scan and the emitted
-    ``#include`` block sourced from the same set (BUG-107).
+    ``#include`` block sourced from the same set (BUG-107). Since 2026-11-12 a
+    missing ``Probbl.h`` no longer decides whether boundary blend is available:
+    ``native/surface_loft.cpp`` gates on the ``PRO_E_BNBLN_*`` ids in
+    ``ProElemId.h``, so the MISSING_SDK_HEADER line is information only.
     """
     present: list[str] = []
     missing: list[str] = []

@@ -382,7 +382,7 @@ def _flat(code: str) -> str:
 class NativeContractTests(unittest.TestCase):
     def setUp(self):
         text = NATIVE.read_text(encoding="utf-8")
-        start = text.index("#if MECHDOG_HAS_PROBBL_HEADER")
+        start = text.index("#if MECHDOG_HAS_BNBLN_TREE")
         end = text.index("#else", start)
         self.code = _code(text[start:end]) + "\n"
         self.whole = _code(text)

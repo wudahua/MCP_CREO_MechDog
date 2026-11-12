@@ -337,3 +337,29 @@ executable 仅表示静态能力/schema 准入；native/saved_reload 恒为 not_
 - `native_progress.connect_timing` 保存日志头部连接阶段证据；尾部当前阶段没有时间则不填 `idle_seconds`，不能把早期连接时间归给回滚或其它阶段。
 
 这些增量已作离线回归与原生编译；新原生字段的真实MCP/Creo/保存重载验证仍见[接手清单](development/DEV-074-HANDOFF.md)。
+
+## 精确 NURBS 草图实体（b_spline，FEAT-066）
+
+`spline` 只接收插值点，由 Creo 拟合曲线，无法 1:1 复现 TXT 的次数/节点/权重。
+`b_spline` 直接映射 Toolkit `Pro2dBSplinedef`（`PRO_2D_B_SPLINE`，见 SDK
+`Pro2dEntdef.h`），把控制点、节点和可选权重按原值写入草图：
+
+```json
+{"type": "b_spline", "name": "side_guide", "degree": 3,
+ "control_points": [[0, 0], [10, 8], [30, 9], [45, 2], [50, 0]],
+ "knots": [0, 0, 0, 0, 0.595088181, 1, 1, 1, 1],
+ "weights": [1, 1, 1, 1, 1]}
+```
+
+- 坐标是草图局部毫米；`degree` 默认 3，范围 1—10 且必须小于控制点数。
+- `knots` 省略时生成 clamped uniform 节点；给出时必须满足
+  `len(knots) == len(control_points) + degree + 1`、非降、首尾各 `degree+1`
+  个值相等。节点值原样传给 Creo，不做归一化。
+- `weights` 省略时按非有理曲线写出；给出时长度等于控制点数且全部大于 0。
+- 不支持 `closed`：周期 B 样条需要周期节点，请改用 `spline` 的
+  `closed=true`。`dimensioning="coordinates"` 仍只接受
+  line/centerline/rectangle/polyline/circle/arc，`b_spline` 走 autodim。
+- `b_spline` 仅支持创建；`update_sketch_geometry` 不能改写其 degree/knots/weights，
+  需要变更时重建草图。
+- 可用性不依赖 `Probbl.h`；草图实体写入只需要 `Pro2dEntdef.h` 的
+  `PRO_2D_B_SPLINE` 定义。

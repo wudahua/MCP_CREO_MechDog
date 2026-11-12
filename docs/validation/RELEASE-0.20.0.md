@@ -19,7 +19,7 @@
 
 - 本机 Windows x64 / Python 3.12.14 / Creo 12.4.0.0（`release_numeric=44`）/ 匹配 Toolkit SDK / 本机许可；`bridge.py status` → `connected=true`、`toolkit_code=0`。
 - 实机执行经用户 2026-11-10 当次明确确认；未结束或重启 Creo/nmsd、未清 `toolkit.lock` 或 unknown 保护、未做故障注入、未改用户模型与历史证据。
-- 原生执行器：`bridge.py build` → `source_digest=5cbb3685…`、`worker_sha256=a7408483…`（B4 验收所用构建；本次版本与文档变更不触及 `native/*.cpp`）。
+- 原生执行器：`bridge.py build` → `source_digest=5cbb3685…`、`worker_sha256=a7408483…`（B4 验收所用构建）。B4 验收之后的若干提交仅涉及版本与文档，但本版整体含 `native/*.cpp` 变更，升级后必须重编译 worker；上述摘要与 SHA256 是作者本机 Creo 12.4.0.0 SDK 的产物，其他环境按自己的 SDK 重建，不能直接复用。
 - 全量单元测试：`Ran 3263 tests in 372.635s ... OK`（工作树）。
 - `tools/dev_check.py --work-item DEV-081 --unit-timeout-seconds 1800`：EXIT=0、`success=true`、`unit_tests=passed`、`native_validation=not_run`、受测源码指纹 `417a0477e95127c5567c65934f361110ce31f86dc9959cc5f20ec538b21488a5`（`source.dirty=true`）；风格基线为存量 21 项 lint / 9 个未格式化文件，无新增诊断。
 - `tools/check_backlog_counts.py`：`consistent=true`（172 / BUG 75 / FEAT 61 / DEV 36）；`git diff --check` 通过。

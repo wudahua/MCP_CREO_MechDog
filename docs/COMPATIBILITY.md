@@ -15,6 +15,30 @@
 > **版本归属说明（2026-11-05 补记）：** 当时**已发布**版本为 **0.12.1**，本次交付候选为 **0.13.0**（开发分支验收完成，未合并 main、未发布，见[发布记录](validation/RELEASE-0.13.0.md)）；下文分节按写作时点保留各自结论，**章节顺序不代表版本顺序**；"当前"字样属于该节的写作时点，不作为今天的交付状态。
 > **版本归属说明（2026-11-04 补记）：** 当时正式版为 **0.12.0**（见下方对应分节）。本文件按版本分节保留各自时点的结论，**章节顺序不代表版本顺序**；"当前"字样属于该节的写作时点，不作为今天的交付状态。
 
+## 2026-11-12：boundary-blend 门禁改为元素 ID（随 0.23.0 发布）
+
+- **反馈方证据**：0.21.0 报告称官方包在 Creo 10.0.0.0 + 匹配 Toolkit SDK 上
+  零补丁编译通过，`PRO_E_BNBLN_CURVES`/`1DIR`/`2DIR`/`DIR_CURVES`/`TAN_COND`
+  均在 `ProElemId.h`。该结论由报告方实测，本轮未在本机复现（本机无 Creo 10 SDK）。
+- **本轮核对**：本机 Creo 12.4.0.0 的 `Probbl.h` 全文只有注释和
+  `PRO_E_DTM_SRF_TYPE_BND_BLEND 11`，boundary-blend 元素 ID 确实来自
+  `ProElemId.h`。因此 `surface_loft` / `surface_boundary_fill` 的门禁从
+  `__has_include(<Probbl.h>)` 改为 `MECHDOG_HAS_BNBLN_TREE`（五个元素 ID 必须
+  同时存在）；缺 `Probbl.h` 时用文档值 11 兜底
+  `PRO_E_DTM_SRF_TYPE_BND_BLEND`。见 [DEV-082](work-items/DEV-082.md)。
+- **支持/未验证**：Creo 12.4 上 `bridge.py build` 成功，`surface_loft` 仍报
+  `compiled`，`tools/test_surface_loft_guides.py --live` 全 PASS。Creo 10 的
+  **运行期**元素树再生、`surface_boundary_fill` 回执与非平面边界仍未经本机
+  验证；门禁改动不改变单通道、busy 拒绝与 revision 保护。
+- **b_spline（FEAT-066，随 0.23.0 发布）**：`creo_create_sketch` 新增
+  `type="b_spline"`，按 `degree`、控制点、clamped `knots`、可选 `weights`
+  映射 `Pro2dBSplinedef`。Creo 12.4 实机控制点
+  回读偏差 2.6e-31 mm，两截面放样面积 1058.017278 mm² 对齐独立 de Boor oracle
+  1058.017814 mm²。`closed`、`dimensioning="coordinates"`、页面编辑不开放；
+  Creo 9/10 未验证。
+- **对下方 0.21.x 段落的修订**：该段「SDK 缺 `Probbl.h` 时该操作不可用」已被
+  0.23.0 门禁修复取代；现在按 `ProElemId.h` 的 `PRO_E_BNBLN_*` 判定。
+
 ## 0.21.0 / 0.21.1 已发布：`creo_surface_loft` 多截面与第二方向导线（FEAT-065 M1/M2，2026-11-11）
 
 - **支持**：`creo_surface_loft`（计划操作 `surface_loft`）按提交顺序用 **2—32** 个 MCP 自建截面草图建一张边界混合曲面；两截面 `interpolation="straight"` 为直纹，**3 截面以上必须 `smooth`**（内核通过全部截面拟合单张光滑面，`straight` 在提交前拒绝）。可选 `guides` 为 **2—8** 条第二方向（`PRO_E_BNBLN_2DIR`）导线草图；单导线、重复草图、导线与截面复用同一草图在提交前拒绝。导线是否穿过每个截面由内核判定，不穿过则再生失败并回滚。产出单张开放 quilt，不产实体；回执带 `section_count`/`piecewise_ruled`/`guide_count`/`guide_curve_ids`，0.21.1 起这些测量标量不再被 compact 预算裁掉（[BUG-118](work-items/BUG-118.md)）。

@@ -220,7 +220,7 @@
   - `boundary` ∈ `first_section | last_section | first_guide | last_guide`，分别对应 `sections[0]`、`sections[-1]`、`guides[0]`、`guides[-1]`。导线边界要求计划里有导线，`free` 也一样。
   - `condition` ∈ `free | tangent | curvature | normal`。`free` 保留内核默认值，原生不改树；非 `free` 要求该边界来源是 `{kind:'edge',id:N}`。
   - `server.py` 的 `creo_surface_loft` 增加同名参数（`list[dict[str,str]]`，最多 4 项），文档字符串写明 NOT AVAILABLE 和 FEAT-065 T2b；`None` 和空列表都不写入计划。
-- 原生候选（`native/surface_loft.cpp`，全部在 `MECHDOG_HAS_PROBBL_HEADER` 门控内）：
+- 原生候选（`native/surface_loft.cpp`，全部在 `MECHDOG_HAS_BNBLN_TREE` 门控内；0.21.0 时该宏名为 `MECHDOG_HAS_PROBBL_HEADER`）：
   - `surface_loft_conditions`：解析输入后、建创建树之前复核形状，把非 free 边界解析为（边 id，唯一相邻面 id）。相邻面取 T1 的 `adjacent_surface_ids`，不是恰好 1 个就拒绝（实体边、quilt 内部边有 2 个）。拒绝前缀 `SURFACE_LOFT_BOUNDARY_CONDITION_REJECTED`，回执带 `failed_boundary_condition`（`index`/`slot`/`boundary`/`condition`/`reason`/`query_code`/`tracking`）。
   - 两张映射表 `SURFACE_LOFT_TAN_COND_TYPE_VALUES`（condition → `PRO_E_BNBLN_TAN_COND_TYPE` 整数）和 `SURFACE_LOFT_TNC_BOUNDARY_INDEX`（boundary → `PRO_E_BNBLN_TNC_BNDRY` 下标），**当前都为空**；`SURFACE_LOFT_CONNECT_CHAIN_METHOD = -1`（不写 `PRO_E_SURF_CHAIN_METHOD`）。
   - `surface_loft_apply_conditions` 在 `ProFeatureElemtreeExtract` 之后、`redefine` 之前执行。映射未知时以 `SURFACE_LOFT_BOUNDARY_CONDITION_UNMAPPED` 拒绝，不改树；catch 里写入 `tan_cond_tree`、释放抽取树、重新抛出，作业按现有失败路径回滚，INCOMPLETE 特征不留存（与「抽取失败」「再生失败」同一条路）。映射已知时：改写对应 `TNC_BNDRY` 的 `TAN_COND_TYPE`；删掉已有 `CONNECT_SURF_CHAIN` 后重建 `CONNECT_SURF_CHAIN → SURF_CHAIN_CMPND → SURF_CHAIN_REF_SURFS → SURF_CHAIN_SURF → SURF_CHAIN_REF(相邻面)`；每个 Toolkit 调用都检查返回码，选择对象用完即释放。`TAN_FLD_TYPE`、`STRETCH`、`TAN_REF_TYPE`、`ADV_VIA_CRV` 不改。

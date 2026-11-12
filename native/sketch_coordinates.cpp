@@ -481,6 +481,8 @@ static const char *entity_kind_name(int type) {
         return "ellipse";
     case PRO_2D_SPLINE:
         return "spline";
+    case PRO_2D_B_SPLINE:
+        return "b_spline";
     default:
         return "unknown";
     }
@@ -530,6 +532,24 @@ static J section_target_snapshot(ProSection section, const std::map<std::string,
             for (unsigned i = 0; spline->point_arr && i < spline->n_points; i++)
                 points.push_back({spline->point_arr[i][0], spline->point_arr[i][1]});
             row["points_xy"] = points;
+        } else if (def->type == PRO_2D_B_SPLINE) {
+            auto bspline = (Pro2dBSplinedef *)def;
+            row["degree"] = bspline->degree;
+            row["num_c_points"] = bspline->num_c_points;
+            J knots = J::array();
+            for (int i = 0; bspline->params && i < bspline->num_knots; i++)
+                knots.push_back(bspline->params[i]);
+            row["knots"] = knots;
+            J control = J::array();
+            for (int i = 0; bspline->c_pnts && i < bspline->num_c_points; i++)
+                control.push_back({bspline->c_pnts[i][0], bspline->c_pnts[i][1]});
+            row["control_points_xy"] = control;
+            if (bspline->weights) {
+                J weights = J::array();
+                for (int i = 0; i < bspline->num_c_points; i++)
+                    weights.push_back(bspline->weights[i]);
+                row["weights"] = weights;
+            }
         } else
             row["unmeasurable"] = "unsupported entity type for deviation measurement";
         snapshot.push_back(row);
@@ -695,6 +715,32 @@ static J geometry_deviation_stage(ProSection section, const J &targets) {
                         {moved,
                          fabs(spline->point_arr[i][0] - row["points_xy"][i][0].get<double>()),
                          fabs(spline->point_arr[i][1] - row["points_xy"][i][1].get<double>())});
+                }
+                measurement = "control_points";
+            }
+        } else if (type == PRO_2D_B_SPLINE) {
+            auto bspline = (Pro2dBSplinedef *)def;
+            const J &expected_points = row["control_points_xy"];
+            const J &expected_knots = row["knots"];
+            bool same_definition = bspline->degree == row["degree"].get<int>() &&
+                                   (int)bspline->num_c_points == (int)expected_points.size() &&
+                                   (int)bspline->num_knots == (int)expected_knots.size();
+            for (int i = 0; same_definition && i < (int)expected_knots.size(); i++)
+                same_definition =
+                    fabs(bspline->params[i] - expected_knots[i].get<double>()) <= 1e-12;
+            if (!same_definition) {
+                measured = false;
+                everything_measured = false;
+                entry["reason"] = "b_spline degree, knot vector or control point count changed "
+                                  "during the solve";
+            } else {
+                for (int i = 0; i < (int)expected_points.size(); i++) {
+                    offsets.push_back(
+                        {bspline->c_pnts[i][0] - expected_points[i][0].get<double>(),
+                         bspline->c_pnts[i][1] - expected_points[i][1].get<double>()});
+                    moved = std::max(
+                        {moved, fabs(bspline->c_pnts[i][0] - expected_points[i][0].get<double>()),
+                         fabs(bspline->c_pnts[i][1] - expected_points[i][1].get<double>())});
                 }
                 measurement = "control_points";
             }

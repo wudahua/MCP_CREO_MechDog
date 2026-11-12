@@ -216,7 +216,7 @@ def _missing_requirements(feature: dict) -> list[str]:
     requirements = feature.get("sdk_requirements")
     if isinstance(requirements, list) and requirements:
         return [str(item) for item in requirements]
-    return ["Probbl.h"]
+    return ["PRO_E_BNBLN_CURVES"]
 
 
 def require_worker_availability(operations: list[dict], identity: object) -> None:
@@ -236,12 +236,12 @@ def require_worker_availability(operations: list[dict], identity: object) -> Non
         missing = ", ".join(_missing_requirements(feature))
         digest = identity.get("source_digest") if isinstance(identity, dict) else None
         raise ValueError(
-            f"{name} is compiled out of the current worker: its Toolkit SDK is missing "
-            f"{missing} (worker source_digest={digest}, state={feature.get('state')}). "
-            "No native job was queued. Rebuild the worker against an SDK that ships the "
-            "required header or use a route that does not need it; availability is taken "
-            "from the executor's own build identity, not from the Python environment's "
-            "SDK headers or release_numeric."
+            f"{name} is compiled out of the current worker: its Toolkit SDK is missing the "
+            f"boundary-blend element ids {missing} (worker source_digest={digest}, "
+            f"state={feature.get('state')}). No native job was queued. Rebuild the worker "
+            "against an SDK whose ProElemId.h declares the boundary-blend tree or use a route "
+            "that does not need it; availability is taken from the executor's own build "
+            "identity, not from the Python environment's SDK headers or release_numeric."
         )
 
 
@@ -269,7 +269,7 @@ def project_worker_availability(families_doc: dict, identity: object) -> dict:
     else:
         missing = ", ".join(_missing_requirements(feature))
         entry["enabled"] = False
-        entry["unavailable_reason"] = f"sdk_header_missing: {missing}"
+        entry["unavailable_reason"] = f"bnbln_element_ids_missing: {missing}"
         entry["enabled_semantics"] = (
             "compiled out of the current worker; the SDK requirement is not satisfied"
         )
@@ -287,9 +287,12 @@ KNOWN_LIMITATIONS = (
     },
     {
         "id": "surface_loft_sdk_header",
-        "condition": "worker built against a Toolkit SDK without Probbl.h",
-        "release": "external Creo 10 report; local Creo 12.4 has the header",
-        "evidence": "DEV-076 H13 worker build-info; missing-header C++ fixture",
+        "condition": (
+            "worker built against a Toolkit SDK whose ProElemId.h omits the boundary-blend "
+            "element ids"
+        ),
+        "release": "external Creo 10 report; local Creo 12.4 declares every element id",
+        "evidence": "DEV-076 H13 worker build-info; missing-element-id C++ fixture",
         "configurable": False,
         "effect": "creo_surface_loft is unavailable and refused before a job",
     },
@@ -954,7 +957,7 @@ def families() -> dict:
                 "live-verified on Creo 12.4.0.0; boundary continuity is 'tangent' only, at a "
                 "first/last edge section with one adjacent face (FEAT-065 M4; curvature, "
                 "normal and guide boundaries are refused before a job); no "
-                "closed or solid output; conditional on Probbl.h in the "
+                "closed or solid output; conditional on the PRO_E_BNBLN_* element ids in the "
                 "worker build SDK; intersection with a trim tool does not by itself prove "
                 "that it partitions a removable region (a closed loop or connections to "
                 "target boundaries may be needed); intersection curves are not measured; "
@@ -1037,10 +1040,19 @@ def families() -> dict:
         "surface_loft": {
             "enabled": True,
             "availability": "sdk_conditional",
-            "sdk_requirements": ["Probbl.h"],
+            "sdk_requirements": [
+                "PRO_E_BNBLN_CURVES",
+                "PRO_E_BNBLN_1DIR",
+                "PRO_E_BNBLN_2DIR",
+                "PRO_E_BNBLN_DIR_CURVES",
+                "PRO_E_BNBLN_TAN_COND",
+            ],
             "enabled_semantics": "registered implementation; not verification of the loaded worker SDK",
             "tool": "creo_surface_loft",
-            "sdk_requirement": "Probbl.h boundary-blend tree; missing headers return SURFACE_LOFT_SDK_UNAVAILABLE",
+            "sdk_requirement": (
+                "PRO_E_BNBLN_* boundary-blend element ids in ProElemId.h; an SDK without them "
+                "returns SURFACE_LOFT_SDK_UNAVAILABLE"
+            ),
             "scope": (
                 "one boundary-blend quilt from 2-32 MCP-owned section sketches, in the "
                 "submitted order, optionally guided by a second direction of 2-8 guide "

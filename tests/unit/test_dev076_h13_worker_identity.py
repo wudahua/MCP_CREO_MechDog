@@ -39,9 +39,9 @@ def identity(available: bool, *, status: str = "verified") -> dict:
         "features": {
             "surface_loft": {
                 "available": available,
-                "state": "compiled" if available else "sdk_header_missing",
-                "sdk_requirements": ["Probbl.h"],
-                "missing_sdk_requirements": [] if available else ["Probbl.h"],
+                "state": "compiled" if available else "bnbln_element_ids_missing",
+                "sdk_requirements": ["PRO_E_BNBLN_CURVES"],
+                "missing_sdk_requirements": [] if available else ["PRO_E_BNBLN_CURVES"],
             }
         },
     }
@@ -56,9 +56,9 @@ class WorkerBuildInfoParseTests(unittest.TestCase):
                 "features": {
                     "surface_loft": {
                         "available": False,
-                        "state": "sdk_header_missing",
-                        "sdk_requirements": ["Probbl.h"],
-                        "missing_sdk_requirements": ["Probbl.h"],
+                        "state": "bnbln_element_ids_missing",
+                        "sdk_requirements": ["PRO_E_BNBLN_CURVES"],
+                        "missing_sdk_requirements": ["PRO_E_BNBLN_CURVES"],
                     }
                 },
             },
@@ -121,7 +121,7 @@ class WorkerCapabilityProjectionTests(unittest.TestCase):
         self.assertEqual(entry["availability"], "unavailable")
         self.assertFalse(entry["available"])
         self.assertFalse(entry["enabled"])
-        self.assertIn("Probbl.h", entry["unavailable_reason"])
+        self.assertIn("PRO_E_BNBLN_CURVES", entry["unavailable_reason"])
         self.assertEqual(entry["worker_build_identity"]["source_digest"], DIGEST)
 
     def test_available_worker_keeps_the_projectable_route(self):

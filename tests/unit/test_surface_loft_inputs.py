@@ -446,7 +446,7 @@ def _code(text: str) -> str:
 class NativeContractTests(unittest.TestCase):
     def setUp(self):
         self.text = NATIVE.read_text(encoding="utf-8")
-        start = self.text.index("#if MECHDOG_HAS_PROBBL_HEADER")
+        start = self.text.index("#if MECHDOG_HAS_BNBLN_TREE")
         end = self.text.index("#else", start)
         self.gated = self.text[start:end]
 

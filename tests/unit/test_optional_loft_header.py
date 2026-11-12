@@ -50,5 +50,6 @@ class OptionalLoftHeaderTests(unittest.TestCase):
     def test_optional_include_is_gated_in_the_handwritten_source(self):
         text = (ROOT / "native/surface_loft.cpp").read_text(encoding="utf-8")
         self.assertLess(
-            text.index("#if MECHDOG_HAS_PROBBL_HEADER"), text.index("#include <Probbl.h>")
+            text.index("#if MECHDOG_HAS_BNBLN_TREE"), text.index("SURFACE_LOFT_TREE_SAMPLE_LIMIT")
         )
+        self.assertIn("#if defined(PRO_E_BNBLN_CURVES)", text)

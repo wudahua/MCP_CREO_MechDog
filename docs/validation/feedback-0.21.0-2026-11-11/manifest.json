@@ -1,0 +1,25 @@
+{
+  "source_directory": "C:\\Users\\Administrator\\Downloads\\0.21.0",
+  "archived_at": "2026-11-12T00:00:00+08:00",
+  "verification": "byte-for-byte copy; SHA256 and byte size recorded from the source at archive time",
+  "files": [
+    {
+      "name": "2026-11-10+CREO+0.20.0+NURBS样条精确复现缺失与导线放样框架勘误.md",
+      "bytes": 12455,
+      "sha256": "46b4bfa6147be645975785547ba5c0a12bb9f53ff63349d44b0a954923bb0372",
+      "source_modified": "2026-11-11T08:09:19.5121857+08:00"
+    },
+    {
+      "name": "2026-11-11+CREO+0.21.0+导线放样被Probblh门禁误剔而Creo10元素树常量完备.md",
+      "bytes": 14013,
+      "sha256": "b90dc9787614b18543afca9a4662d8d396cd834cf14d543313137280ace5cf89",
+      "source_modified": "2026-11-11T18:53:27.3685688+08:00"
+    },
+    {
+      "name": "2026-11-11CREO10.0.0.0-0.21.0-Creo10官方包零补丁编译已闭环但主台账与POSTCHECK唯一入口未随发版回填及发布核对段仍为准备态.md",
+      "bytes": 33488,
+      "sha256": "3972afcb5334737034b11c6674c7a0cff47638c857ac4d8aeef28ee2c6cfcc56",
+      "source_modified": "2026-11-11T14:26:10.9961427+08:00"
+    }
+  ]
+}

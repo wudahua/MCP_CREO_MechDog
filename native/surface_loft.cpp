@@ -2,8 +2,9 @@
 //
 // Contract: docs/development/G5-NATIVE-CONTRACT.md §2.1 (candidate tree), §3.1
 // (first-release boundary), §4.4.2 (surface_area_mm2/status, surface_type,
-// sections) and §6.2 (this entry point). The tree comes from Probbl.h, the only
-// documented boundary-blend tree on this SDK. The 2026-11-01 probe added
+// sections) and §6.2 (this entry point). The tree is the documented boundary
+// blend tree; its element ids live in ProElemId.h (Probbl.h only documents them
+// and defines PRO_E_DTM_SRF_TYPE_BND_BLEND). The 2026-11-01 probe added
 // PRO_E_EXT_SURF_CUT_SOLID_TYPE/PRO_E_BNBLN_TAN_COND* to the §2.1 skeleton and
 // the feature stayed PRO_FEAT_UNREGENERATED; §2.1 explicitly forbids both, so
 // this implementation builds the bare skeleton first and completes it from the
@@ -12,18 +13,28 @@
 // This file is included by generic.cpp after the shared element-tree,
 // selection, quilt and measurement helpers are visible; it defines no entry
 // point of its own beyond generic_surface_loft.
-// BUG-107 / DEV-076: the generator gates constants.inc, but this handwritten
-// include must also tolerate SDK generations that omit the boundary-blend tree.
-// SDK-free compilation also exercises the automatic missing-header detection.
-#ifndef MECHDOG_HAS_PROBBL_HEADER
+// 2026-11-12 (0.21.0 feedback P1): Probbl.h is documentation only. Every
+// boundary-blend symbol this file uses is an element id declared in
+// ProElemId.h, so the feature gate is "does this SDK declare the tree" rather
+// than "does this SDK ship the optional documentation header". Creo 10 has no
+// Probbl.h but does declare all five ids, so this route now compiles there.
 #if defined(__has_include)
-#if __has_include(<Probbl.h>)
-#define MECHDOG_HAS_PROBBL_HEADER 1
+#if __has_include(<ProElemId.h>)
+#include <ProElemId.h>
 #endif
 #endif
-#ifndef MECHDOG_HAS_PROBBL_HEADER
-#define MECHDOG_HAS_PROBBL_HEADER 0
+
+// Probbl.h defines this one macro and nothing else; keep its documented value
+// when the documentation header is absent.
+#ifndef PRO_E_DTM_SRF_TYPE_BND_BLEND
+#define PRO_E_DTM_SRF_TYPE_BND_BLEND 11
 #endif
+
+#if defined(PRO_E_BNBLN_CURVES) && defined(PRO_E_BNBLN_1DIR) && defined(PRO_E_BNBLN_2DIR) &&       \
+    defined(PRO_E_BNBLN_DIR_CURVES) && defined(PRO_E_BNBLN_TAN_COND)
+#define MECHDOG_HAS_BNBLN_TREE 1
+#else
+#define MECHDOG_HAS_BNBLN_TREE 0
 #endif
 
 // H13 / BUG-107: the running executor, not the Python build environment, owns
@@ -32,11 +43,10 @@
 // operation before a job exists instead of inferring the loaded worker's SDK
 // from this machine's headers or from release_numeric.
 const char *mechdog_surface_loft_sdk_state() {
-    return MECHDOG_HAS_PROBBL_HEADER ? "compiled" : "sdk_header_missing";
+    return MECHDOG_HAS_BNBLN_TREE ? "compiled" : "bnbln_element_ids_missing";
 }
 
-#if MECHDOG_HAS_PROBBL_HEADER
-#include <Probbl.h>
+#if MECHDOG_HAS_BNBLN_TREE
 
 // Bounded element-tree readback. The extracted tree is the only honest source
 // of the kernel's own defaults, so it is published as evidence instead of being
@@ -1111,7 +1121,9 @@ static void generic_surface_loft(const J &op) {
 static void generic_surface_loft(const J &op) {
     (void)op;
     throw std::runtime_error(
-        "SURFACE_LOFT_SDK_UNAVAILABLE: surface_loft requires Probbl.h; this Creo Toolkit "
-        "SDK does not provide the boundary-blend element tree. No feature was created");
+        "SURFACE_LOFT_SDK_UNAVAILABLE: surface_loft requires the boundary-blend element ids "
+        "(PRO_E_BNBLN_CURVES/PRO_E_BNBLN_1DIR/PRO_E_BNBLN_2DIR/PRO_E_BNBLN_DIR_CURVES/"
+        "PRO_E_BNBLN_TAN_COND); this Creo Toolkit SDK's ProElemId.h does not declare them. "
+        "No feature was created");
 }
 #endif

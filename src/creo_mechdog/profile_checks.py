@@ -29,6 +29,10 @@ def closed_profile(entities: list[dict], tolerance: float = 0.0001) -> dict:
             points = [entity["start"], entity["end"]]
         elif kind == "spline":
             points = [entity["points"][0], entity["points"][-1]]
+        elif kind == "b_spline":
+            # FEAT-066: a clamped B-spline interpolates its first and last
+            # control point; knots/weights only shape the interior.
+            points = [entity["control_points"][0], entity["control_points"][-1]]
         elif kind == "arc":
             cx, cy = entity["center"]
             points = [
