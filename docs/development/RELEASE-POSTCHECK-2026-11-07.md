@@ -195,6 +195,22 @@
 
 - 本版含 `native/*.cpp` 变更（B2/F11、B4/F08）与 B3/F06 进展字段；源码包解压后独立门禁 `Ran 3263 tests ... OK (skipped=5)`。本段只做远端附件与标签核对，不重新验证包内功能；功能验收以 [RELEASE-0.20.0](../validation/RELEASE-0.20.0.md) 与 Release 正文为准。
 
+## v0.23.0（2026-11-12）
+
+- 记录时间：2026-11-12 12:27（+08:00）/ 2026-11-12T04:27Z。`main` = `origin/main` = `0cfd42909f822dda7863f6d5a4c8dcb677f3dfb9`（`c6eb7f7..0cfd429`）；附注标签对象 `1962224cb99e2f860ca9e67b3cf4223ab03f43a3`（`v0.23.0`，指向上述提交）。
+- Release：[v0.23.0](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.23.0)，id `442495969`，非 draft、非 prerelease，`created_at=2026-11-12T04:25:37Z`，`published_at=2026-11-12T04:26:54Z`，target `main`。
+- 核对命令：`tools/check_release_assets.py --tag v0.23.0` → exit 0，「v0.23.0: four assets downloaded and verified; both sidecars match」。
+- 四附件逐个列出（未用通配）；远端 `sha256:` digest、本地重算与 sidecar 内容逐一致：
+
+| 附件 | 字节 | SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.23.0-source.zip` | 9 694 983 | `a8abb957acd5f6989276ff4d5be426e14cc128050566f8507ec3be0656393e7a` |
+| `MCP_CREO_MechDog-0.23.0-source.zip.sha256` | 101 | `6a8ac323bd30184acf288c5547fa7217c21782da796f57ba30c22be9989d30ca` |
+| `MCP_CREO_MechDog-0.23.0-seed-library.zip` | 493 442 | `5394664c98f0f10777820dda8dd6ab07abf890b8324ec64ff59d662b1f978c0e` |
+| `MCP_CREO_MechDog-0.23.0-seed-library.zip.sha256` | 107 | `ffcd1695bb04001a6adbf23556a0167d2ff63dae961cca6b78865482c317f0b5` |
+
+- 本版含 `native/surface_loft.cpp`、`native/surface_boundary_fill.cpp`、`native/generic.cpp`、`native/sketch_coordinates.cpp`、`native/sketch_edit.cpp`、`native/worker.cpp` 变更（FEAT-066、DEV-082），升级后必须重编译 worker。源码包解压到短路径 `E:\r023\MCP_CREO_MechDog`（无 `.git`）后独立门禁 `Ran 3429 tests ... OK (skipped=6)`；首次在 `build/release-check-0.23.0` 深层路径下运行时有 1 项 `test_dev040_blackbox_fixture` 因 Windows 260 字符路径限制报 `Errno 2`，换短路径后通过，非产品缺陷。本段只做远端附件与标签核对，不重新验证包内功能；功能验收与未测范围以 [RELEASE-0.23.0](../validation/RELEASE-0.23.0.md) 与 Release 正文为准。
+
 ## v0.22.0（2026-11-11）
 
 - 记录时间：2026-11-12 00:36（+08:00）/ 2026-11-11T16:36Z。`main` = `origin/main` = `2de2fa8d4e48a8ea0dbadb6c7c4cd7058513f280`（`ea753be..2de2fa8`）；附注标签对象 `e2e33bd1423eb33d097016d9cff68ffae3508809`（`v0.22.0`，指向上述提交）。

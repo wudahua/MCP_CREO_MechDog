@@ -34,8 +34,9 @@
 
 ## 打包
 
-- 顺序：`tools\package_seeds.py --output <seed.zip>` → 回填 `docs/seed_package.json` → 重建确认哈希不变 → `tools\package.py --seed-archive <seed.zip> --output <source.zip>` → 解压源码包跑全量单测。
-- 四个附件逐个列出，不使用通配；两个 ZIP 的 SHA256 以 Release 正文与下方「发布核对」为准。本文件在源码包内，摘要写入本文件会改变包内容，因此不在打包前固化。
+- 顺序：`tools\package_seeds.py --output build\release-0.23.0\MCP_CREO_MechDog-0.23.0-seed-library.zip` → 回填 `docs/seed_package.json` → 重建确认哈希 `5394664c…` 不变 → `tools\package.py --seed-archive <seed.zip> --output <source.zip>` → 解压源码包跑全量单测。
+- 源码包 SHA256 `a8abb957acd5f6989276ff4d5be426e14cc128050566f8507ec3be0656393e7a`（9 694 983 字节）；种子包 SHA256 `5394664c98f0f10777820dda8dd6ab07abf890b8324ec64ff59d662b1f978c0e`（493 442 字节）。
+- 源码包解压到 `E:\r023\MCP_CREO_MechDog`（无 `.git`）后 `pip install --no-deps -e .`，全量单测 `Ran 3429 tests ... OK (skipped=6)`。首次在深层路径运行有 1 项 blackbox 夹具因 Windows 260 字符路径限制报 `Errno 2`，换短路径后通过，非产品缺陷。
 
 ## 未测范围
 
@@ -46,14 +47,26 @@
 
 ## 发布核对
 
-（发布后回填：核对时间、标签对象与指向提交、Release id/状态/时间、四附件名称/大小/API digest/本地实算 SHA256、`check_release_assets.py` 退出码、源码包解压全量单测结果。）
+- 核对时间：2026-11-12 12:27（+08:00）/ 2026-11-12T04:27Z。`main` = `origin/main` = `0cfd42909f822dda7863f6d5a4c8dcb677f3dfb9`；附注标签对象 `1962224cb99e2f860ca9e67b3cf4223ab03f43a3`（`v0.23.0`，指向上述提交）。
+- Release：[v0.23.0](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.23.0)，id `442495969`，非 draft、非 prerelease，`created_at=2026-11-12T04:25:37Z`，`published_at=2026-11-12T04:26:54Z`，target `main`。
+- 远端四附件（未用通配）；远端 `sha256:` digest、本地实算与 sidecar 内容逐一致：
 
-## 逐 ID 状态核对（候选态）
+| 附件 | 字节 | SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.23.0-source.zip` | 9 694 983 | `a8abb957acd5f6989276ff4d5be426e14cc128050566f8507ec3be0656393e7a` |
+| `MCP_CREO_MechDog-0.23.0-source.zip.sha256` | 101 | `6a8ac323bd30184acf288c5547fa7217c21782da796f57ba30c22be9989d30ca` |
+| `MCP_CREO_MechDog-0.23.0-seed-library.zip` | 493 442 | `5394664c98f0f10777820dda8dd6ab07abf890b8324ec64ff59d662b1f978c0e` |
+| `MCP_CREO_MechDog-0.23.0-seed-library.zip.sha256` | 107 | `ffcd1695bb04001a6adbf23556a0167d2ff63dae961cca6b78865482c317f0b5` |
+
+- 核对命令：`tools/check_release_assets.py --tag v0.23.0` → exit 0，「v0.23.0: four assets downloaded and verified; both sidecars match」。
+- 源码包内本文件是打包时点快照；发布后的核对结论以本节、[统一 POSTCHECK](../development/RELEASE-POSTCHECK-2026-11-07.md#v02302026-11-12) 与 Release 正文为准。
+
+## 逐 ID 状态核对
 
 | ID | 技术状态 | 交付版本 | 剩余范围 | 卡首页 | 主台账 | 版本说明 | 开发入口 | 实际 Release |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| [FEAT-066](../work-items/FEAT-066.md) | 已实现并实机验收 | 0.23.0 | `closed`、coordinates、页面编辑未排期；Creo 10 未验 | 已交付 0.23.0 | 部分交付，剩余待规划 | 已列入 | 已列入 | 发布后核对 |
-| [DEV-082](../work-items/DEV-082.md) | 门禁修复已实现并实机回归 | 0.23.0 | H01 抽头、单一真值源、Creo 10 运行期 | 开发中 | 开发中 | 已列入 | 已列入 | 发布后核对 |
+| [FEAT-066](../work-items/FEAT-066.md) | 已实现并实机验收 | 0.23.0 | `closed`、coordinates、页面编辑未排期；Creo 10 未验 | 已交付 0.23.0 | 部分交付，剩余待规划 | 已列入 | 已列入 | `v0.23.0`（已发布） |
+| [DEV-082](../work-items/DEV-082.md) | 门禁修复已实现并实机回归 | 0.23.0 | H01 抽头、单一真值源、Creo 10 运行期 | 开发中 | 开发中 | 已列入 | 已列入 | `v0.23.0`（已发布） |
 
 ## 相对上一正式包核对（上一版本：0.22.0）
 
