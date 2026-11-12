@@ -263,6 +263,18 @@
 - 本版含 `native/surface_loft.cpp`、`src/creo_mechdog/job_projection.py`、`src/creo_mechdog/operation_results.py`、`src/creo_mechdog/release_integrity.py` 与打包工具变更（BUG-119、DEV-083），升级后必须重编译 worker。Creo 12.4.0.0 实机：已有实体模型放样 8 项、YZ/XZ 正交平面 13 项、guides 回归 38 项全 PASS（报告见 `docs/validation/RELEASE-0.23.1.md`）。
 - 包内快照与 `main` 的差异：源码包内的 POSTCHECK、`RELEASE-0.23.1.md`、`RELEASE_NOTES_0.23.1.md` 与 BACKLOG 是打包时点内容（当时没有本段与实际 Release id/时间）；本段、源码包全量单测与远端核对结果只存在于 `main`，按冻结规则不回写、不重发已发布附件。
 
+## v0.23.2（2026-11-13）
+
+- 版本与范围：`0.23.2` PATCH，公开工具仍 107；交付 [BUG-120](../work-items/BUG-120.md) 的 `surface_loft` 提取失败诊断与运行期观测披露，以及 [DEV-083](../work-items/DEV-083.md) 的逐 ID 状态一致性与发布文档本地链接门禁，发布记录见 [RELEASE-0.23.2](../validation/RELEASE-0.23.2.md)。
+- 打包顺序：`tools\package_seeds.py` → 回填 `docs/seed_package.json` → 重建确认摘要不变 → `tools\package.py`（内置发布记录门禁）→ 标签/发布 → `tools\check_release_assets.py --tag v0.23.2`。
+- 种子包 SHA256 `4a47a58293f773d530c7ab2a771db075f3557222a207fb5dcff853594e66861a`（24 个文件、9 个种子、493 442 字节，两次构建摘要一致）。
+- 源码包 `MCP_CREO_MechDog-0.23.2-source.zip` 9 777 384 字节、1 778 个文件，SHA256 `8b1d779a2959d1ffe7595f952a8da85967a967620b014112a7de63e5c858abd2`；`package.py` 的四附件门禁与发布记录门禁均通过。
+- Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.23.2`；四附件为 `MCP_CREO_MechDog-0.23.2-source.zip`、`MCP_CREO_MechDog-0.23.2-source.zip.sha256`、`MCP_CREO_MechDog-0.23.2-seed-library.zip` 与 `MCP_CREO_MechDog-0.23.2-seed-library.zip.sha256`；`source.zip` 的摘要见同名 sidecar，不写入包内。
+- 核对命令 `tools\check_release_assets.py --tag v0.23.2` 需 exit 0；该版本 ≥ 0.23.1，会同时解压源码包运行记录门禁。实际标签对象、`main` 提交、Release id、发布时间与四附件名称/字节/SHA256 在发布后补记于本段，已发布附件不重传。
+- 本批未连接 Creo（未取得本轮当次实机授权），按离线批次发布：Creo 12.4.0.0 实机回归与 `kernel_completion="supported"` 观测未执行，0.23.1 实机结论不外推。升级后必须重新编译 worker（`native/surface_loft.cpp` 变更）。
+- 离线验证：`tools\dev_check.py --work-item BUG-120` 为 `success=true`（`Ran 3463 tests`、`OK`）；源码包解压到 `E:\r0232` 后切换 editable 安装运行全量单测为 `Ran 3463 tests in 479.169s`、`OK (skipped=6)`、exit 0，随后已恢复本机 venv 安装。
+- 包内快照与 `main` 的差异：源码包内的本段、`RELEASE-0.23.2.md`、`RELEASE_NOTES_0.23.2.md` 与 BACKLOG 是打包时点内容；实际 Release id、发布时间与发布后核对只存在于 `main`，按冻结规则不回写已发布附件。
+
 ## 未覆盖
 
 - 本核对只证明**远端附件与 sidecar、摘要三者一致**，不重新验证包内功能、Creo 实机或安装结果；这些结论分别属于各版 `docs/validation/RELEASE-*.md` 的实际范围。

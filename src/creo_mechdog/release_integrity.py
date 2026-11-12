@@ -37,6 +37,7 @@ _HEX = set("0123456789abcdefABCDEF")
 SEED_FILE_PATTERN = r"[A-Za-z0-9_]{1,31}\.prt\.\d+"
 SEED_TEXT_SUFFIXES = {".md", ".json", ".py"}
 _DIGEST_PATTERN = re.compile(r"[a-f0-9]{64}")
+_LINK_PATTERN = re.compile(r"!?\[[^\]]*\]\(([^)\s]+)\)")
 _README_TITLE_PATTERN = re.compile(r"^#\s+MCP_CREO_MechDog\s+(\S+)", re.MULTILINE)
 _README_CURRENT_PATTERN = re.compile(r"当前正式版\s*\*\*([^*]+)\*\*")
 
@@ -481,8 +482,43 @@ def _work_item_status(backlog: str, work_id: str) -> str | None:
     return None
 
 
-def _id_rows(text: str) -> list[tuple[str, list[str]]]:
-    """Rows of the ``## 逐 ID 状态核对`` table as ``(id, cells)`` pairs."""
+#: Delivery-state vocabulary shared by the backlog, the work cards and the
+#: per-ID table. Only these classes may be compared; a technical phrase such as
+#: "已实现并实机验收" is not a delivery claim and stays ``other``.
+_PARTIAL_MARKERS = ("部分交付", "待验收", "待复现", "已有修复", "观察中", "待核实")
+_EXPLANATION_NONE = ("", "—", "-", "无", "无。")
+
+
+def _status_class(text: str) -> str:
+    """Normalize one status phrase to a comparable delivery class."""
+    value = text.strip()
+    if "其它 agent" in value:
+        return "other"
+    if "部分交付" in value:
+        return "partial"
+    if "已交付" in value and ("剩余" in value or "子项" in value):
+        return "partial"
+    if "已交付" in value:
+        return "delivered"
+    if "开发中" in value:
+        return "developing"
+    if "未排期" in value or "待规划" in value:
+        return "unplanned"
+    if any(marker in value for marker in _PARTIAL_MARKERS):
+        return "partial"
+    return "other"
+
+
+def _split_row(line: str) -> list[str]:
+    return [cell.strip() for cell in line.strip().strip("|").split("|")]
+
+
+def _is_separator(cells: list[str]) -> bool:
+    return bool(cells) and all(re.fullmatch(r":?-{3,}:?", cell) for cell in cells if cell)
+
+
+def _id_table(text: str) -> tuple[list[str], list[tuple[str, list[str]]]]:
+    """The ``## 逐 ID 状态核对`` header and its ``(id, cells)`` rows."""
     lines = text.splitlines()
     start = None
     for index, line in enumerate(lines):
@@ -490,7 +526,8 @@ def _id_rows(text: str) -> list[tuple[str, list[str]]]:
             start = index + 1
             break
     if start is None:
-        return []
+        return [], []
+    header: list[str] = []
     rows: list[tuple[str, list[str]]] = []
     for line in lines[start:]:
         stripped = line.strip()
@@ -498,12 +535,63 @@ def _id_rows(text: str) -> list[tuple[str, list[str]]]:
             break
         if not stripped.startswith("|"):
             continue
-        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+        cells = _split_row(stripped)
         if not cells:
+            continue
+        if not header:
+            header = cells
+            continue
+        if _is_separator(cells):
             continue
         match = re.search(r"\b[A-Z]+-\d+\b", cells[0])
         if match is not None:
             rows.append((match.group(0), cells))
+    return header, rows
+
+
+def _cell(header: list[str], cells: list[str], *names: str) -> str:
+    for index, title in enumerate(header):
+        if any(name in title for name in names) and index < len(cells):
+            return cells[index]
+    return ""
+
+
+def _card_summary(card: str) -> str:
+    for line in card.splitlines()[:12]:
+        if "分类：" in line:
+            return line.strip()
+    return ""
+
+
+def _card_status(card: str) -> str:
+    """The bold status token on the card's ``分类：`` line.
+
+    Card summaries continue with evidence sentences that often contain
+    "已交付" for a sub-item; reading the whole line would misclassify a
+    ``待复现`` card as delivered.
+    """
+    summary = _card_summary(card)
+    if not summary:
+        return ""
+    match = re.search(r"\*\*([^*]+)\*\*", summary)
+    return match.group(1) if match is not None else summary.split("。", 1)[0]
+
+
+def _backlog_rows(backlog: str) -> list[tuple[str, list[str]]]:
+    """``[ID](work-items/...)`` rows of the main backlog with at least 3 cells."""
+    rows: list[tuple[str, list[str]]] = []
+    for line in backlog.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            continue
+        cells = _split_row(stripped)
+        if len(cells) < 3 or _is_separator(cells):
+            continue
+        if "work-items/" not in cells[0]:
+            continue
+        match = re.search(r"\[([A-Z]+-\d+)\]", cells[0])
+        if match is not None:
+            rows.append((match.group(1), cells))
     return rows
 
 
@@ -539,29 +627,116 @@ def _record_problems(
     return problems
 
 
+def _link_problems(text: str, origin: str, base_dir: str, exists) -> list[str]:
+    """Broken relative links in one published document.
+
+    Only file existence is checked; anchors and external URLs are skipped. A
+    link that walks above the package root is rejected so ``../../outside`` can
+    never pass on the author's machine.
+    """
+    problems = []
+    for target in _LINK_PATTERN.findall(text):
+        if target.startswith(("http://", "https://", "mailto:", "#", "/")):
+            continue
+        path = target.split("#", 1)[0].strip("<>")
+        if not path:
+            continue
+        parts: list[str] | None = []
+        for part in f"{base_dir}/{path}".split("/"):
+            if part in ("", "."):
+                continue
+            if part == "..":
+                if not parts:
+                    problems.append(f"{origin}: link {target!r} escapes the package")
+                    parts = None
+                    break
+                parts.pop()
+            else:
+                parts.append(part)
+        if parts is None:
+            continue
+        name = "/".join(parts)
+        if not exists(name):
+            problems.append(f"{origin}: broken local link {target!r} -> {name}")
+    return problems
+
+
 def _work_item_problems(version: str, record: str, read, origin: str) -> list[str]:
-    """Cross-check every row of the record's per-ID table against the backlog."""
+    """Cross-check the release's per-ID table and every active delivery row."""
     backlog = read("docs/BACKLOG.md")
     if backlog is None:
         return [f"{origin}: missing docs/BACKLOG.md for the per-ID check"]
-    rows = _id_rows(record)
+    header, rows = _id_table(record)
     if not rows:
         return [f"{origin}: RELEASE-{version}.md has no '逐 ID 状态核对' table rows"]
     problems = []
+    checked = set()
     for work_id, cells in rows:
+        checked.add(work_id)
         status = _work_item_status(backlog, work_id)
         if status is None:
             problems.append(f"{origin}: {work_id} is missing from docs/BACKLOG.md")
+            continue
         card = read(f"docs/work-items/{work_id}.md")
         if card is None:
             problems.append(f"{origin}: missing docs/work-items/{work_id}.md")
-        elif version not in "\n".join(card.splitlines()[:12]):
+            continue
+        if version not in "\n".join(card.splitlines()[:12]):
             problems.append(
                 f"{origin}: docs/work-items/{work_id}.md first 12 lines do not mention {version}"
             )
-        if f"已交付 {version}" in " | ".join(cells) and status in ("开发中", "未排期"):
+        explanation = _cell(header, cells, "差异说明")
+        explained = explanation.strip() not in _EXPLANATION_NONE
+        backlog_class = _status_class(status)
+        for title in ("技术状态", "卡首页"):
+            value = _cell(header, cells, title)
+            if not value or _status_class(value) == "other":
+                continue
+            if _status_class(value) != backlog_class and not explained:
+                problems.append(
+                    f"{origin}: {work_id} {title} {value!r} differs from docs/BACKLOG.md {status!r}"
+                )
+        ledger_cell = _cell(header, cells, "主台账")
+        if ledger_cell and ledger_cell.strip() != status.strip() and not explained:
+            problems.append(
+                f"{origin}: {work_id} 主台账 cell {ledger_cell!r} differs from "
+                f"docs/BACKLOG.md {status!r}"
+            )
+        summary = _card_summary(card)
+        if not summary:
+            problems.append(
+                f"{origin}: docs/work-items/{work_id}.md has no '分类：' line in its first 12 lines"
+            )
+        elif _status_class(_card_status(card)) != backlog_class and not explained:
+            problems.append(
+                f"{origin}: work card {work_id} says {summary!r} but docs/BACKLOG.md "
+                f"says {status!r}"
+            )
+        if f"已交付 {version}" in " | ".join(cells) and backlog_class in (
+            "developing",
+            "unplanned",
+        ):
             problems.append(
                 f"{origin}: {work_id} claims 已交付 {version} but docs/BACKLOG.md says {status}"
+            )
+    for work_id, cells in _backlog_rows(backlog):
+        if work_id in checked:
+            continue
+        status = cells[2]
+        backlog_class = _status_class(status)
+        if backlog_class not in ("partial", "delivered"):
+            continue
+        card = read(f"docs/work-items/{work_id}.md")
+        if card is None:
+            problems.append(
+                f"{origin}: docs/work-items/{work_id}.md is missing for a {status!r} row"
+            )
+            continue
+        summary = _card_summary(card)
+        if summary and _status_class(_card_status(card)) != backlog_class:
+            problems.append(
+                f"{origin}: work card {work_id} says {summary!r} but docs/BACKLOG.md "
+                f"says {status!r}"
             )
     return problems
 
@@ -602,7 +777,7 @@ def _version_problems(version: str, read, origin: str) -> list[str]:
     return problems
 
 
-def _records_problems(version: str, read, origin: str) -> list[str]:
+def _records_problems(version: str, read, exists, origin: str) -> list[str]:
     problems = _version_problems(version, read, origin)
     seed_digest = None
     record = read(TRUSTED_RECORD)
@@ -620,6 +795,9 @@ def _records_problems(version: str, read, origin: str) -> list[str]:
     if postcheck is None:
         problems.append(f"{origin}: missing {POSTCHECK}")
     else:
+        problems.extend(
+            _link_problems(postcheck, f"{origin}:{POSTCHECK}", "docs/development", exists)
+        )
         section = _postcheck_section(postcheck, version)
         if section is None:
             problems.append(f"{origin}: {POSTCHECK} has no '## v{version}' section")
@@ -633,6 +811,13 @@ def _records_problems(version: str, read, origin: str) -> list[str]:
                     require_sidecar_note=False,
                 )
             )
+    notes = read(f"docs/RELEASE_NOTES_{version}.md")
+    if notes is None:
+        problems.append(f"{origin}: missing docs/RELEASE_NOTES_{version}.md")
+    else:
+        problems.extend(
+            _link_problems(notes, f"{origin}:RELEASE_NOTES_{version}.md", "docs", exists)
+        )
     release = read(f"docs/validation/RELEASE-{version}.md")
     if release is None:
         problems.append(f"{origin}: missing docs/validation/RELEASE-{version}.md")
@@ -645,6 +830,9 @@ def _records_problems(version: str, read, origin: str) -> list[str]:
                 seed_digest,
                 require_sidecar_note=True,
             )
+        )
+        problems.extend(
+            _link_problems(release, f"{origin}:RELEASE-{version}.md", "docs/validation", exists)
         )
         problems.extend(_work_item_problems(version, release, read, origin))
     return problems
@@ -684,7 +872,12 @@ def validate_release_records(
             return None
         return path.read_text(encoding="utf-8-sig")
 
-    problems = [] if base is None else _records_problems(version, read_tree, "source tree")
+    def exists_tree(name: str) -> bool:
+        return (Path(base) / name).is_file()
+
+    problems = (
+        [] if base is None else _records_problems(version, read_tree, exists_tree, "source tree")
+    )
     if source_zip is None:
         return problems
     archive_path = Path(source_zip)
@@ -699,4 +892,9 @@ def validate_release_records(
         data = members.get(prefix + name)
         return None if data is None else data.decode("utf-8-sig")
 
-    return problems + _records_problems(version, read_archive, f"{archive_path.name}")
+    def exists_archive(name: str) -> bool:
+        return prefix + name in members
+
+    return problems + _records_problems(
+        version, read_archive, exists_archive, f"{archive_path.name}"
+    )

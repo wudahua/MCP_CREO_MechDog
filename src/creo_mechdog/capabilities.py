@@ -245,8 +245,27 @@ def require_worker_availability(operations: list[dict], identity: object) -> Non
         )
 
 
-def project_worker_availability(families_doc: dict, identity: object) -> dict:
-    """Show the verified worker's compiled feature state in capability families."""
+def _kernel_observation(identity: object, runtime: object) -> dict:
+    """The runtime observation that belongs to this exact worker, else unknown."""
+    worker_sha = identity.get("worker_sha256") if isinstance(identity, dict) else None
+    if (
+        not isinstance(runtime, dict)
+        or not worker_sha
+        or runtime.get("worker_sha256") != worker_sha
+        or runtime.get("kernel_completion") not in ("supported", "unsupported")
+    ):
+        return {"kernel_completion": "unknown"}
+    return runtime
+
+
+def project_worker_availability(
+    families_doc: dict, identity: object, runtime: object = None
+) -> dict:
+    """Show the verified worker's compiled feature state in capability families.
+
+    ``runtime`` is a disclosure-only observation (BUG-120): it never changes
+    ``available`` or ``enabled`` and is ignored when it came from another worker.
+    """
     feature = _verified_worker_feature(identity, "surface_loft")
     entry = families_doc.get("surface_loft")
     if feature is None or not isinstance(entry, dict):
@@ -262,9 +281,16 @@ def project_worker_availability(families_doc: dict, identity: object) -> dict:
         "feature_state": feature.get("state"),
         "probe": "creo_worker.exe build-info",
     }
+    observation = _kernel_observation(identity, runtime)
+    entry["worker_build_identity"]["kernel_completion"] = observation["kernel_completion"]
+    for key in ("release_numeric", "observed_at", "job_id", "evidence"):
+        if key in observation:
+            entry["worker_build_identity"][key] = observation[key]
     if available:
         entry["enabled_semantics"] = (
-            "compiled into the current worker; a live run is still required for geometry"
+            "compiled into the current worker; a live run is still required for geometry, "
+            "and compiled availability does not prove this host kernel can complete the "
+            "feature tree extraction"
         )
     else:
         missing = ", ".join(_missing_requirements(feature))

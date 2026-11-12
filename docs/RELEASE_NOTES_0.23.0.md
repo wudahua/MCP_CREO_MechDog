@@ -40,7 +40,7 @@
   - 草图 job `348ea9e0…`（model `8e384ad1…`，rev 1）成功并保存重载；控制点回读最大偏差 **2.6484335973398527e-31 mm**。
   - 两截面放样 job `f7c65101…`（model `a42da209…`，rev 1）：面积 **1058.0172783981307 mm²**，独立 de Boor oracle **1058.017813744952 mm²**（差 0.000535 mm²，相对 5.1e-7）；`section_count=2`、单张开放 quilt、无实体、重载后面积一致。
 - 实机回归 `tools\test_surface_loft_guides.py --live --confirm-session-usable`：全 PASS，报告 `build/surface_loft_guides/20261112-113434.json`（3 截面 + 2 导线 1599.9999999999995 mm²），门禁改动未回归既有放样。
-- 证据汇总：[feat066-b-spline-2026-11-12](../validation/feat066-b-spline-2026-11-12/EVIDENCE.md)。
+- 证据汇总：[feat066-b-spline-2026-11-12](validation/feat066-b-spline-2026-11-12/EVIDENCE.md)。
 
 ## 未测范围与已知限制
 

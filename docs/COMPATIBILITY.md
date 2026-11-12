@@ -15,6 +15,25 @@
 > **版本归属说明（2026-11-05 补记）：** 当时**已发布**版本为 **0.12.1**，本次交付候选为 **0.13.0**（开发分支验收完成，未合并 main、未发布，见[发布记录](validation/RELEASE-0.13.0.md)）；下文分节按写作时点保留各自结论，**章节顺序不代表版本顺序**；"当前"字样属于该节的写作时点，不作为今天的交付状态。
 > **版本归属说明（2026-11-04 补记）：** 当时正式版为 **0.12.0**（见下方对应分节）。本文件按版本分节保留各自时点的结论，**章节顺序不代表版本顺序**；"当前"字样属于该节的写作时点，不作为今天的交付状态。
 
+## 2026-11-13：Creo 10 运行期边界混合不可提取（随 0.23.2 披露）
+
+- **编译证据**：0.21.0—0.23.1 四份报告均记录 Creo 10.0.0.0 + 匹配 Toolkit SDK
+  零补丁整包编译通过；本机无 Creo 10 SDK，未复现。
+- **运行期边界**：`surface_loft` 在 Creo 10 上 `ProFeatureWithoptionsCreate`
+  返回 0，但 `ProFeatureElemtreeExtract` 返回 `-18`、`feature_incomplete=true`；
+  两个提取器均拒绝，`ProElemtreeVerify=-2`，GUI 手工创建同类特征同样失败。
+  这不属于 Python 计划、曲线引用或门禁编译问题，该宿主内核不支持回读，**不得
+  据此宣称 Creo 10 运行期可用**。见 [BUG-120](work-items/BUG-120.md)。
+- **0.23.2 披露口径**：失败回执新增 `extract_unsupported`、
+  `kernel_completion="unsupported"`、`kernel_evidence`（`release_numeric`、
+  `create_code`、`extract_code`、`feature_incomplete`）与
+  `SURFACE_LOFT_EXTRACT_UNSUPPORTED` 文案；成功回执为
+  `kernel_completion="supported"`。`creo_session_status` 与 `creo_capabilities`
+  的 `worker_build_identity.features.surface_loft` 按 worker SHA 披露最近观测，
+  无观测或 worker 不匹配时为 `unknown`；不改变 `available`/`enabled`，也不预拒绝。
+- **未验证**：Creo 10 成功路径、模板 XML/`FromXMLCreate`、STEP/IGES 导入；
+  Creo 9 仍只有编译探测，无运行期证据。
+
 ## 2026-11-12：boundary-blend 门禁改为元素 ID（随 0.23.0 发布）
 
 - **反馈方证据**：0.21.0 报告称官方包在 Creo 10.0.0.0 + 匹配 Toolkit SDK 上

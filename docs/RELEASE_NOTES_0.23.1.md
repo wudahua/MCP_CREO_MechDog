@@ -46,7 +46,7 @@ PATCH 版本。修正已有实体的模型上 `surface_loft` 被误判为“创�
 
 - `docs/development/RELEASE-POSTCHECK-2026-11-07.md` 增加 `## v0.21.1` 段。
 - `docs/validation/RELEASE-0.22.0.md`、`docs/validation/RELEASE-0.23.0.md` 顶部各加一条补记，说明包内为回填前快照；历史附件不重传。
-- [DEV-082](../work-items/DEV-082.md)：Creo 10 整包零补丁编译改记外部报告方已验证，H01 与运行期仍开放。
+- [DEV-082](work-items/DEV-082.md)：Creo 10 整包零补丁编译改记外部报告方已验证，H01 与运行期仍开放。
 
 ## 未测范围
 

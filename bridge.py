@@ -1077,10 +1077,83 @@ def worker_build_identity(*, refresh: bool = False) -> dict:
 
 
 def record_channel_health(connected: bool, **fields) -> dict:
+    path = ROOT / "build/toolkit_health.json"
     value = {"connected": connected, "checked_at": now(), **fields}
+    if "surface_loft_runtime" not in value:
+        try:
+            previous = read_json(path)
+        except (OSError, ValueError):
+            previous = {}
+        if isinstance(previous, dict) and previous.get("surface_loft_runtime"):
+            value["surface_loft_runtime"] = previous["surface_loft_runtime"]
     (ROOT / "build").mkdir(exist_ok=True)
-    write_json(ROOT / "build/toolkit_health.json", value)
+    write_json(path, value)
     return value
+
+
+def record_surface_loft_runtime(manifest: dict) -> None:
+    """Persist the last kernel-completion observation from a job receipt.
+
+    BUG-120: this is disclosure only. ``require_worker_availability`` never reads
+    it, so a single failed attempt cannot lock a session; the observation is
+    keyed by worker SHA and only shown while that same executor is installed.
+    """
+    try:
+        result = manifest.get("result")
+        operations = result.get("operations") if isinstance(result, dict) else None
+        if not isinstance(operations, list):
+            return
+        record = next(
+            (
+                entry
+                for entry in operations
+                if isinstance(entry, dict)
+                and entry.get("op") == "surface_loft"
+                and entry.get("kernel_completion") in ("supported", "unsupported")
+            ),
+            None,
+        )
+        if record is None:
+            return
+        identity = worker_build_identity()
+        worker_sha = identity.get("worker_sha256")
+        if not worker_sha:
+            return
+        evidence = record.get("kernel_evidence")
+        path = ROOT / "build/toolkit_health.json"
+        try:
+            health = read_json(path)
+        except (OSError, ValueError):
+            health = {}
+        if not isinstance(health, dict):
+            health = {}
+        health["surface_loft_runtime"] = {
+            "kernel_completion": record["kernel_completion"],
+            "worker_sha256": worker_sha,
+            "release_numeric": (
+                evidence.get("release_numeric") if isinstance(evidence, dict) else None
+            ),
+            "job_id": manifest.get("job_id"),
+            "observed_at": now(),
+            "evidence": evidence if isinstance(evidence, dict) else None,
+        }
+        (ROOT / "build").mkdir(exist_ok=True)
+        write_json(path, health)
+    except Exception:
+        # A disclosure record must never change the task's terminal outcome.
+        return
+
+
+def surface_loft_runtime_observation(identity: dict) -> dict:
+    """The kernel-completion observation that belongs to ``identity``."""
+    health = channel_health()
+    observed = health.get("surface_loft_runtime") if isinstance(health, dict) else None
+    worker_sha = identity.get("worker_sha256") if isinstance(identity, dict) else None
+    if not isinstance(observed, dict) or not worker_sha:
+        return {"kernel_completion": "unknown"}
+    if observed.get("worker_sha256") != worker_sha:
+        return {"kernel_completion": "unknown"}
+    return observed
 
 
 def note_native_outcome(manifest: dict) -> None:
@@ -1192,7 +1265,18 @@ def _record_probe_result(
     if value.get("disconnect_code") not in (None, 0):
         value.update(connected=False, connection_state="disconnect_failed")
     if worker_identity is not None:
-        value["worker_build_identity"] = worker_identity
+        identity = dict(worker_identity)
+        features = identity.get("features")
+        feature = features.get("surface_loft") if isinstance(features, dict) else None
+        if isinstance(feature, dict):
+            identity["features"] = {
+                **features,
+                "surface_loft": {
+                    **feature,
+                    **surface_loft_runtime_observation(identity),
+                },
+            }
+        value["worker_build_identity"] = identity
     record_channel_health(
         bool(value.get("connected")), **{k: v for k, v in value.items() if k != "connected"}
     )

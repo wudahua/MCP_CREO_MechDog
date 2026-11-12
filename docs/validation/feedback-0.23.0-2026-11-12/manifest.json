@@ -1,0 +1,31 @@
+{
+  "source_directory": "C:\\Users\\Administrator\\Downloads\\0.23.0",
+  "archived_at": "2026-11-13T00:00:00+08:00",
+  "verification": "byte-for-byte copy; SHA256 and byte size recorded from the source at archive time",
+  "files": [
+    {
+      "name": "2026-11-12+CREO+0.23.0+边界混合仅存不可提取形态与程序化创建缺口定位.md",
+      "bytes": 11707,
+      "sha256": "4765e802f801af3837e64a9213ddfb63c9a4cf9638e41126f0c1da9e6513b42e",
+      "source_modified": "2026-11-12T14:43:44.0000000+08:00"
+    },
+    {
+      "name": "2026-11-12+CREO+0.23.0+门禁已修但Creo10不支持元素树回读致放样回滚.md",
+      "bytes": 14647,
+      "sha256": "56200061855acb00e15e7b32e5d249de2857242f0a2bbd463f26992b79148b5c",
+      "source_modified": "2026-11-12T14:07:45.0000000+08:00"
+    },
+    {
+      "name": "2026-11-12+CREO+0.23.1+surface_loft在Creo10因提取失败完全不可用.md",
+      "bytes": 8717,
+      "sha256": "3cb0d54320833ae04255f9a30554ef2c6139feb502192d1fbc6436765cb92ab6",
+      "source_modified": "2026-11-12T16:58:07.0000000+08:00"
+    },
+    {
+      "name": "2026-11-12CREO10.0.0.0-0.23.1-发布记录门禁已实质闭环但逐ID状态子检查覆盖面不足致表卡矛盾仍存及版本说明相对链接断链同族重现.md",
+      "bytes": 23417,
+      "sha256": "fec36de02d35f95950a0ed66ea3e4a626ccaa3d420841de90ff06b70e452db74",
+      "source_modified": "2026-11-12T16:58:31.0000000+08:00"
+    }
+  ]
+}

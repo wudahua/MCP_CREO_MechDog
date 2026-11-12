@@ -1014,15 +1014,44 @@ static void generic_surface_loft(const J &op) {
     }
     ProElementFree(&root);
 
+    // BUG-120: record whether the kernel completed the feature before trying to
+    // read its tree. Creo 10 creates the blend (create_code=0) but leaves it
+    // incomplete and refuses ProFeatureElemtreeExtract with -18; the field keeps
+    // that evidence in the receipt instead of only the release number.
+    ProBoolean feature_incomplete = PRO_B_FALSE;
+    ProError incomplete_code = ProFeatureIsIncomplete(&feature, &feature_incomplete);
+    details["feature_incomplete_code"] = (int)incomplete_code;
+    details["feature_incomplete"] =
+        incomplete_code == PRO_TK_NO_ERROR && feature_incomplete == PRO_B_TRUE;
+
     ProElement extracted = nullptr;
     ProError extract_code =
         ProFeatureElemtreeExtract(&feature, nullptr, PRO_FEAT_EXTRACT_NO_OPTS, &extracted);
     details["extract_code"] = (int)extract_code;
     if (extract_code || !extracted) {
+        int release_numeric = 0;
+        ProError release_code = ProEngineerReleaseNumericversionGet(&release_numeric);
+        const bool incomplete = details["feature_incomplete"].get<bool>();
+        details["extract_unsupported"] = true;
+        details["kernel_completion"] = "unsupported";
+        details["kernel_evidence"] = {
+            {"release_numeric", release_code == PRO_TK_NO_ERROR ? J(release_numeric) : J(nullptr)},
+            {"create_code", (int)created},
+            {"extract_code", (int)extract_code},
+            {"feature_incomplete", incomplete}};
         stage_operation_result(details);
-        throw std::runtime_error("surface_loft cannot extract the created feature tree (code " +
-                                 std::to_string((int)extract_code) + ")");
+        throw std::runtime_error(
+            "surface_loft created the feature (create_code=" + std::to_string((int)created) +
+            ") but this Creo release cannot extract its element tree (code " +
+            std::to_string((int)extract_code) +
+            ", SURFACE_LOFT_EXTRACT_UNSUPPORTED); "
+            "feature_incomplete=" +
+            std::string(incomplete ? "true" : "false") + ", release_numeric=" +
+            (release_code == PRO_TK_NO_ERROR ? std::to_string(release_numeric) : "unknown") +
+            "; the job was rolled back");
     }
+    details["extract_unsupported"] = false;
+    details["kernel_completion"] = "supported";
     // The tree is logged in full and kept in the receipt only when the
     // regeneration fails; a successful job must not carry a 30 KB element tree
     // that inflates every poll of its result.

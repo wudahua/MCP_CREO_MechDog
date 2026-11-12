@@ -1108,6 +1108,7 @@ def run_generic_job(job_id: str, manifest: dict):
             model["last_job"] = job_id
             bridge.apply_terminal_stage(manifest)
             bridge.note_native_outcome(manifest)
+            bridge.record_surface_loft_runtime(manifest)
             model_registry.write_model(path, model)
     except bridge.ToolkitBusy as exc:
         # No worker ran. Never rewrite a model while another owner holds the channel.
