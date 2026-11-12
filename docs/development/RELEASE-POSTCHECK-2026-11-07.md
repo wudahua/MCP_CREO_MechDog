@@ -268,7 +268,7 @@
 - 版本与范围：`0.23.2` PATCH，公开工具仍 107；交付 [BUG-120](../work-items/BUG-120.md) 的 `surface_loft` 提取失败诊断与运行期观测披露，以及 [DEV-083](../work-items/DEV-083.md) 的逐 ID 状态一致性与发布文档本地链接门禁，发布记录见 [RELEASE-0.23.2](../validation/RELEASE-0.23.2.md)。
 - 打包顺序：`tools\package_seeds.py` → 回填 `docs/seed_package.json` → 重建确认摘要不变 → `tools\package.py`（内置发布记录门禁）→ 标签/发布 → `tools\check_release_assets.py --tag v0.23.2`。
 - 种子包 SHA256 `4a47a58293f773d530c7ab2a771db075f3557222a207fb5dcff853594e66861a`（24 个文件、9 个种子、493 442 字节，两次构建摘要一致）。
-- 源码包 `MCP_CREO_MechDog-0.23.2-source.zip` 9 777 384 字节、1 778 个文件，SHA256 `8b1d779a2959d1ffe7595f952a8da85967a967620b014112a7de63e5c858abd2`；`package.py` 的四附件门禁与发布记录门禁均通过。
+- 源码包 `MCP_CREO_MechDog-0.23.2-source.zip` 由本提交源码构建，`package.py` 的四附件门禁与发布记录门禁均通过；字节数与 SHA256 见同名 sidecar，不写入包内文件。
 - Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.23.2`；四附件为 `MCP_CREO_MechDog-0.23.2-source.zip`、`MCP_CREO_MechDog-0.23.2-source.zip.sha256`、`MCP_CREO_MechDog-0.23.2-seed-library.zip` 与 `MCP_CREO_MechDog-0.23.2-seed-library.zip.sha256`；`source.zip` 的摘要见同名 sidecar，不写入包内。
 - 核对命令 `tools\check_release_assets.py --tag v0.23.2` 需 exit 0；该版本 ≥ 0.23.1，会同时解压源码包运行记录门禁。实际标签对象、`main` 提交、Release id、发布时间与四附件名称/字节/SHA256 在发布后补记于本段，已发布附件不重传。
 - 本批未连接 Creo（未取得本轮当次实机授权），按离线批次发布：Creo 12.4.0.0 实机回归与 `kernel_completion="supported"` 观测未执行，0.23.1 实机结论不外推。升级后必须重新编译 worker（`native/surface_loft.cpp` 变更）。

@@ -41,8 +41,7 @@
 
 - 顺序：`tools\package_seeds.py --output build\release-0.23.2\MCP_CREO_MechDog-0.23.2-seed-library.zip` → 回填 `docs/seed_package.json` → 重建确认摘要不变 → `tools/package.py --seed-archive <seed.zip> --output <source.zip>`。
 - 种子包 SHA256 `4a47a58293f773d530c7ab2a771db075f3557222a207fb5dcff853594e66861a`（24 个文件、9 个种子、493 442 字节）；两次确定性构建摘要一致。
-- 源码包 `MCP_CREO_MechDog-0.23.2-source.zip` 9 777 384 字节、1 778 个文件，SHA256 `8b1d779a2959d1ffe7595f952a8da85967a967620b014112a7de63e5c858abd2`；`package.py` 的四附件门禁与发布记录门禁均通过。
-- `source.zip` 的摘要见同名 sidecar，不写入包内文件（ZIP 不能包含自身摘要）。
+- 源码包 `MCP_CREO_MechDog-0.23.2-source.zip` 由本提交源码构建，`package.py` 的四附件门禁与发布记录门禁均通过；其字节数与 SHA256 见同名 sidecar 与 Release 正文，不写入包内文件（ZIP 不能包含自身摘要）。
 
 ## 未测范围
 
