@@ -56,18 +56,20 @@
 
 ## 发布核对
 
-- Release：[v0.23.1](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.23.1)。Release id 与发布时间由发布平台生成，以 Release 页面与 `main` 的 POSTCHECK 段为准；包内不预写。
-- 四附件（逐个上传，不用通配）：
+- 标签：附注标签对象 `fbd6a56e506b65c411919925dea90048c2138000`，指向 `main` 提交 `3d250ac0340af933f021930db64324d91168d8b0`。
+- Release：[v0.23.1](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.23.1)，id `442581848`，非 draft、非 prerelease，`created_at=2026-11-12T06:42:32Z`，`published_at=2026-11-12T06:44:28Z`，target `main`。
+- 核对命令：`tools/check_release_assets.py --tag v0.23.1` → exit 0，「four assets downloaded and verified; both sidecars match」；版本 ≥ 0.23.1 时该命令同时解压源码包运行记录门禁并通过。
+- 四附件（逐个上传，不用通配；远端 digest、本地重算与 sidecar 一致）：
 
-| 附件 | 摘要 |
-| --- | --- |
-| `MCP_CREO_MechDog-0.23.1-source.zip` | 摘要见同名 `MCP_CREO_MechDog-0.23.1-source.zip.sha256` sidecar 与 Release 正文 |
-| `MCP_CREO_MechDog-0.23.1-source.zip.sha256` | 一行 `<64-hex SHA256>  <文件名>` |
-| `MCP_CREO_MechDog-0.23.1-seed-library.zip` | `46d8d1f5024a05c4585f051bab1243791a7a9149a9eb90e1764a5ec9afb6a926` |
-| `MCP_CREO_MechDog-0.23.1-seed-library.zip.sha256` | 一行 `<64-hex SHA256>  <文件名>` |
+| 附件 | 字节 | SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.23.1-source.zip` | 9 723 011 | `df02e02fe923d92fd75d117373d7b90384dda565ac0f6dad9113f84276e4c100` |
+| `MCP_CREO_MechDog-0.23.1-source.zip.sha256` | 101 | `8262fd01179ac6f71c5a5920ea93faf711fad0dcebab6d572dd0a4f33fd4f908` |
+| `MCP_CREO_MechDog-0.23.1-seed-library.zip` | 493 442 | `46d8d1f5024a05c4585f051bab1243791a7a9149a9eb90e1764a5ec9afb6a926` |
+| `MCP_CREO_MechDog-0.23.1-seed-library.zip.sha256` | 107 | `161c51d454fb47147daa5c92f3a21b181778b1b1b2925d7bd2ad802ba71bca20` |
 
-- 核对命令：`tools/check_release_assets.py --tag v0.23.1`（版本 ≥ 0.23.1 时会同时运行包内记录门禁）。
-- 源码包解压后全量单测从短路径运行，结果回填到 `main` 的 POSTCHECK `## v0.23.1` 段，不回写包内快照。
+- 源码包解压到 `E:\r0231` 后临时 editable 安装到本机 venv，`python -m unittest discover -s tests` 为 `Ran 3443 tests in 396.706s`、`OK (skipped=6)`；随后 venv 已恢复到 `E:\Projects\MCP_CREO_MechDog`。包内 5 项“源码目录即安装目录”的用例在未切换安装前失败，属测试环境约束，不是产品缺陷。
+- 实际发布结果只回填到 `main` 的 POSTCHECK `## v0.23.1` 段与本段，不回写包内快照。
 
 ## 逐 ID 状态核对
 

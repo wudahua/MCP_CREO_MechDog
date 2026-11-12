@@ -245,19 +245,23 @@
 
 ## v0.23.1（2026-11-12）
 
-- Release：[v0.23.1](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.23.1)。标签提交、附注标签对象、Release id 与发布时间在发布后补记到本段；包内源码是打包时点快照。
+- 记录时间：2026-11-12（当日发布并回填）。`main` 提交 `3d250ac0340af933f021930db64324d91168d8b0`（`6dfbfba..3d250ac`）；附注标签对象 `fbd6a56e506b65c411919925dea90048c2138000`（`v0.23.1`，指向上述提交）。
+- Release：[v0.23.1](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.23.1)，id `442581848`，非 draft、非 prerelease，`created_at=2026-11-12T06:42:32Z`，`published_at=2026-11-12T06:44:28Z`，target `main`。
 - 打包顺序：`tools\package_seeds.py` → 回填 `docs/seed_package.json` → 重建确认摘要不变 → `tools\package.py`（内置发布记录门禁）→ 标签/发布 → `tools\check_release_assets.py --tag v0.23.1`。
 - 种子包 SHA256 `46d8d1f5024a05c4585f051bab1243791a7a9149a9eb90e1764a5ec9afb6a926`（24 个文件、9 个种子，两次构建一致）。
-- 四附件逐个列出（未用通配）；`source.zip` 的摘要见同名 sidecar，不写入包内：
+- 核对命令：`tools\check_release_assets.py --tag v0.23.1` → exit 0，「four assets downloaded and verified; both sidecars match」；该命令对 ≥ 0.23.1 同时解压源码包运行记录门禁并通过。
+- 四附件逐个列出（未用通配）；远端 `sha256:` digest、本地重算与 sidecar 内容逐一致；`source.zip` 的摘要见同名 sidecar，不写入包内：
 
-| 附件 | 摘要 |
-| --- | --- |
-| `MCP_CREO_MechDog-0.23.1-source.zip` | 摘要见同名 `.sha256` sidecar 与 Release 正文 |
-| `MCP_CREO_MechDog-0.23.1-source.zip.sha256` | 一行 `<64-hex SHA256>  <文件名>` |
-| `MCP_CREO_MechDog-0.23.1-seed-library.zip` | `46d8d1f5024a05c4585f051bab1243791a7a9149a9eb90e1764a5ec9afb6a926` |
-| `MCP_CREO_MechDog-0.23.1-seed-library.zip.sha256` | 一行 `<64-hex SHA256>  <文件名>` |
+| 附件 | 字节 | SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.23.1-source.zip` | 9 723 011 | `df02e02fe923d92fd75d117373d7b90384dda565ac0f6dad9113f84276e4c100` |
+| `MCP_CREO_MechDog-0.23.1-source.zip.sha256` | 101 | `8262fd01179ac6f71c5a5920ea93faf711fad0dcebab6d572dd0a4f33fd4f908` |
+| `MCP_CREO_MechDog-0.23.1-seed-library.zip` | 493 442 | `46d8d1f5024a05c4585f051bab1243791a7a9149a9eb90e1764a5ec9afb6a926` |
+| `MCP_CREO_MechDog-0.23.1-seed-library.zip.sha256` | 107 | `161c51d454fb47147daa5c92f3a21b181778b1b1b2925d7bd2ad802ba71bca20` |
 
+- 源码包解压到短路径 `E:\r0231` 后，把该目录临时 editable 安装到本机 venv 并运行 `python -m unittest discover -s tests`：`Ran 3443 tests in 396.706s`、`OK (skipped=6)`；随后已把 venv 恢复到 `E:\Projects\MCP_CREO_MechDog`。包内 `test_standard_install_supports_import_from_unrelated_working_directory` 等 5 项依赖“当前源码目录就是安装目录”，未切换安装前会失败，属测试环境约束而非产品缺陷。
 - 本版含 `native/surface_loft.cpp`、`src/creo_mechdog/job_projection.py`、`src/creo_mechdog/operation_results.py`、`src/creo_mechdog/release_integrity.py` 与打包工具变更（BUG-119、DEV-083），升级后必须重编译 worker。Creo 12.4.0.0 实机：已有实体模型放样 8 项、YZ/XZ 正交平面 13 项、guides 回归 38 项全 PASS（报告见 `docs/validation/RELEASE-0.23.1.md`）。
+- 包内快照与 `main` 的差异：源码包内的 POSTCHECK、`RELEASE-0.23.1.md`、`RELEASE_NOTES_0.23.1.md` 与 BACKLOG 是打包时点内容（当时没有本段与实际 Release id/时间）；本段、源码包全量单测与远端核对结果只存在于 `main`，按冻结规则不回写、不重发已发布附件。
 
 ## 未覆盖
 
