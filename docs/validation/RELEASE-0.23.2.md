@@ -53,15 +53,21 @@
 
 ## 发布核对
 
-- 标签、Release id 与发布时间在发布后补记于本段与统一 POSTCHECK `## v0.23.2` 段。
-- 核对命令：`tools/check_release_assets.py --tag v0.23.2`；版本 ≥ 0.23.1 时该命令同时解压源码包运行记录门禁。
-- 四附件（逐个上传，不用通配）：
-  - `MCP_CREO_MechDog-0.23.2-source.zip`
-  - `MCP_CREO_MechDog-0.23.2-source.zip.sha256`
-  - `MCP_CREO_MechDog-0.23.2-seed-library.zip`
-  - `MCP_CREO_MechDog-0.23.2-seed-library.zip.sha256`
+- 记录时间：2026-11-12（UTC `2026-11-12T12:31Z` 前后，当日发布并回填）。`main` 提交 `f20b3bb4136bdffc170b63039357368ffd4ee6bb`；附注标签对象 `58f8d8273aabbdbb947f766371374285f87537b5`（`v0.23.2`，指向上述提交）。
+- Release：[v0.23.2](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.23.2)，id `442920884`，非 draft、非 prerelease，`created_at=2026-11-12T12:31:12Z`，`published_at=2026-11-12T12:31:38Z`，target `main`。
+- 核对命令：`tools/check_release_assets.py --tag v0.23.2` → exit 0，「four assets downloaded and verified; both sidecars match」；该命令同时解压源码包运行记录门禁并通过。
+- 四附件（逐个上传，不用通配；远端 digest、本地重算与 sidecar 一致）：
+
+| 附件 | 字节 | SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.23.2-source.zip` | 9 778 348 | `1bd12e893b5f37072d3f058af20a0e5d93d1e53195fc2bc2674c555b9400559c` |
+| `MCP_CREO_MechDog-0.23.2-source.zip.sha256` | 101 | `d68aefeb652b08b65af555f07b9311fd96c5b22f4e6f346733f91aed07009077` |
+| `MCP_CREO_MechDog-0.23.2-seed-library.zip` | 493 442 | `4a47a58293f773d530c7ab2a771db075f3557222a207fb5dcff853594e66861a` |
+| `MCP_CREO_MechDog-0.23.2-seed-library.zip.sha256` | 107 | `129f19a1d4221a7d3c98d18998d94665442d05a2f1d93480d7a187b618e0e783` |
+
+- 源码包解压到 `E:\r0232\MCP_CREO_MechDog` 后，把该目录临时 editable 安装到本机 venv 并运行 `python -m unittest discover -s tests`：`Ran 3463 tests in 479.169s`、`OK (skipped=6)`、exit 0；随后已把 venv 恢复到 `E:\Projects\MCP_CREO_MechDog`。该次运行早于发布记录文字定稿，定稿后只改了本文件与 POSTCHECK 的措辞，最终包由 `f20b3bb` 源码重新构建并再次通过记录门禁；代码文件与测试集合未变。
+- 本批未连接 Creo，`tools/test_surface_loft_existing_solid.py`/`test_surface_loft_planes.py`/`test_surface_loft_guides.py` 的 `--live` 未执行。
 - 实际发布结果只回填到 `main` 的 POSTCHECK `## v0.23.2` 段与本段，不回写包内快照。
-- 源码包解压到 `E:\r0232\MCP_CREO_MechDog` 后，把该目录临时 editable 安装到本机 venv 并运行 `python -m unittest discover -s tests`：`Ran 3463 tests in 479.169s`、`OK (skipped=6)`、exit 0；随后已把 venv 恢复到 `E:\Projects\MCP_CREO_MechDog`。包内 `test_standard_install_supports_import_from_unrelated_working_directory` 等 5 项依赖“当前源码目录就是安装目录”，未切换安装前会失败，属测试环境约束而非产品缺陷。
 
 ## 逐 ID 状态核对
 

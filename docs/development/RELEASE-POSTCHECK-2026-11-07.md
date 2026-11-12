@@ -270,7 +270,17 @@
 - 种子包 SHA256 `4a47a58293f773d530c7ab2a771db075f3557222a207fb5dcff853594e66861a`（24 个文件、9 个种子、493 442 字节，两次构建摘要一致）。
 - 源码包 `MCP_CREO_MechDog-0.23.2-source.zip` 由本提交源码构建，`package.py` 的四附件门禁与发布记录门禁均通过；字节数与 SHA256 见同名 sidecar，不写入包内文件。
 - Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.23.2`；四附件为 `MCP_CREO_MechDog-0.23.2-source.zip`、`MCP_CREO_MechDog-0.23.2-source.zip.sha256`、`MCP_CREO_MechDog-0.23.2-seed-library.zip` 与 `MCP_CREO_MechDog-0.23.2-seed-library.zip.sha256`；`source.zip` 的摘要见同名 sidecar，不写入包内。
-- 核对命令 `tools\check_release_assets.py --tag v0.23.2` 需 exit 0；该版本 ≥ 0.23.1，会同时解压源码包运行记录门禁。实际标签对象、`main` 提交、Release id、发布时间与四附件名称/字节/SHA256 在发布后补记于本段，已发布附件不重传。
+- 核对命令：`tools\check_release_assets.py --tag v0.23.2` → exit 0，「v0.23.2: four assets downloaded and verified; both sidecars match」；该命令同时解压源码包运行记录门禁并通过。
+- `main` 提交 `f20b3bb4136bdffc170b63039357368ffd4ee6bb`；附注标签对象 `58f8d8273aabbdbb947f766371374285f87537b5`（`v0.23.2`，指向上述提交）。
+- Release：[v0.23.2](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.23.2)，id `442920884`，非 draft、非 prerelease，`created_at=2026-11-12T12:31:12Z`，`published_at=2026-11-12T12:31:38Z`，target `main`。
+- 四附件逐个列出（未用通配）；远端 `sha256:` digest、本地重算与 sidecar 内容逐一致：
+
+| 附件 | 字节 | SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.23.2-source.zip` | 9 778 348 | `1bd12e893b5f37072d3f058af20a0e5d93d1e53195fc2bc2674c555b9400559c` |
+| `MCP_CREO_MechDog-0.23.2-source.zip.sha256` | 101 | `d68aefeb652b08b65af555f07b9311fd96c5b22f4e6f346733f91aed07009077` |
+| `MCP_CREO_MechDog-0.23.2-seed-library.zip` | 493 442 | `4a47a58293f773d530c7ab2a771db075f3557222a207fb5dcff853594e66861a` |
+| `MCP_CREO_MechDog-0.23.2-seed-library.zip.sha256` | 107 | `129f19a1d4221a7d3c98d18998d94665442d05a2f1d93480d7a187b618e0e783` |
 - 本批未连接 Creo（未取得本轮当次实机授权），按离线批次发布：Creo 12.4.0.0 实机回归与 `kernel_completion="supported"` 观测未执行，0.23.1 实机结论不外推。升级后必须重新编译 worker（`native/surface_loft.cpp` 变更）。
 - 离线验证：`tools\dev_check.py --work-item BUG-120` 为 `success=true`（`Ran 3463 tests`、`OK`）；源码包解压到 `E:\r0232` 后切换 editable 安装运行全量单测为 `Ran 3463 tests in 479.169s`、`OK (skipped=6)`、exit 0，随后已恢复本机 venv 安装。
 - 包内快照与 `main` 的差异：源码包内的本段、`RELEASE-0.23.2.md`、`RELEASE_NOTES_0.23.2.md` 与 BACKLOG 是打包时点内容；实际 Release id、发布时间与发布后核对只存在于 `main`，按冻结规则不回写已发布附件。
