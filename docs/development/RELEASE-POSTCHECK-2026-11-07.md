@@ -265,15 +265,20 @@
 
 ## v0.24.0（2026-11-13）
 
-- 版本：`0.24.0`（MINOR）。版本说明 [RELEASE_NOTES_0.24.0](../RELEASE_NOTES_0.24.0.md)，发布记录 [RELEASE-0.24.0](../validation/RELEASE-0.24.0.md)，主台账 [BACKLOG](../BACKLOG.md)。
-- 本段在打包前落笔：先固定四附件清单、Release 地址与种子包摘要；发布完成后再在同一段内补记远端 Release id、四附件字节数与 digest，以及 `tools/check_release_assets.py --tag v0.24.0` 的输出。
-- 四附件（逐个列出，不使用通配）：
-  - `MCP_CREO_MechDog-0.24.0-source.zip`
-  - `MCP_CREO_MechDog-0.24.0-source.zip.sha256`（源码包摘要记录在同名 sidecar 中，一行 `<64 位 SHA256>  文件名`）
-  - `MCP_CREO_MechDog-0.24.0-seed-library.zip`
-  - `MCP_CREO_MechDog-0.24.0-seed-library.zip.sha256`（种子包摘要同样在 sidecar 中）
-- 种子包摘要：`c6d9a77b04ac397836464f8e12455a9b796e49b1193a796b2e1d28e782cd68f1`（24 个文件、9 个种子；回填 `docs/seed_package.json` 后重建一次，摘要不变）。
-- Release：[v0.24.0](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.24.0)。
+- 记录时间：2026-11-13 18:28（+08:00）/ 2026-11-13T10:28Z。`main` = `origin/main` = `b4e3d0971a0a8113c365c8d534512b844f3df7ab`（`8a08118..b4e3d09`）；附注标签对象 `71df612132da4904c59e74ac05679c11e4df16ee`（`v0.24.0`，指向上述提交）。
+- Release：[v0.24.0](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.24.0)，id `444093452`，非 draft、非 prerelease，`created_at=2026-11-13T10:27:51Z`，`published_at=2026-11-13T10:28:16Z`，target `main`。
+- 核对命令：`tools/check_release_assets.py --tag v0.24.0` → exit 0，「v0.24.0: four assets downloaded and verified; both sidecars match」。
+- 四附件逐个列出（未用通配）；远端 `sha256:` digest、本地重算与 sidecar 内容逐一致：
+
+| 附件 | 字节 | SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.24.0-source.zip` | 10 090 013 | `cb18e49127f7bb4cfa99756257c7e5a3d3c64b4e35202dfc85668058e431d4f4` |
+| `MCP_CREO_MechDog-0.24.0-source.zip.sha256` | 101 | `9d1617287dfaf8dd73a72dd9c364f5ea463463109f52035ab04149674c11974f` |
+| `MCP_CREO_MechDog-0.24.0-seed-library.zip` | 493 442 | `c6d9a77b04ac397836464f8e12455a9b796e49b1193a796b2e1d28e782cd68f1` |
+| `MCP_CREO_MechDog-0.24.0-seed-library.zip.sha256` | 107 | `7ca78d4e2b6406c8971434cb661150416ded931951f21eb30ada5d7669a62dba` |
+
+- 种子包：24 个文件、9 个种子；回填 `docs/seed_package.json` 后重建一次，摘要仍为 `c6d9a77b04ac397836464f8e12455a9b796e49b1193a796b2e1d28e782cd68f1`。
+- 本版含 `native/generic.cpp`、`native/surface_loft.cpp` 变更与新增 `native/import_geometry.cpp`，升级后必须重编译 worker。本段只做远端附件与标签核对，不重新验证包内功能；功能验收与未测范围以 [RELEASE-0.24.0](../validation/RELEASE-0.24.0.md) 与 Release 正文为准。
 
 ## v0.23.2（2026-11-13）
 

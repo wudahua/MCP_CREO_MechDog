@@ -31,7 +31,7 @@
 
 ## 未纳入本版
 
-- 台账中新登记的 [DEV-088](../work-items/DEV-088.md)（开发 AI 自主取样与重建验证，文档在写）不在本版交付范围，仍为开发中。
+- 同日登记的 [DEV-088](../work-items/DEV-088.md) 是本地离线资料条目（已完成并归档，未编译、未实机），不含产品代码，不作为本版交付项。
 - Creo 10 跨版本结论：本版不声称，复测步骤见交接包。
 
 ## 发布核对
@@ -44,6 +44,13 @@
 - `MCP_CREO_MechDog-0.24.0-seed-library.zip.sha256`（种子包摘要同样在 sidecar 中）
 
 - 种子包 SHA256：`c6d9a77b04ac397836464f8e12455a9b796e49b1193a796b2e1d28e782cd68f1`（24 个文件、9 个种子，与 `docs/seed_package.json` 一致，重建一次摘要不变）。
-- Release：<https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.24.0>
-- 打包前置门禁：`tools/check_release_records.py --version 0.24.0`、`tools/package.py` 的包内记录检查与 `tools/dev_check.py`。
-- 发布后核对：`python tools/check_release_assets.py --tag v0.24.0`，四附件与两个 sidecar 逐一致，结果回填本文件与 POSTCHECK。
+- Release：<https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.24.0>，id `444093452`，非 draft、非 prerelease，`published_at=2026-11-13T10:28:16Z`，target `main`（`b4e3d0971a0a8113c365c8d534512b844f3df7ab`，标签对象 `71df612132da4904c59e74ac05679c11e4df16ee`）。
+- 打包前置门禁：`tools/check_release_records.py --version 0.24.0`、`tools/package.py` 的包内记录检查与 `tools/dev_check.py`（3548 项通过）。
+- 发布后核对：`tools/check_release_assets.py --tag v0.24.0` → exit 0，「four assets downloaded and verified; both sidecars match」。远端 digest、本地重算与 sidecar 内容逐一致：
+
+| 附件 | 字节 | SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.24.0-source.zip` | 10 090 013 | `cb18e49127f7bb4cfa99756257c7e5a3d3c64b4e35202dfc85668058e431d4f4` |
+| `MCP_CREO_MechDog-0.24.0-source.zip.sha256` | 101 | `9d1617287dfaf8dd73a72dd9c364f5ea463463109f52035ab04149674c11974f` |
+| `MCP_CREO_MechDog-0.24.0-seed-library.zip` | 493 442 | `c6d9a77b04ac397836464f8e12455a9b796e49b1193a796b2e1d28e782cd68f1` |
+| `MCP_CREO_MechDog-0.24.0-seed-library.zip.sha256` | 107 | `7ca78d4e2b6406c8971434cb661150416ded931951f21eb30ada5d7669a62dba` |
