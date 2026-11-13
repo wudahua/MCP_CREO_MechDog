@@ -1,10 +1,16 @@
 # 开发入口
 
+2026-11-13（0.24.0 曲面准入与导入批）：MINOR 发布。[BUG-121](work-items/BUG-121.md) 只读型计划自动按只读准入并为写计划失败补动作指引；[BUG-122](work-items/BUG-122.md) 按同一 worker 实测内核签名在 `surface_loft` 提交前拒绝；[BUG-123](work-items/BUG-123.md) 元素树模板 XML 路线（导出、原生 loader、双路线一致性，模板与清单已进源码包）；[BUG-124](work-items/BUG-124.md) STEP/IGES `import_geometry` 导入通道；[FEAT-067](work-items/FEAT-067.md) 计划级 `bbox_mm` 与 `surface_area_mm2` 断言；[DEV-088](work-items/DEV-088.md) 本版发布与收口。Creo 12.4.0.0 实机取得六个驱动回执，Creo 10 复测步骤见[交接包](development/CREO10-RETEST-0232-2026-11-13.md)，发布核对见[RELEASE-0.24.0](validation/RELEASE-0.24.0.md)。
+
+2026-11-13（0.23.2 球鼻艏反馈批）：归档原件到 [feedback-0.23.2-2026-11-12](validation/feedback-0.23.2-2026-11-12/MAPPING.md)，建立[分批计划](superpowers/plans/2026-11-13-feedback-0232-bulb-loft.md)。A 批离线交付 [BUG-121](work-items/BUG-121.md)（只读型计划不受基线漂移影响）、[BUG-122](work-items/BUG-122.md)（实测内核签名下提前拒绝 `surface_loft`）、[FEAT-067](work-items/FEAT-067.md)（`assertions.bbox_mm`）。同日用户当次确认 12.4 实机后推进 B 批：[BUG-123](work-items/BUG-123.md) B1 交付——3 截面 + 3 导线边界混合实测 `create_code=0 / extract_code=0 / incomplete=false / 1600.0 mm2`，两次独立 dump 得同一模板 `templates/elemtree/loft_s3g3_creo12.4.xml`（SHA256 `4ef01eed…`），确认"模型相关只有 6 条曲线引用、TAN_COND 无他模型曲面"；B2 loader/B3 一致性也已完成并在 12.4 实机验收（`tools/test_loft_template.py --live` 11 项 PASS，两路线 1600.0 mm²、相对差 0.0，形状不匹配与坏 XML 两个负例均被拒）。[BUG-124](work-items/BUG-124.md)（STEP/IGES 导入）离线实现完成后同日删除门禁，12.4 实机两轮导入验收通过（STEP 440.0 mm² / IGES 1540.0 mm²，均保存重载）；A 批也于同日补 12.4 实机回执（`build/live_acceptance_20261113T150422` 10 项 PASS）。未合 main、未发布。
+
 2026-11-08 [DEV-076](work-items/DEV-076.md)：本地v0.18.4合入当前开发分支，保留DEV-066/075后续离线修复。新增缺头编译与独立包导入回归，发布资料勘误见[统一核对台账](development/RELEASE-POSTCHECK-2026-11-07.md)。本批未连接Creo、未合main、未发布。
 
 从 [统一台账](BACKLOG.md) 定位 ID，读取工作卡的当前摘要，再查相关源码；历史证据按需打开。根级 [AGENTS.md](../AGENTS.md) 是仓库约束，架构与入口分工见 [ARCHITECTURE](development/ARCHITECTURE.md)，编码规则见 [CODING_STANDARD](development/CODING_STANDARD.md)。当前版本以 [version.py](../version.py) 为准，本节不再重复逐版记录。
 
 ## 准入与日常维护
+
+Creo TOOLKIT 的官方资料导航、API/元素树查证及接入方法见 [中文开发指南](development/CREO_TOOLKIT_GUIDE.md)。Git 检出的本项目可使用 [creo-mechdog-dev skill](../.agents/skills/creo-mechdog-dev/SKILL.md)（显式调用 `$creo-mechdog-dev`，也允许按开发任务匹配）；实机授权和 WorkBuddy 黑盒规则继续以 AGENTS 为准。
 
 1. 开始前核对分支、工作树、未提交改动、合并现场和已有 ID，避免覆盖其他任务。默认从可交付 main 创建 `codex/<条目>-<主题>`；关联集成批以指定提交为基点时，在工作卡记录原因与源码身份。
 2. BACKLOG 是唯一当前台账。新增工作先登记未占用 ID、目标、范围、验收及环境。小修复沿用工作卡和证据链接，几行即可；复杂跨模块任务才使用[工作卡模板](templates/WORK_ITEM.md)和完整计划，不另建总台账或第二份待办。

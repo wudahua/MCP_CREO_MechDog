@@ -263,6 +263,18 @@
 - 本版含 `native/surface_loft.cpp`、`src/creo_mechdog/job_projection.py`、`src/creo_mechdog/operation_results.py`、`src/creo_mechdog/release_integrity.py` 与打包工具变更（BUG-119、DEV-083），升级后必须重编译 worker。Creo 12.4.0.0 实机：已有实体模型放样 8 项、YZ/XZ 正交平面 13 项、guides 回归 38 项全 PASS（报告见 `docs/validation/RELEASE-0.23.1.md`）。
 - 包内快照与 `main` 的差异：源码包内的 POSTCHECK、`RELEASE-0.23.1.md`、`RELEASE_NOTES_0.23.1.md` 与 BACKLOG 是打包时点内容（当时没有本段与实际 Release id/时间）；本段、源码包全量单测与远端核对结果只存在于 `main`，按冻结规则不回写、不重发已发布附件。
 
+## v0.24.0（2026-11-13）
+
+- 版本：`0.24.0`（MINOR）。版本说明 [RELEASE_NOTES_0.24.0](../RELEASE_NOTES_0.24.0.md)，发布记录 [RELEASE-0.24.0](../validation/RELEASE-0.24.0.md)，主台账 [BACKLOG](../BACKLOG.md)。
+- 本段在打包前落笔：先固定四附件清单、Release 地址与种子包摘要；发布完成后再在同一段内补记远端 Release id、四附件字节数与 digest，以及 `tools/check_release_assets.py --tag v0.24.0` 的输出。
+- 四附件（逐个列出，不使用通配）：
+  - `MCP_CREO_MechDog-0.24.0-source.zip`
+  - `MCP_CREO_MechDog-0.24.0-source.zip.sha256`（源码包摘要记录在同名 sidecar 中，一行 `<64 位 SHA256>  文件名`）
+  - `MCP_CREO_MechDog-0.24.0-seed-library.zip`
+  - `MCP_CREO_MechDog-0.24.0-seed-library.zip.sha256`（种子包摘要同样在 sidecar 中）
+- 种子包摘要：`c6d9a77b04ac397836464f8e12455a9b796e49b1193a796b2e1d28e782cd68f1`（24 个文件、9 个种子；回填 `docs/seed_package.json` 后重建一次，摘要不变）。
+- Release：[v0.24.0](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.24.0)。
+
 ## v0.23.2（2026-11-13）
 
 - 版本与范围：`0.23.2` PATCH，公开工具仍 107；交付 [BUG-120](../work-items/BUG-120.md) 的 `surface_loft` 提取失败诊断与运行期观测披露，以及 [DEV-083](../work-items/DEV-083.md) 的逐 ID 状态一致性与发布文档本地链接门禁，发布记录见 [RELEASE-0.23.2](../validation/RELEASE-0.23.2.md)。

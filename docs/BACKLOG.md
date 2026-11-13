@@ -1,5 +1,17 @@
 # 统一开发台账
 
+2026-11-13 [DEV-088](work-items/DEV-088.md)：明确开发 AI 自主承担参照取样、取树、单变量对照、引用重绑与重建/独立验收，不让维护者代做技术判断；离线核验、四情境只读试用和终审通过，移入[完成档案](BACKLOG_COMPLETED.md)。保留当次实机确认与缺口报告，本次未编译或真实取样。
+
+2026-11-13 [DEV-087](work-items/DEV-087.md)：为不熟悉机械/Creo 的软件维护者补白话变更说明，按目标、因果、前后行为、独立预期与未证明范围汇报；两例历史说明、独立只读试用/局部复验及终审通过，移入[完成档案](BACKLOG_COMPLETED.md)。只改资料，保留其它任务现场；未编译或实机。
+
+2026-11-13 [DEV-086](work-items/DEV-086.md)：参考后台 Java 建模案例，按本项目契约原创补充设计意图、实际几何/坐标、分层验收、源快照及原生文件依赖交付指导；skill/链接/台账检查与独立试用/终审通过，无保留范围，移入[完成档案](BACKLOG_COMPLETED.md)。未复制上游代码/模型/教材，未编译或实机；保留其它任务工作区改动。
+
+2026-11-13（0.23.2 球鼻艏反馈批）：归档下载目录 `反馈包-球鼻艏-20261112` 全部 30 个文件到 [feedback-0.23.2-2026-11-12](validation/feedback-0.23.2-2026-11-12/MAPPING.md)（SHA256 与包内 `MANIFEST-SHA256.txt` 逐条比对通过），并建立[分批计划](superpowers/plans/2026-11-13-feedback-0232-bulb-loft.md)；新增 [BUG-121](work-items/BUG-121.md)、[BUG-122](work-items/BUG-122.md)、[BUG-123](work-items/BUG-123.md)、[BUG-124](work-items/BUG-124.md)、[FEAT-067](work-items/FEAT-067.md)，表行 180→**185**（BUG 79→83 / FEAT 63→64 / DEV 38）。A 批离线交付：只读型计划自动按只读准入并为写计划失败补动作提示（BUG-121）、按同一 worker 实测签名在提交前拒绝 `surface_loft`（BUG-122）、计划级 `bbox_mm` 断言（FEAT-067；`surface_area_mm2` 于同日补齐，实机未验）。模板 XML（BUG-123）的 B1 导出、B2 原生 loader、B3 双路线一致性已于同日全部完成并在 Creo 12.4 实机验收：`tools/test_loft_template.py --live` 11 项全 PASS（手写树 `ea2ac599…` 1600.0 mm² vs 模板 `d590b87b…` 1600.0 mm²，相对差 0.0；负例 `49a9b065…` `TEMPLATE_SHAPE_MISMATCH`、`6fb40ac1…` `TEMPLATE_TREE_LOAD_FAILED` 均未留特征）；STEP/IGES 导入（BUG-124）离线实现完成（schema/计划准入/原生 `ProIntfimportModelWithOptionsMdlnameCreate` 建 part/19 项单测），门禁已于同日后续删除并在 12.4 实机两轮导入中验收（STEP `c725cca7…` 440.0 mm²、IGES `11823392…` 1540.0 mm²，均保存重载通过，详见 BUG-124 行）。A 批同日补 12.4 实机回执（`build/live_acceptance_20261113T150422` 10 项全 PASS：只读导出记 `readonly_source`、bbox 断言两态、同一模型连续两次放样不误拒）；B 批在用户当次确认下连接 Creo 12.4 建模。本批未发布；`bridge.py build` exit 0，新增 3 个单测文件 31 项通过。
+
+2026-11-12 [DEV-085](work-items/DEV-085.md)：完成外部 Creo skill 评估，按本机 12.4 SDK 独立补充对象/遍历/装配引用/字符串/多实体/辅助函数专题与按需路由；离线核验、独立试用和终审通过，移入[完成档案](BACKLOG_COMPLETED.md)。未复制上游原文或代码，未编译、实机或发布。
+
+2026-11-12 [DEV-084](work-items/DEV-084.md)：完成中文 TOOLKIT 开发指南、项目 skill 与入口；离线查证、文档核验及独立只读试用/终审通过，无保留范围，移入[完成档案](BACKLOG_COMPLETED.md)。本批仅本地开发资料，未编译、未连接 Creo、未合入 main 或发布。
+
 2026-11-13（0.23.0 反馈批）：归档下载目录 `0.23.0` 四份原件到 [feedback-0.23.0-2026-11-12](validation/feedback-0.23.0-2026-11-12/MAPPING.md)。[DEV-083](work-items/DEV-083.md) 门禁补强：逐 ID 状态归一化、主台账列精确比对、工作卡 `分类：` 粗体比对、活动交付行全表扫描、可选「差异说明」列；发布说明/发布记录/POSTCHECK 增加本地相对链接存在性检查，并修正 0.23.0/0.23.1 两处断链。[BUG-120](work-items/BUG-120.md)：Creo 10 `surface_loft` 创建后 `ProFeatureElemtreeExtract=-18`，本轮交付 `SURFACE_LOFT_EXTRACT_UNSUPPORTED` 诊断、`feature_incomplete`/`kernel_evidence` 回执与 `kernel_completion` 只披露能力字段；模板 XML/导入未排期。表行 179→**180**（BUG 79 / FEAT 63 / DEV 38）。随 **0.23.2** 交付。
 
 2026-11-12（0.22.0 反馈批）：归档下载目录 `0.22.0` 两份反馈。[BUG-119](work-items/BUG-119.md)：已有实体的模型上 `surface_loft` 因模型级 `has_solid` 被误判为创建实体而回滚，改为比较操作前后的实体状态、带材料实体数与体积增量，回执新增前后快照字段。表行 178→**179**（BUG 78 / FEAT 63 / DEV 38）。Creo 12.4.0.0 实机（用户当次授权）：`tools/test_surface_loft_existing_solid.py --live` 8 项全 PASS（job `76d69c9c…`，体积 60000→60000 mm³、材料体 1→1、面积 5026.548245743668 mm²、开放 quilt、保存重载 verified）；`tools/test_surface_loft_planes.py --live` 13 项全 PASS（YZ@X=0/50 为 6283.185307179587 mm²、XZ@Y=0/40 为 5026.548245743668 mm²）；`tools/test_surface_loft_guides.py --live` 全 PASS，门禁改动未回归既有放样。发布流程新增机器门禁（[DEV-083](work-items/DEV-083.md)）：`package.py` 与 `check_release_assets.py` 对 0.23.1 起拒绝过期或含占位词的包内 POSTCHECK/发布记录，`tools/check_release_records.py` 供预检；9 项门禁单测通过。随 **0.23.1** 发布：`main` 提交 `3d250ac`、附注标签对象 `fbd6a56`、Release id `442581848`，四附件经 `--tag v0.23.1` 核对通过；源码包解压后 `Ran 3443 tests ... OK (skipped=6)`。
@@ -55,7 +67,7 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 
 诊断交付不等于根因修复；部分交付不关整卡；缺其他版本证据不自动判未修。观察项等自然新现场，不制造故障。已完成且无保留范围的行移入 [完成档案](BACKLOG_COMPLETED.md#2026-11-07dev-073-归档与历史进展)。原进展/证据保留日期，不再回填第二份待办。小修复沿用卡与证据，复杂跨模块任务才另建完整计划。
 
-当前唯一 ID **180**（BUG **79**、FEAT **63**、DEV **38**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
+当前唯一 ID **185**（BUG **83**、FEAT **64**、DEV **38**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
 
 | 当前分类 | 唯一 ID 数 |
 | --- | --- |
@@ -65,9 +77,9 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 | 观察中 | 3 |
 | 其它 agent 处理范围 | 20 |
 | 开发中 | 7 |
-| 部分交付，剩余待验收 | 38 |
-| 部分交付，剩余待规划 | 5 |
-| 待规划 | 42 |
+| 部分交付，剩余待验收 | 41 |
+| 部分交付，剩余待规划 | 6 |
+| 待规划 | 43 |
 
 BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与真实缺口，勿重复派工。
 
@@ -202,6 +214,10 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
+| [BUG-121](work-items/BUG-121.md) | P2 | 部分交付，剩余待验收 | 0.24.0（子项）；剩余未排期 | 只读型计划（`export`/`dump_tree`/`mass_properties`/`surface_group_measure`/`surface_curvature`/`udf_inspect`）在 Python 侧自动按只读准入并记 `readonly_source`，不再被 GUI 保存造成的基线漂移挡住；写计划的 `model_reconciliation_required` 失败消息追加 `creo_reconcile_model` 动作指引，原生原文保留在 `native_message`。离线 11 项单测通过；Creo 12.4 实机多轮导出均成功（最新 `...T160310` 作业 `7b7ec1450490427598a2dbe72b99941c`，`...T150422`/`...T145133` 同结论），`job.json` 记 `readonly=true`/`readonly_source=inspection_only_plan`；GUI 保存造成的漂移与 Creo 10 未验。 |
+| [BUG-122](work-items/BUG-122.md) | P1 | 部分交付，剩余待验收 | 0.24.0（子项）；剩余未排期 | 同一 worker 实测到 `create_code=0` + `extract_code=-18` 的内核签名时，`surface_loft` 在提交前被拒（不建空壳、不建作业）；能力表新增 `runtime_admission=refused_before_job`。离线 10 项单测通过；Creo 12.4 实机多轮均为同一模型连续两次 `surface_loft` 成功（最新 `...T160310` 作业 `141ca505dfdd423692c6fd2e7d4df32d`、`63301a89b6c64a92a4a8d615fca241d7`，另两轮同结论，revision 2），无误拒；Creo 10 复跑与"先失败后成功"序列未验。 |
+| [FEAT-067](work-items/FEAT-067.md) | P2 | 部分交付，剩余待验收 | 0.24.0（子项）；剩余未排期 | `assertions.bbox_mm{min,max,tolerance_mm}` 与 `assertions.surface_area_mm2{surface_area_tolerance_mm2}` 两条计划级断言已实现（bbox 按 inspection 的每实体 bbox 求并集；面积按 `ProSolidSurfaceVisit` 逐面求和后平方换算 mm²；两者都在未知单位时失败而非猜测），离线 23 项单测与 `bridge.py build` 通过；Creo 12.4 实机通过与失败两种回执两轮均已验证（`build/live_acceptance_20261113T150422` 作业 `841d50bb8ea54135bb2106cb80a61c4c` 通过；`99e8a458cab3424ebb5d920a026f7841` 报 `Bounding box assertion failed on Z: measured [0.000000, 15.000000] expected [0.000000, 10.000000]`，模型 revision 未变）；`surface_area_mm2` 于 12.4 实机两态通过（`...T160310` 作业 `c7c20fd3544b453fb8731900b8fb68c3` 以 4800 mm² 通过、`a759523eac444d4eb9914c0d8aa186fc` 报 `measured 5600.000000 mm2 expected 4800.000000 mm2`，revision 未变）；未知单位模型、空面与单面失败路径未验。 |
+| [BUG-124](work-items/BUG-124.md) | P2 | 部分交付，剩余待验收 | 0.24.0（子项）；剩余未排期 | `import_geometry`（STEP/IGES → 独立新 part）离线实现完成：`ImportGeometryOp` schema（绝对路径、扩展名与 format 一致、双摘要校验）、计划级准入（唯一操作 + 无 model_id + 非只读 + part）、`native/import_geometry.cpp`（`ProIntfimportModelWithOptionsMdlnameCreate` + `PRO_IMPORTREP_MASTER`、执行前重算摘要、失败码原样透出、`quilt_count/area_mm2/closure` 未测即 null）、新建模型分支改为导入建 part；Creo 12.4 实机两次导入全 PASS（STEP 作业 `c725cca785d44cd6b382c2b0f14ef13f` 440.0 mm² 闭合单面组、IGES 作业 `11823392b60747d093659464030e7122` 1540.0 mm² 六面组，均保存重载验证），门禁已删除并登记 `geometry_import` 能力家族。剩余：Creo 10、纯曲面（非实体）样本、英寸模型（会被毫米校验回滚）未验。 |
 | [DEV-027](work-items/DEV-027.md) | P2 | 部分交付，剩余待验收 | 未排期 | 真实世代回收、二进制可复现性及副本外部改动/登记不一致分支待验。 |
 | [DEV-044](work-items/DEV-044.md) | P1 | 部分交付，剩余待验收 | 未排期 | 0.4.7 五组已有后续证据；保留 DEV-027 等整计划关联余项，避免按旧末段重复安排迁移。 |
 | [DEV-046](work-items/DEV-046.md) | P1 | 部分交付，剩余待验收 | 未排期 | 第二批矩阵实机已验；第三批约束/结果比对、源件更新/嵌套及 DEV-027 余项保留。 |
@@ -245,11 +261,12 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
+| [BUG-123](work-items/BUG-123.md) | P1 | 部分交付，剩余待规划 | 0.24.0（子项）；剩余未排期 | B1/B2/B3 均已交付（2026-11-13，Creo 12.4 实机）：`tools/test_loft_template.py --live` 11 项全 PASS——手写树作业 `ea2ac599…`（1600.0 mm²）与模板 XML 作业 `d590b87b…`（`tree_source=template_xml`、`create_code=0`、`extract_code=0`、`feature_incomplete=false`、1600.0 mm²）相对差 0.0；负例 `TEMPLATE_SHAPE_MISMATCH`（作业 `49a9b065…`）与 `TEMPLATE_TREE_LOAD_FAILED`（作业 `6fb40ac1…`）均未留下特征。模板已随源码包发行（`template_library_files()` 按 manifest 校验 bytes/sha256，10 项打包测试）。剩余：Creo 10 解析与创建后 `ProFeatureElemtreeExtract` 未复测（模板只换输入树，`-18` 不因此消失）、仅 3 截面 + 3 导线一种形态。 |
 | [FEAT-027](BACKLOG_COMPLETED.md#legacy-feat-027) | P3 | 部分交付，剩余待规划 | 未排期 | 墓碑与旧别名拒绝已交付；显式释放/重绑定接口和跨版本历史核对待规划。 |
 | [DEV-066](work-items/DEV-066.md) | P2 | 部分交付，剩余待规划 | 未排期 | 0.18.2已交付来源降级子项；当前分支8def1e4已补齐其余Git读取、报告字段、负例捕获和runtime日志取消跟踪，未发布增量及H08—H09见DEV-075-HANDOFF。 |
 | [FEAT-033](work-items/FEAT-033.md) | P1 | 部分交付，剩余待规划 | 未排期（0.19.3 B 批 opt-in 已交付） | small/large 基准已有；`execute_plan(timeout_seconds)` 受控覆盖（60—7200，默认=服务配置）与 job 回执 `timeout_seconds`/`timeout_source`、看门狗按作业预算判定已交付；自动预算公式、阶段耗时公开契约与到期动作仍待规划，不以取消保存重载缩时。 |
 | [FEAT-066](work-items/FEAT-066.md) | P1 | 部分交付，剩余待规划 | 0.23.0（已交付子项） | `b_spline` 精确 NURBS 实体随 0.23.0 发布，Creo 12.4 实机控制点回读偏差 2.6e-31 mm、两截面面积 1058.017278 mm² 对齐独立 de Boor oracle、保存重载一致，`surface_loft` 回归 PASS。剩余 `closed`、`dimensioning="coordinates"`、页面编辑未排期；Creo 10 运行期未验。 |
-| [BUG-120](work-items/BUG-120.md) | P1 | 部分交付，剩余待规划 | 0.23.2（诊断子项） | Creo 10 `surface_loft` 创建后 `ProFeatureElemtreeExtract=-18`、`feature_incomplete=true`，两个提取器与 GUI 手工特征均失败；0.23.2 交付 `SURFACE_LOFT_EXTRACT_UNSUPPORTED`、回执证据与 `kernel_completion` 披露。剩余模板 XML/`FromXMLCreate` 与 STEP/IGES 导入未排期；不宣称 Creo 10 运行期可用。 |
+| [BUG-120](work-items/BUG-120.md) | P1 | 部分交付，剩余待规划 | 0.23.2（诊断子项） | Creo 10 `surface_loft` 创建后 `ProFeatureElemtreeExtract=-18`、`feature_incomplete=true`，两个提取器与 GUI 手工特征均失败；0.23.2 交付 `SURFACE_LOFT_EXTRACT_UNSUPPORTED`、回执证据与 `kernel_completion` 披露。剩余 STEP/IGES 精确曲面导入未排期；模板 XML/`FromXMLCreate` 已由 [BUG-123](work-items/BUG-123.md) 在 Creo 12.4 接通并实机验收，Creo 10 复测仍待外部；不宣称 Creo 10 运行期可用。 |
 
 <a id="未来能力候选"></a>
 <a id="当前优先功能"></a>

@@ -1,0 +1,264 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+
+<PRO_E_FEATURE_TREE  AppName="Pro/ENGINEER" AppVersion="12"
+	 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	 xsi:noNamespaceSchemaLocation="ProTKFeature.xsd" type="compound">
+  <PRO_E_FEATURE_TYPE type="int">PRO_FEAT_DATUM_SURF</PRO_E_FEATURE_TYPE>
+  <PRO_E_FEATURE_FORM type="int">PRO_USE_SURFS</PRO_E_FEATURE_FORM>
+  <PRO_E_DTM_SRF_TYPE type="int">11</PRO_E_DTM_SRF_TYPE>
+  <PRO_E_BNBLN_CURVES type="compound">
+    <PRO_E_BNBLN_1DIR type="compound">
+      <PRO_E_BNBLN_DIR_CURVES type="array">
+        <PRO_E_STD_CHAIN_HOLDER type="compound">
+          <PRO_E_STD_CURVE_COLLECTION_APPL type="collection">
+            <PRO_XML_COLLECTION type="curve">
+              <PRO_XML_COLLECTION_INSTRUCTIONS type="array">
+                <PRO_XML_COLLECTION_INSTRUCTION type="compound">
+                  <PRO_XML_COLLECTION_INSTRUCTION_TYPE type="int">101</PRO_XML_COLLECTION_INSTRUCTION_TYPE>
+                  <PRO_XML_CRVCOLL_REFS type="array">
+                    <PRO_XML_CRVCOLL_REF type="selection">
+                      <PRO_XML_REFERENCE type="reference">
+                        <PRO_XML_REFERENCE_OWNER type="owner">AI_PART_E1C69A8CBA5C.prt</PRO_XML_REFERENCE_OWNER>
+                        <PRO_XML_REFERENCE_ID type="id">45</PRO_XML_REFERENCE_ID>
+                        <PRO_XML_REFERENCE_TYPE type="protype">PRO_CURVE</PRO_XML_REFERENCE_TYPE>
+                      </PRO_XML_REFERENCE>
+                    </PRO_XML_CRVCOLL_REF>
+                  </PRO_XML_CRVCOLL_REFS>
+                </PRO_XML_COLLECTION_INSTRUCTION>
+              </PRO_XML_COLLECTION_INSTRUCTIONS>
+            </PRO_XML_COLLECTION>
+          </PRO_E_STD_CURVE_COLLECTION_APPL>
+        </PRO_E_STD_CHAIN_HOLDER>
+        <PRO_E_STD_CHAIN_HOLDER type="compound">
+          <PRO_E_STD_CURVE_COLLECTION_APPL type="collection">
+            <PRO_XML_COLLECTION type="curve">
+              <PRO_XML_COLLECTION_INSTRUCTIONS type="array">
+                <PRO_XML_COLLECTION_INSTRUCTION type="compound">
+                  <PRO_XML_COLLECTION_INSTRUCTION_TYPE type="int">101</PRO_XML_COLLECTION_INSTRUCTION_TYPE>
+                  <PRO_XML_CRVCOLL_REFS type="array">
+                    <PRO_XML_CRVCOLL_REF type="selection">
+                      <PRO_XML_REFERENCE type="reference">
+                        <PRO_XML_REFERENCE_OWNER type="owner">AI_PART_E1C69A8CBA5C.prt</PRO_XML_REFERENCE_OWNER>
+                        <PRO_XML_REFERENCE_ID type="id">53</PRO_XML_REFERENCE_ID>
+                        <PRO_XML_REFERENCE_TYPE type="protype">PRO_CURVE</PRO_XML_REFERENCE_TYPE>
+                      </PRO_XML_REFERENCE>
+                    </PRO_XML_CRVCOLL_REF>
+                  </PRO_XML_CRVCOLL_REFS>
+                </PRO_XML_COLLECTION_INSTRUCTION>
+              </PRO_XML_COLLECTION_INSTRUCTIONS>
+            </PRO_XML_COLLECTION>
+          </PRO_E_STD_CURVE_COLLECTION_APPL>
+        </PRO_E_STD_CHAIN_HOLDER>
+        <PRO_E_STD_CHAIN_HOLDER type="compound">
+          <PRO_E_STD_CURVE_COLLECTION_APPL type="collection">
+            <PRO_XML_COLLECTION type="curve">
+              <PRO_XML_COLLECTION_INSTRUCTIONS type="array">
+                <PRO_XML_COLLECTION_INSTRUCTION type="compound">
+                  <PRO_XML_COLLECTION_INSTRUCTION_TYPE type="int">101</PRO_XML_COLLECTION_INSTRUCTION_TYPE>
+                  <PRO_XML_CRVCOLL_REFS type="array">
+                    <PRO_XML_CRVCOLL_REF type="selection">
+                      <PRO_XML_REFERENCE type="reference">
+                        <PRO_XML_REFERENCE_OWNER type="owner">AI_PART_E1C69A8CBA5C.prt</PRO_XML_REFERENCE_OWNER>
+                        <PRO_XML_REFERENCE_ID type="id">61</PRO_XML_REFERENCE_ID>
+                        <PRO_XML_REFERENCE_TYPE type="protype">PRO_CURVE</PRO_XML_REFERENCE_TYPE>
+                      </PRO_XML_REFERENCE>
+                    </PRO_XML_CRVCOLL_REF>
+                  </PRO_XML_CRVCOLL_REFS>
+                </PRO_XML_COLLECTION_INSTRUCTION>
+              </PRO_XML_COLLECTION_INSTRUCTIONS>
+            </PRO_XML_COLLECTION>
+          </PRO_E_STD_CURVE_COLLECTION_APPL>
+        </PRO_E_STD_CHAIN_HOLDER>
+      </PRO_E_BNBLN_DIR_CURVES>
+      <PRO_E_BBL_ADD_CLOSED type="int">0</PRO_E_BBL_ADD_CLOSED>
+    </PRO_E_BNBLN_1DIR>
+    <PRO_E_BNBLN_2DIR type="compound">
+      <PRO_E_BNBLN_DIR_CURVES type="array">
+        <PRO_E_STD_CHAIN_HOLDER type="compound">
+          <PRO_E_STD_CURVE_COLLECTION_APPL type="collection">
+            <PRO_XML_COLLECTION type="curve">
+              <PRO_XML_COLLECTION_INSTRUCTIONS type="array">
+                <PRO_XML_COLLECTION_INSTRUCTION type="compound">
+                  <PRO_XML_COLLECTION_INSTRUCTION_TYPE type="int">101</PRO_XML_COLLECTION_INSTRUCTION_TYPE>
+                  <PRO_XML_CRVCOLL_REFS type="array">
+                    <PRO_XML_CRVCOLL_REF type="selection">
+                      <PRO_XML_REFERENCE type="reference">
+                        <PRO_XML_REFERENCE_OWNER type="owner">AI_PART_E1C69A8CBA5C.prt</PRO_XML_REFERENCE_OWNER>
+                        <PRO_XML_REFERENCE_ID type="id">67</PRO_XML_REFERENCE_ID>
+                        <PRO_XML_REFERENCE_TYPE type="protype">PRO_CURVE</PRO_XML_REFERENCE_TYPE>
+                      </PRO_XML_REFERENCE>
+                    </PRO_XML_CRVCOLL_REF>
+                  </PRO_XML_CRVCOLL_REFS>
+                </PRO_XML_COLLECTION_INSTRUCTION>
+              </PRO_XML_COLLECTION_INSTRUCTIONS>
+            </PRO_XML_COLLECTION>
+          </PRO_E_STD_CURVE_COLLECTION_APPL>
+        </PRO_E_STD_CHAIN_HOLDER>
+        <PRO_E_STD_CHAIN_HOLDER type="compound">
+          <PRO_E_STD_CURVE_COLLECTION_APPL type="collection">
+            <PRO_XML_COLLECTION type="curve">
+              <PRO_XML_COLLECTION_INSTRUCTIONS type="array">
+                <PRO_XML_COLLECTION_INSTRUCTION type="compound">
+                  <PRO_XML_COLLECTION_INSTRUCTION_TYPE type="int">101</PRO_XML_COLLECTION_INSTRUCTION_TYPE>
+                  <PRO_XML_CRVCOLL_REFS type="array">
+                    <PRO_XML_CRVCOLL_REF type="selection">
+                      <PRO_XML_REFERENCE type="reference">
+                        <PRO_XML_REFERENCE_OWNER type="owner">AI_PART_E1C69A8CBA5C.prt</PRO_XML_REFERENCE_OWNER>
+                        <PRO_XML_REFERENCE_ID type="id">79</PRO_XML_REFERENCE_ID>
+                        <PRO_XML_REFERENCE_TYPE type="protype">PRO_CURVE</PRO_XML_REFERENCE_TYPE>
+                      </PRO_XML_REFERENCE>
+                    </PRO_XML_CRVCOLL_REF>
+                  </PRO_XML_CRVCOLL_REFS>
+                </PRO_XML_COLLECTION_INSTRUCTION>
+              </PRO_XML_COLLECTION_INSTRUCTIONS>
+            </PRO_XML_COLLECTION>
+          </PRO_E_STD_CURVE_COLLECTION_APPL>
+        </PRO_E_STD_CHAIN_HOLDER>
+        <PRO_E_STD_CHAIN_HOLDER type="compound">
+          <PRO_E_STD_CURVE_COLLECTION_APPL type="collection">
+            <PRO_XML_COLLECTION type="curve">
+              <PRO_XML_COLLECTION_INSTRUCTIONS type="array">
+                <PRO_XML_COLLECTION_INSTRUCTION type="compound">
+                  <PRO_XML_COLLECTION_INSTRUCTION_TYPE type="int">101</PRO_XML_COLLECTION_INSTRUCTION_TYPE>
+                  <PRO_XML_CRVCOLL_REFS type="array">
+                    <PRO_XML_CRVCOLL_REF type="selection">
+                      <PRO_XML_REFERENCE type="reference">
+                        <PRO_XML_REFERENCE_OWNER type="owner">AI_PART_E1C69A8CBA5C.prt</PRO_XML_REFERENCE_OWNER>
+                        <PRO_XML_REFERENCE_ID type="id">73</PRO_XML_REFERENCE_ID>
+                        <PRO_XML_REFERENCE_TYPE type="protype">PRO_CURVE</PRO_XML_REFERENCE_TYPE>
+                      </PRO_XML_REFERENCE>
+                    </PRO_XML_CRVCOLL_REF>
+                  </PRO_XML_CRVCOLL_REFS>
+                </PRO_XML_COLLECTION_INSTRUCTION>
+              </PRO_XML_COLLECTION_INSTRUCTIONS>
+            </PRO_XML_COLLECTION>
+          </PRO_E_STD_CURVE_COLLECTION_APPL>
+        </PRO_E_STD_CHAIN_HOLDER>
+      </PRO_E_BNBLN_DIR_CURVES>
+      <PRO_E_BBL_ADD_CLOSED type="int">0</PRO_E_BBL_ADD_CLOSED>
+    </PRO_E_BNBLN_2DIR>
+    <PRO_E_APPROX_DIR type="compound">
+      <PRO_E_BNBLN_DIR_CURVES type="array">
+      </PRO_E_BNBLN_DIR_CURVES>
+      <PRO_E_BBL_ADD_CLOSED type="int">0</PRO_E_BBL_ADD_CLOSED>
+    </PRO_E_APPROX_DIR>
+    <PRO_E_BBL_APPENDIX type="selection"></PRO_E_BBL_APPENDIX>
+  </PRO_E_BNBLN_CURVES>
+  <PRO_E_BNBLN_TAN_COND type="array">
+    <PRO_E_BNBLN_TNC_BNDRY type="compound">
+      <PRO_E_BNBLN_TAN_COND_TYPE type="int">1</PRO_E_BNBLN_TAN_COND_TYPE>
+      <PRO_E_BNBLN_CONNECT_SURF_CHAIN type="compound">
+        <PRO_E_SURF_CHAIN_CMPND type="compound">
+          <PRO_E_SURF_CHAIN_METHOD type="int">1</PRO_E_SURF_CHAIN_METHOD>
+          <PRO_E_SURF_CHAIN_REF_SURFS type="array">
+            <PRO_E_SURF_CHAIN_SURF type="compound">
+              <PRO_E_SURF_CHAIN_REF type="selection"></PRO_E_SURF_CHAIN_REF>
+            </PRO_E_SURF_CHAIN_SURF>
+          </PRO_E_SURF_CHAIN_REF_SURFS>
+        </PRO_E_SURF_CHAIN_CMPND>
+      </PRO_E_BNBLN_CONNECT_SURF_CHAIN>
+      <PRO_E_BNBLN_ADV_VIA_CRV type="int">0</PRO_E_BNBLN_ADV_VIA_CRV>
+      <PRO_E_BNBLN_TAN_FLD_TYPE type="int">-1</PRO_E_BNBLN_TAN_FLD_TYPE>
+      <PRO_E_BNBLN_STRETCH type="double">0.00</PRO_E_BNBLN_STRETCH>
+    </PRO_E_BNBLN_TNC_BNDRY>
+    <PRO_E_BNBLN_TNC_BNDRY type="compound">
+      <PRO_E_BNBLN_TAN_COND_TYPE type="int">1</PRO_E_BNBLN_TAN_COND_TYPE>
+      <PRO_E_BNBLN_CONNECT_SURF_CHAIN type="compound">
+        <PRO_E_SURF_CHAIN_CMPND type="compound">
+          <PRO_E_SURF_CHAIN_METHOD type="int">1</PRO_E_SURF_CHAIN_METHOD>
+          <PRO_E_SURF_CHAIN_REF_SURFS type="array">
+            <PRO_E_SURF_CHAIN_SURF type="compound">
+              <PRO_E_SURF_CHAIN_REF type="selection"></PRO_E_SURF_CHAIN_REF>
+            </PRO_E_SURF_CHAIN_SURF>
+          </PRO_E_SURF_CHAIN_REF_SURFS>
+        </PRO_E_SURF_CHAIN_CMPND>
+      </PRO_E_BNBLN_CONNECT_SURF_CHAIN>
+      <PRO_E_BNBLN_ADV_VIA_CRV type="int">0</PRO_E_BNBLN_ADV_VIA_CRV>
+      <PRO_E_BNBLN_TAN_FLD_TYPE type="int">-1</PRO_E_BNBLN_TAN_FLD_TYPE>
+      <PRO_E_BNBLN_STRETCH type="double">0.00</PRO_E_BNBLN_STRETCH>
+    </PRO_E_BNBLN_TNC_BNDRY>
+    <PRO_E_BNBLN_TNC_BNDRY type="compound">
+      <PRO_E_BNBLN_TAN_COND_TYPE type="int">1</PRO_E_BNBLN_TAN_COND_TYPE>
+      <PRO_E_BNBLN_CONNECT_SURF_CHAIN type="compound">
+        <PRO_E_SURF_CHAIN_CMPND type="compound">
+          <PRO_E_SURF_CHAIN_METHOD type="int">1</PRO_E_SURF_CHAIN_METHOD>
+          <PRO_E_SURF_CHAIN_REF_SURFS type="array">
+            <PRO_E_SURF_CHAIN_SURF type="compound">
+              <PRO_E_SURF_CHAIN_REF type="selection"></PRO_E_SURF_CHAIN_REF>
+            </PRO_E_SURF_CHAIN_SURF>
+          </PRO_E_SURF_CHAIN_REF_SURFS>
+        </PRO_E_SURF_CHAIN_CMPND>
+      </PRO_E_BNBLN_CONNECT_SURF_CHAIN>
+      <PRO_E_BNBLN_ADV_VIA_CRV type="int">0</PRO_E_BNBLN_ADV_VIA_CRV>
+      <PRO_E_BNBLN_TAN_FLD_TYPE type="int">-1</PRO_E_BNBLN_TAN_FLD_TYPE>
+      <PRO_E_BNBLN_STRETCH type="double">0.00</PRO_E_BNBLN_STRETCH>
+    </PRO_E_BNBLN_TNC_BNDRY>
+    <PRO_E_BNBLN_TNC_BNDRY type="compound">
+      <PRO_E_BNBLN_TAN_COND_TYPE type="int">1</PRO_E_BNBLN_TAN_COND_TYPE>
+      <PRO_E_BNBLN_CONNECT_SURF_CHAIN type="compound">
+        <PRO_E_SURF_CHAIN_CMPND type="compound">
+          <PRO_E_SURF_CHAIN_METHOD type="int">1</PRO_E_SURF_CHAIN_METHOD>
+          <PRO_E_SURF_CHAIN_REF_SURFS type="array">
+            <PRO_E_SURF_CHAIN_SURF type="compound">
+              <PRO_E_SURF_CHAIN_REF type="selection"></PRO_E_SURF_CHAIN_REF>
+            </PRO_E_SURF_CHAIN_SURF>
+          </PRO_E_SURF_CHAIN_REF_SURFS>
+        </PRO_E_SURF_CHAIN_CMPND>
+      </PRO_E_BNBLN_CONNECT_SURF_CHAIN>
+      <PRO_E_BNBLN_ADV_VIA_CRV type="int">0</PRO_E_BNBLN_ADV_VIA_CRV>
+      <PRO_E_BNBLN_TAN_FLD_TYPE type="int">-1</PRO_E_BNBLN_TAN_FLD_TYPE>
+      <PRO_E_BNBLN_STRETCH type="double">0.00</PRO_E_BNBLN_STRETCH>
+    </PRO_E_BNBLN_TNC_BNDRY>
+  </PRO_E_BNBLN_TAN_COND>
+  <PRO_E_CTRL_PTS type="compound">
+    <PRO_E_CTRL_PTS_1DIR type="compound">
+      <PRO_E_CTRL_PTS_SETS type="array">
+      </PRO_E_CTRL_PTS_SETS>
+    </PRO_E_CTRL_PTS_1DIR>
+    <PRO_E_CTRL_PTS_2DIR type="compound">
+      <PRO_E_CTRL_PTS_SETS type="array">
+      </PRO_E_CTRL_PTS_SETS>
+    </PRO_E_CTRL_PTS_2DIR>
+    <PRO_E_BLEND_TYPE type="int">0</PRO_E_BLEND_TYPE>
+  </PRO_E_CTRL_PTS>
+  <PRO_E_BNBLN_ADVANCED type="compound">
+    <PRO_E_BNBLN_ADV_INN_EDGS1 type="int">0</PRO_E_BNBLN_ADV_INN_EDGS1>
+    <PRO_E_BNBLN_ADV_INN_EDGS2 type="int">0</PRO_E_BNBLN_ADV_INN_EDGS2>
+    <PRO_E_BNBLN_ADV_GHST_2DIR type="int">0</PRO_E_BNBLN_ADV_GHST_2DIR>
+    <PRO_E_BBL_VARI_RECALC type="int">0</PRO_E_BBL_VARI_RECALC>
+  </PRO_E_BNBLN_ADVANCED>
+  <PRO_E_APPROX_PARAMETERS type="compound">
+    <PRO_E_APPROX_SMOOTHNESS type="double">0.00</PRO_E_APPROX_SMOOTHNESS>
+    <PRO_E_APPROX_NUM_U_PATCH type="int">0</PRO_E_APPROX_NUM_U_PATCH>
+    <PRO_E_APPROX_NUM_V_PATCH type="int">0</PRO_E_APPROX_NUM_V_PATCH>
+  </PRO_E_APPROX_PARAMETERS>
+  <PRO_E_STD_FEATURE_NAME type="wstring">TEMPLATE_LOFT</PRO_E_STD_FEATURE_NAME>
+  <PRO_E_EXT_SURF_CUT_SOLID_TYPE type="int">942</PRO_E_EXT_SURF_CUT_SOLID_TYPE>
+  <PRO_E_STD_SMT_THICKNESS type="double">0.00</PRO_E_STD_SMT_THICKNESS>
+  <PRO_E_STD_MATRLSIDE type="int">0</PRO_E_STD_MATRLSIDE>
+  <PRO_E_STD_SMT_SWAP_DRV_SIDE type="int">0</PRO_E_STD_SMT_SWAP_DRV_SIDE>
+  <PRO_E_SMT_WALL_SHARPS_TO_BENDS type="int">0</PRO_E_SMT_WALL_SHARPS_TO_BENDS>
+  <PRO_E_SMT_FILLETS type="compound">
+    <PRO_E_SMT_FILLETS_SIDE type="int">0</PRO_E_SMT_FILLETS_SIDE>
+    <PRO_E_SMT_FILLETS_VALUE type="double">0.00</PRO_E_SMT_FILLETS_VALUE>
+  </PRO_E_SMT_FILLETS>
+  <PRO_E_SMT_DEV_LEN_CALCULATION type="compound">
+    <PRO_E_SMT_DEV_LEN_SOURCE type="int">0</PRO_E_SMT_DEV_LEN_SOURCE>
+    <PRO_E_SMT_DEV_LEN_Y_FACTOR type="compound">
+      <PRO_E_SMT_DEV_LEN_Y_FACTOR_TYPE type="int">0</PRO_E_SMT_DEV_LEN_Y_FACTOR_TYPE>
+      <PRO_E_SMT_DEV_LEN_Y_FACTOR_VALUE type="double">0.00</PRO_E_SMT_DEV_LEN_Y_FACTOR_VALUE>
+    </PRO_E_SMT_DEV_LEN_Y_FACTOR>
+    <PRO_E_SMT_DEV_LEN_BEND_TABLE type="int">0</PRO_E_SMT_DEV_LEN_BEND_TABLE>
+  </PRO_E_SMT_DEV_LEN_CALCULATION>
+  <PRO_E_SMT_MERGE_DATA type="compound">
+    <PRO_E_SMT_MERGE_AUTO type="int">0</PRO_E_SMT_MERGE_AUTO>
+    <PRO_E_SMT_MERGE_KEEP_LINES type="int">0</PRO_E_SMT_MERGE_KEEP_LINES>
+    <PRO_E_SMT_MERGE_KEEP_BEND_EDGES type="int">0</PRO_E_SMT_MERGE_KEEP_BEND_EDGES>
+  </PRO_E_SMT_MERGE_DATA>
+  <PRO_E_BBL_HDS_CONTROL type="int">1</PRO_E_BBL_HDS_CONTROL>
+  <PRO_E_BODY type="compound">
+    <PRO_E_BODY_USE type="int">0</PRO_E_BODY_USE>
+    <PRO_E_BODY_SELECT type="selection"></PRO_E_BODY_SELECT>
+  </PRO_E_BODY>
+  <PRO_E_SMT_NEW_BODY_LINKED type="int">0</PRO_E_SMT_NEW_BODY_LINKED>
+</PRO_E_FEATURE_TREE>

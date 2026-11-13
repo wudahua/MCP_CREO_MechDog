@@ -17,12 +17,25 @@ from creo_mechdog import component_changes, feature_state, model_registry, opera
 from creo_mechdog.capabilities import (
     WORKER_CONDITIONAL_OPERATIONS,
     require_available,
+    require_kernel_completion,
     require_worker_availability,
 )
 from creo_mechdog.model_queries import inspect_page, list_page, model_summary
 from creo_mechdog.schema import Assertions, LoftOp, validate_operations
 
 MODELS = bridge.ROOT / "models"
+
+#: BUG-121: operations that cannot change the model. A plan made only of these is
+#: admitted as a read-only job, so a saved baseline that drifted (a GUI edit and
+#: save between MCP jobs) cannot refuse a read the caller is entitled to.
+INSPECTION_ONLY_OPERATIONS = (
+    "dump_tree",
+    "export",
+    "udf_inspect",
+    "mass_properties",
+    "surface_group_measure",
+    "surface_curvature",
+)
 
 
 class SurfaceGroupMeasurementFailed(RuntimeError):
@@ -464,24 +477,45 @@ def submit(
     timeout_seconds = validate_executor_timeout(timeout_seconds)
     operations = validate_operations(operations)
     require_available(operations)
+    # BUG-124/C1: the documented importer creates the model itself. A plan that
+    # points it at an existing model, mixes it with other operations, or runs it
+    # read-only has no meaning on that API, so it is refused before a job exists.
+    if any(op["op"] == "import_geometry" for op in operations):
+        if model_id is not None:
+            raise ValueError(
+                "import_geometry creates its own new part; submit it as the only operation of a "
+                "new plan (omit model_id) and place the result with assemble_component"
+            )
+        if len(operations) != 1:
+            raise ValueError(
+                "import_geometry must be the only operation of its plan: the import call creates "
+                "the model, so nothing can run before it and no label exists for anything after it"
+            )
+        if readonly:
+            raise ValueError("import_geometry creates a model and cannot run read-only")
+        if model_type != "part":
+            raise ValueError(f"import_geometry imports into a part model, not into a {model_type}")
     if any(op["op"] in WORKER_CONDITIONAL_OPERATIONS for op in operations):
-        require_worker_availability(operations, bridge.worker_build_identity())
+        identity = bridge.worker_build_identity()
+        require_worker_availability(operations, identity)
+        require_kernel_completion(operations, identity)
     assertions = Assertions.model_validate(assertions or {}).model_dump(exclude_none=True)
     if loft_seed and (model_id is not None or readonly or model_type != "part"):
         raise ValueError("Native loft seed initialization is only available for a new part")
-    if readonly and any(
-        op["op"]
-        not in (
-            "dump_tree",
-            "export",
-            "udf_inspect",
-            "mass_properties",
-            "surface_group_measure",
-            "surface_curvature",
-        )
-        for op in operations
-    ):
+    if readonly and any(op["op"] not in INSPECTION_ONLY_OPERATIONS for op in operations):
         raise ValueError("Read-only requests may only inspect/export")
+    # BUG-121: a plan that cannot modify the model is admitted read-only even when the
+    # caller did not say so. The baseline compare guards the writable path only, so an
+    # export or a tree dump must not fail on a baseline a GUI edit moved.
+    readonly_source = "request"
+    if (
+        not readonly
+        and model_id is not None
+        and operations
+        and all(op["op"] in INSPECTION_ONLY_OPERATIONS for op in operations)
+    ):
+        readonly = True
+        readonly_source = "inspection_only_plan"
     with bridge.toolkit_lock(operation="submit", model_id=model_id):
         new = model_id is None
         if new:
@@ -777,6 +811,7 @@ def submit(
             "model": _request_view(model),
             "operations": operations,
             "readonly": readonly,
+            "readonly_source": readonly_source,
             "components": {sid: _request_view(source) for sid, source in components.items()},
             "template_file": str(template),
             "assertions": assertions or {},
@@ -791,6 +826,7 @@ def submit(
             "model_id": model_id,
             "status": "queued",
             "readonly": readonly,
+            "readonly_source": readonly_source,
             "created_at": bridge.now(),
             # R04/0.14.0: the accepted plan is echoed after validate_operations
             # (defaults applied, extrude omissions marked in defaulted_fields).
@@ -1069,13 +1105,17 @@ def run_generic_job(job_id: str, manifest: dict):
                             revision=model["revision"],
                         )
                     else:
+                        from creo_mechdog.reconciliation import admission_failure_message
+
                         model["status"] = failed_model_status(request, result, model)
-                        manifest.update(
-                            status="failed",
-                            message=result.get(
-                                "message", f"Toolkit code {result.get('toolkit_code')}"
-                            ),
+                        native_message = result.get(
+                            "message", f"Toolkit code {result.get('toolkit_code')}"
                         )
+                        hinted = admission_failure_message(native_message)
+                        if hinted != native_message:
+                            result["native_message"] = native_message
+                            result["message"] = hinted
+                        manifest.update(status="failed", message=hinted)
             except subprocess.TimeoutExpired:
                 budget = job_timeout_seconds(request)
                 manifest.update(

@@ -1,0 +1,162 @@
+{
+  "source_directory": "C:\\Users\\Administrator\\Downloads\\反馈包-球鼻艏-20261112\\反馈包-球鼻艏-20261112",
+  "archived_at": "2026-11-13T00:00:00+08:00",
+  "verification": "byte-for-byte copy; SHA256 recomputed from the archived copy and compared with the package MANIFEST-SHA256.txt (30 of 30 entries matched; MANIFEST-SHA256.txt itself is not listed in that file)",
+  "files": [
+    {
+      "name": "01_TXT依据-球鼻艏B030.md",
+      "bytes": 7818,
+      "sha256": "f6cbc65d8a78ffbadb0e6be9c475a561675250c221cfe62ca042bb5ef3cf68a2"
+    },
+    {
+      "name": "MANIFEST-SHA256.txt",
+      "bytes": 4230,
+      "sha256": "ea71293d1031aa14010d859b935262df32078c78ba5253bfc5fd95390c3e3b20"
+    },
+    {
+      "name": "README.md",
+      "bytes": 35067,
+      "sha256": "98a4ee4219e5ac77e43cab96239eb08274db3b32a54a1372eef2517960efe119"
+    },
+    {
+      "name": "历史反馈文档/2026-11-12+CREO+0.22.0+导线放样门禁跨版未修与has_solid全局误判.md",
+      "bytes": 16823,
+      "sha256": "b29fe6f6bda1d7dc9fd14091934bc5069a5f224b3d378f795b23537f78ef31ab"
+    },
+    {
+      "name": "历史反馈文档/2026-11-12+CREO+0.22.0+边界混合在Creo10不可提取元素树与has_solid全局误判.md",
+      "bytes": 22117,
+      "sha256": "64eca3a53f93cb7b2702bc4acdf11a2b2c5327137e4e8f5485ccc30648c18fe9"
+    },
+    {
+      "name": "历史反馈文档/2026-11-12+CREO+0.23.0+边界混合仅存不可提取形态与程序化创建缺口定位.md",
+      "bytes": 11707,
+      "sha256": "4765e802f801af3837e64a9213ddfb63c9a4cf9638e41126f0c1da9e6513b42e"
+    },
+    {
+      "name": "历史反馈文档/2026-11-12+CREO+0.23.0+门禁已修但Creo10不支持元素树回读致放样回滚.md",
+      "bytes": 15487,
+      "sha256": "609452724033590d48f550fd87bf7e56f4b47815927c93bc02fa08173b63ce89"
+    },
+    {
+      "name": "历史反馈文档/2026-11-12+CREO+0.23.1+surface_loft在Creo10因提取失败完全不可用.md",
+      "bytes": 8717,
+      "sha256": "3cb0d54320833ae04255f9a30554ef2c6139feb502192d1fbc6436765cb92ab6"
+    },
+    {
+      "name": "历史反馈文档/2026-11-12+CREO+0.23.2+低版本仍无曲面入口而SDK已具备STEP导入接口.md",
+      "bytes": 9129,
+      "sha256": "77c8ef0f849953c463633fc8e450e83bd03cffd298fae1c2ef3e58cbf20357ab"
+    },
+    {
+      "name": "源数据/_bulb_sections.json",
+      "bytes": 175646,
+      "sha256": "bafe1cbd3d4234b3c621ac254776356f7dfc744249499afb2bab0e0482107d5f"
+    },
+    {
+      "name": "源数据/简易护卫舰_跨软件三维建模自然语言说明.txt",
+      "bytes": 135198,
+      "sha256": "9723a7bd81e707ebca6e94c8daf5c1f3f7408c365a8da184e1421b588798c9e7"
+    },
+    {
+      "name": "证据-作业回执/033cd32dbe634b5da16183c4cfbe22ee.job.json",
+      "bytes": 11422,
+      "sha256": "9737b4f412c8172711cfedb7c9700b6d19610286625603d775f18c052b381dc8"
+    },
+    {
+      "name": "证据-作业回执/033cd32dbe634b5da16183c4cfbe22ee.native_result.json",
+      "bytes": 41340,
+      "sha256": "acd63581280287cddf4ba822027269767351e865a823d78863468eef6e09cbe8"
+    },
+    {
+      "name": "证据-作业回执/12dfb03cdc95424c986dbc4fcb36720f.job.json",
+      "bytes": 10799,
+      "sha256": "c62124fbca1f75582ec21d7ab0125871d6ed9174934cfc1dcf1caac848361b51"
+    },
+    {
+      "name": "证据-作业回执/12dfb03cdc95424c986dbc4fcb36720f.native_result.json",
+      "bytes": 40769,
+      "sha256": "5d2ccba5d91cac7ad6420d095cabb30c939c0493b9a103d6831a481225a5288c"
+    },
+    {
+      "name": "证据-作业回执/523ad12fdbb84309a31a7132f1b4bcfa.job.json",
+      "bytes": 9515,
+      "sha256": "567da4769490d68d0ce095e087a28744ab302cd00b549ce381d4bffc4b6136a8"
+    },
+    {
+      "name": "证据-作业回执/523ad12fdbb84309a31a7132f1b4bcfa.native_result.json",
+      "bytes": 39601,
+      "sha256": "e0f64065ac7b25f476f95f0944bee95fd2056b316dfffe9c5e30607356e93f48"
+    },
+    {
+      "name": "证据-作业回执/654f237ab7bf4850a9f3a55fa70778c1.job.json",
+      "bytes": 6853,
+      "sha256": "1d59fa608204a53e4e754f464a400fdf1f90ba21f49bb5423e9476cb7cd12137"
+    },
+    {
+      "name": "证据-作业回执/654f237ab7bf4850a9f3a55fa70778c1.native_result.json",
+      "bytes": 37264,
+      "sha256": "9580c1e8bbb8f1ae3054deecf570dc8f6d786ac9ddc9706e0ab3f40bec056a92"
+    },
+    {
+      "name": "证据-作业回执/7d38c7c2b8d14f589fee876e875f9bd7.job.json",
+      "bytes": 3599,
+      "sha256": "57e30f7e251cc74447eae8a3b476fe9ef42395e9c0062f416c677802e49fde6e"
+    },
+    {
+      "name": "证据-作业回执/7d38c7c2b8d14f589fee876e875f9bd7.native_result.json",
+      "bytes": 1748,
+      "sha256": "448346f83a24e0a5e74bf8acd1a166af935da04503ac74cafd18d8cb31f68cbb"
+    },
+    {
+      "name": "证据-作业回执/893500e0d1ad47b0b9796d4e5a76485e.job.json",
+      "bytes": 12049,
+      "sha256": "981e6d33d49d6e1898812520abab30dd945a4deb68c7200cb54e4702db6bc358"
+    },
+    {
+      "name": "证据-作业回执/893500e0d1ad47b0b9796d4e5a76485e.native_result.json",
+      "bytes": 41923,
+      "sha256": "874873d5a748d3d032d7898fcf40f91871fc22611b23c91e6ce885ddc01397f3"
+    },
+    {
+      "name": "证据-作业回执/93aead46b7794f0a9693f23c5b01bdff.job.json",
+      "bytes": 12963,
+      "sha256": "38242721f7f4d0f969f4900dbfd595e842d1b2bc76c0c40358bfd1e7b4176958"
+    },
+    {
+      "name": "证据-作业回执/93aead46b7794f0a9693f23c5b01bdff.native_result.json",
+      "bytes": 42727,
+      "sha256": "1ae7cd826fb536e185ecdecf47021e9404a7da6732e196912ba5876ac3157167"
+    },
+    {
+      "name": "证据-作业回执/948f49e0d85e41d8b6a705d65b8b3644.job.json",
+      "bytes": 16771,
+      "sha256": "4caefc28410244911e9bcbbecc94646c1728a926447f0fb08344067bdb5f9890"
+    },
+    {
+      "name": "证据-作业回执/948f49e0d85e41d8b6a705d65b8b3644.native_result.json",
+      "bytes": 46172,
+      "sha256": "6a29fea999939df7c045de6c2d26eefd5fe2484791f54f7ee9e950634749221c"
+    },
+    {
+      "name": "证据-作业回执/be450d6a74bb4868acc1ddd3d897cd63.job.json",
+      "bytes": 7649,
+      "sha256": "a3804e9e313831e02ee02e02ce888b9e1a9a21b6c8609d5d3ead23569fa1e5b7"
+    },
+    {
+      "name": "证据-作业回执/be450d6a74bb4868acc1ddd3d897cd63.native_result.json",
+      "bytes": 37876,
+      "sha256": "cafebef555432370522d5699bc87f555fece5d54c99b2110fcc0ca856fdd31ba"
+    },
+    {
+      "name": "证据-作业回执/cbab995400184a989529f6be94943551.job.json",
+      "bytes": 13572,
+      "sha256": "eff85f61616456ca3b2a3a124404a1e90b8a5f6ad522eee850459f1e1d8af6a7"
+    },
+    {
+      "name": "证据-作业回执/cbab995400184a989529f6be94943551.native_result.json",
+      "bytes": 43277,
+      "sha256": "39d7f44855b439811017f17191534721211f703bd5646246484d18c25366c8af"
+    }
+  ]
+}

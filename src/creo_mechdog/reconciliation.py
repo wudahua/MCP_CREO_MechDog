@@ -227,6 +227,28 @@ def validate_baseline(model: dict) -> None:
         )
 
 
+def admission_failure_message(message: str) -> str:
+    """BUG-121: name the action a writable plan needs after a baseline compare.
+
+    The native admission compare reports the symptom ("Saved feature/body count
+    changed") and the caller is left to guess that read-only reads are unaffected
+    and which reconciliation action unblocks an edit. The native text is kept and
+    the actionable part is appended once; a message that already names the tool is
+    returned unchanged.
+    """
+    if not isinstance(message, str) or not message.startswith("model_reconciliation_required:"):
+        return message
+    if "creo_reconcile_model" in message:
+        return message
+    return (
+        message + " Action: read-only reads (creo_export_model, creo_dump_feature_tree, "
+        "creo_measure_*) are not gated by this compare; to keep editing, run "
+        "creo_reconcile_model to see the six actions and apply one (restore_baseline keeps "
+        "the saved file, accept_saved adopts the file the GUI saved), then retry with the "
+        "revision it returns."
+    )
+
+
 def _stopped(recorded: dict | None) -> dict:
     if (
         not isinstance(recorded, dict)

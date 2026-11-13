@@ -1,0 +1,318 @@
+{
+  "job_id": "523ad12fdbb84309a31a7132f1b4bcfa",
+  "kind": "generic",
+  "model_id": "806b9d5336354515986d9776bafff46f",
+  "status": "failed",
+  "readonly": false,
+  "created_at": "2026-11-12T06:27:02.363298+00:00",
+  "operations": [
+    {
+      "op": "surface_loft",
+      "label": "probe_form",
+      "sections": [
+        40,
+        48
+      ],
+      "interpolation": "straight",
+      "guides": []
+    }
+  ],
+  "operations_view": "normalized",
+  "job_directory": "E:\\WorkBuddy Space\\MCP MCP_CREO_MechDog\\jobs\\523ad12fdbb84309a31a7132f1b4bcfa",
+  "output_directory": "E:\\WorkBuddy Space\\MCP MCP_CREO_MechDog\\jobs\\523ad12fdbb84309a31a7132f1b4bcfa\\output",
+  "timeout_seconds": 1500,
+  "timeout_source": "server",
+  "message": "surface_loft boundary blend create failed (code -1, sections=2, section_curve_ids=[45, 53], 5 form candidates tried with no quilt; see form_candidates)",
+  "runner_identity": {
+    "pid": 34752,
+    "created": 134389384224061991,
+    "alive": true
+  },
+  "stage": "execute_surface_loft",
+  "started_at": "2026-11-12T06:27:04.716255+00:00",
+  "worker_started": true,
+  "result": {
+    "completion_stage": "result_delivery",
+    "connected": true,
+    "creo_release_numeric": 42,
+    "creo_release_query_code": 0,
+    "delivery_complete": true,
+    "disconnect_budget_seconds": 20.0,
+    "disconnect_code": 0,
+    "failed_model_cleanup": {
+      "absence_verified": false,
+      "attempted": false,
+      "erase_code": null,
+      "reason": "not_new_model_job",
+      "status": "skipped"
+    },
+    "failed_operation": {
+      "index": 0,
+      "operation": "surface_loft",
+      "stage": "execute_surface_loft",
+      "feature_label": "probe_form",
+      "sketch_name": null,
+      "toolkit_call": null,
+      "pro_error": null,
+      "pro_error_source": "unsupported",
+      "message": "surface_loft boundary blend create failed (code -1, sections=2, section_curve_ids=[45, 53], 5 form candidates tried with no quilt; see form_candidates)",
+      "message_truncated": false,
+      "input_matrix": null,
+      "matrix_source": null,
+      "determinant": null,
+      "orthogonality_residual": null,
+      "precision_class": null,
+      "precision_advice": null
+    },
+    "failed_operation_index": 0,
+    "failed_stage": "execute_surface_loft",
+    "failed_toolkit_call": null,
+    "inspection_source": "rollback_verified",
+    "loft_checks": {
+      "loaded": {},
+      "rollback": {}
+    },
+    "message": "surface_loft boundary blend create failed (code -1, sections=2, section_curve_ids=[45, 53], 5 form candidates tried with no quilt; see form_candidates)",
+    "native_pid": 37124,
+    "operations": [
+      {
+        "convergence_point": null,
+        "create_code": -1,
+        "create_element_errors": {
+          "sample": [],
+          "total": 0
+        },
+        "effect_status": "rolled_back",
+        "execution_status": "failed",
+        "feature_errors": {
+          "api": "ProFeatureWithoptionsCreate",
+          "code": -1,
+          "failed_stage": "surface_loft_create",
+          "element_errors": {
+            "total": 0,
+            "truncated": false,
+            "sample": []
+          },
+          "section_errors": {
+            "available": false,
+            "total": null,
+            "truncated": false,
+            "sample": [],
+            "unavailable_reason": "no section solve ran before this failure"
+          }
+        },
+        "form_candidate_count": 5,
+        "form_candidates": [
+          {
+            "create_code": -1,
+            "create_element_errors": {
+              "sample": [],
+              "total": 0
+            },
+            "diagnostic_count": 0,
+            "diagnostics": [],
+            "dtm_srf_type_written": true,
+            "feature_form_value": 16384,
+            "form": "adv_surf",
+            "verify_code": -2
+          },
+          {
+            "create_code": -1,
+            "create_element_errors": {
+              "sample": [],
+              "total": 0
+            },
+            "dtm_srf_type_written": false,
+            "feature_form_value": 16384,
+            "form": "adv_surf_without_dtm_srf_type"
+          },
+          {
+            "create_code": 0,
+            "create_element_errors": {
+              "sample": [],
+              "total": 0
+            },
+            "delete_code": 0,
+            "dtm_srf_type_written": true,
+            "feature_form_value": 512,
+            "feature_id": 62,
+            "feature_status": 0,
+            "form": "use_surfs",
+            "quilt_count": 0
+          },
+          {
+            "create_code": -1,
+            "create_element_errors": {
+              "sample": [],
+              "total": 0
+            },
+            "dtm_srf_type_written": false,
+            "feature_form_value": 512,
+            "form": "use_surfs_without_dtm_srf_type"
+          },
+          {
+            "create_code": 0,
+            "create_element_errors": {
+              "sample": [],
+              "total": 0
+            },
+            "delete_code": 0,
+            "dtm_srf_type_written": true,
+            "feature_form_value": 1024,
+            "feature_id": 64,
+            "feature_status": 0,
+            "form": "flat",
+            "quilt_count": 0
+          }
+        ],
+        "guide_count": 0,
+        "guide_curve_ids": [],
+        "guide_geometry_ids": [],
+        "guide_source_kinds": [],
+        "guide_sources": [],
+        "guides": [],
+        "index": 0,
+        "interpolation": "straight",
+        "label": "probe_form",
+        "op": "surface_loft",
+        "piecewise_ruled": true,
+        "route": "probbl_boundary_blend",
+        "section_count": 2,
+        "section_curve_ids": [
+          45,
+          53
+        ],
+        "section_geometry_ids": [
+          [
+            45
+          ],
+          [
+            53
+          ]
+        ],
+        "section_source_kinds": [
+          "sketch",
+          "sketch"
+        ],
+        "section_sources": [
+          {
+            "feature_id": 40,
+            "geometry_type": "curve",
+            "ids": [
+              45
+            ],
+            "index": 0,
+            "live_verified": true,
+            "source": "sketch"
+          },
+          {
+            "feature_id": 48,
+            "geometry_type": "curve",
+            "ids": [
+              53
+            ],
+            "index": 1,
+            "live_verified": true,
+            "source": "sketch"
+          }
+        ],
+        "sections": [
+          40,
+          48
+        ],
+        "succeeded": false,
+        "unverified_input_forms": []
+      }
+    ],
+    "rollback_succeeded": true,
+    "saved_file_reloaded_and_verified": false,
+    "session_fingerprint": "7785176304498676551",
+    "success": false,
+    "toolkit_code": -1,
+    "verify_stages": [
+      {
+        "elapsed_ms": 67,
+        "name": "connect",
+        "since_start_ms": 67
+      },
+      {
+        "elapsed_ms": 4729,
+        "name": "connected",
+        "since_start_ms": 4797
+      }
+    ],
+    "inspection_ref": {
+      "file": "E:\\WorkBuddy Space\\MCP MCP_CREO_MechDog\\jobs\\523ad12fdbb84309a31a7132f1b4bcfa\\inspection-verified-9c7dad5abb296aa3.json",
+      "sha256": "9c7dad5abb296aa364ae6630a46a8f238f6d001aa91db04f73552c9bb21ee877",
+      "bytes": 15166
+    },
+    "inspection_summary": {
+      "healthy": true,
+      "has_solid": false,
+      "units": "mm",
+      "units_query_code": 0,
+      "length_unit": {
+        "name": "mm",
+        "query_code": 0,
+        "scale_query_codes": {
+          "conversion": 0,
+          "mm_unit": 0,
+          "unit": 0
+        },
+        "scale_to_mm": 1.0,
+        "scale_to_mm_known": true
+      },
+      "center_of_gravity": null,
+      "model_type": "part",
+      "volume_mm3": null,
+      "volume_query_code": null,
+      "inspection_source": "rollback_verified",
+      "inspection_available": true,
+      "counts": {
+        "features": 11,
+        "surfaces": 0,
+        "edges": 0,
+        "quilts": 0,
+        "bodies": 1,
+        "components": null
+      },
+      "body_counts": {
+        "objects": 1,
+        "records": 1,
+        "active": 0,
+        "with_material": 0,
+        "without_material": 1,
+        "counts_meaning": {
+          "bodies": "body_objects",
+          "with_material": "active_bodies_with_surfaces"
+        }
+      }
+    },
+    "aliases_ref": {
+      "file": "E:\\WorkBuddy Space\\MCP MCP_CREO_MechDog\\jobs\\523ad12fdbb84309a31a7132f1b4bcfa\\details\\detail-aliases-4c869342a8fcd99e.json",
+      "sha256": "4c869342a8fcd99ec343e6ef06fae31d74308c2ff84f3f3f6062075af57fd90a",
+      "bytes": 16312
+    },
+    "terminal_effect": {
+      "managed_model": {
+        "effect": "rolled_back",
+        "status": "confirmed",
+        "reason": "checkpoint_restored",
+        "scope": "managed_model"
+      },
+      "component_bindings": {
+        "effect": "rolled_back",
+        "status": "confirmed",
+        "reason": "checkpoint_restored",
+        "scope": "component_bindings"
+      },
+      "external_outputs": {
+        "effect": "no_effect",
+        "status": "confirmed",
+        "reason": "no_external_outputs_requested",
+        "scope": "external_outputs"
+      }
+    }
+  },
+  "finished_at": "2026-11-12T06:27:13.455936+00:00"
+}

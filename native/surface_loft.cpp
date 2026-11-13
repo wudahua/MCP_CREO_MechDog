@@ -536,6 +536,145 @@ static void surface_loft_chain(ProElement holders, const SurfaceLoftInput &input
     curve_collection(collection, refs);
 }
 
+// BUG-123/B2: the holders a dumped template already carries, in tree order.
+// ProElementArrayGet owns nothing the caller must keep, so the vector holds the
+// element handles only for the duration of the replacement loop.
+static std::vector<ProElement> surface_loft_array_items(ProElement array) {
+    std::vector<ProElement> items;
+    ProElement *children = nullptr;
+    ProArrayAlloc(0, sizeof(ProElement), 1, (ProArray *)&children);
+    if (!children || ProElementArrayGet(array, nullptr, &children) != PRO_TK_NO_ERROR) {
+        if (children)
+            ProArrayFree((ProArray *)&children);
+        return items;
+    }
+    int count = 0;
+    if (!ProArraySizeGet((ProArray)children, &count))
+        for (int index = 0; index < count; index++)
+            items.push_back(children[index]);
+    ProArrayFree((ProArray *)&children);
+    return items;
+}
+
+// The built path appends a holder per input (surface_loft_chain); a template
+// already has them, so only the collection inside each holder is replaced.
+static void surface_loft_template_chain(ProElement holder, const SurfaceLoftInput &input,
+                                        J &details) {
+    ProElement collection = nullptr;
+    try {
+        collection = get(holder, {PRO_E_STD_CURVE_COLLECTION_APPL});
+    } catch (ProError) {
+        throw std::runtime_error("TEMPLATE_TREE_INVALID: a template chain holder has no "
+                                 "PRO_E_STD_CURVE_COLLECTION_APPL; no feature was created");
+    }
+    if (input.type == PRO_POINT) {
+        surface_loft_point_chain(collection, input.ids.front(), details);
+        return;
+    }
+    J refs = J::array();
+    for (int id : input.ids)
+        refs.push_back({{"kind", input.type == PRO_EDGE ? "edge" : "curve"}, {"id", id}});
+    curve_collection(collection, refs);
+}
+
+// BUG-123/B2: read a real boundary-blend tree exported by ``dump_tree`` and
+// replace only its curve collections. The parsed tree keeps every default the
+// exporting kernel filled in, which is exactly what a release that cannot read
+// its own tree back needs. Counts are an exact contract: a template is never
+// trimmed or padded to fit the request.
+static ProElement surface_loft_load_template(const J &block, const std::string &label,
+                                             const std::vector<SurfaceLoftInput> &sections,
+                                             const std::vector<SurfaceLoftInput> &guides,
+                                             J &details) {
+    const std::string file = block.value("file", std::string());
+    if (file.empty())
+        throw std::runtime_error(
+            "TEMPLATE_TREE_INVALID: surface_loft template.file is empty; no feature was created");
+    ProPath xml = {};
+    path(xml, wide(file));
+    ProXMLErrorlist *xml_errors = nullptr;
+    ProElement root = nullptr;
+    const ProError load_code = ProElemtreeFromXMLCreate(xml, &root, &xml_errors);
+    int error_count = 0;
+    std::string first_error;
+    J sample = J::array();
+    if (xml_errors) {
+        ProArraySizeGet((ProArray)xml_errors, &error_count);
+        for (int index = 0; index < error_count && index < 8; index++) {
+            // BAD_CONTEXT fills line_number with the element order, message with
+            // the element name and column_number with the element id; that triple
+            // is the only machine answer to "which element does this release
+            // not know", so it goes into the receipt.
+            const std::wstring message = xml_errors[index].message
+                                             ? std::wstring(xml_errors[index].message)
+                                             : std::wstring();
+            sample.push_back({{"error_type", (int)xml_errors[index].error_type},
+                              {"line_number", xml_errors[index].line_number},
+                              {"column_number", xml_errors[index].column_number},
+                              {"message", utf8(message)}});
+            if (first_error.empty())
+                first_error = utf8(message);
+        }
+        ProXmlerrorlistProarrayFree(&xml_errors);
+    }
+    details["tree_source"] = "template_xml";
+    details["template"] = {{"file", file},
+                           {"declared_sha256", block.value("sha256", std::string())},
+                           {"load_code", (int)load_code},
+                           {"element_errors", {{"total", error_count}, {"sample", sample}}}};
+    if (load_code != PRO_TK_NO_ERROR || !root) {
+        stage_operation_result(details);
+        throw std::runtime_error(
+            "TEMPLATE_TREE_LOAD_FAILED: ProElemtreeFromXMLCreate returned " +
+            std::to_string((int)load_code) +
+            (first_error.empty() ? std::string() : " at element '" + first_error + "'") +
+            (error_count ? " (" + std::to_string(error_count) + " element errors)"
+                         : std::string()) +
+            "; this release cannot read the template (66/PRO_TK_BAD_CONTEXT means an element "
+            "id, type or enum value it does not know). No feature was created");
+    }
+    std::vector<ProElement> holder_items;
+    std::vector<ProElement> guide_items;
+    try {
+        holder_items = surface_loft_array_items(
+            get(root, {PRO_E_BNBLN_CURVES, PRO_E_BNBLN_1DIR, PRO_E_BNBLN_DIR_CURVES}));
+    } catch (ProError) {
+        holder_items.clear();
+    }
+    try {
+        guide_items = surface_loft_array_items(
+            get(root, {PRO_E_BNBLN_CURVES, PRO_E_BNBLN_2DIR, PRO_E_BNBLN_DIR_CURVES}));
+    } catch (ProError) {
+        guide_items.clear();
+    }
+    details["template"]["sections"] = (int)holder_items.size();
+    details["template"]["guides"] = (int)guide_items.size();
+    if (holder_items.size() != sections.size() || guide_items.size() != guides.size()) {
+        ProElementFree(&root);
+        stage_operation_result(details);
+        throw std::runtime_error(
+            "TEMPLATE_SHAPE_MISMATCH: the template holds " +
+            std::to_string((int)holder_items.size()) + " section holder(s) and " +
+            std::to_string((int)guide_items.size()) + " guide holder(s), the request has " +
+            std::to_string((int)sections.size()) + " and " + std::to_string((int)guides.size()) +
+            "; export a template for this shape instead of trimming one. No feature was created");
+    }
+    for (size_t index = 0; index < sections.size(); index++)
+        surface_loft_template_chain(holder_items[index], sections[index], details);
+    for (size_t index = 0; index < guides.size(); index++)
+        surface_loft_template_chain(guide_items[index], guides[index], details);
+    // The label drives label resolution for later operations, so the template's
+    // own feature name is replaced rather than kept.
+    try {
+        CK(ProElementWstringSet(get(root, {PRO_E_STD_FEATURE_NAME}),
+                                const_cast<wchar_t *>(wide(label).c_str())));
+    } catch (ProError) {
+        // A template without a name element keeps the kernel default; the job
+        // still resolves the requested label through its own record.
+    }
+    return root;
+}
+
 // FEAT-065/M4: continuity between one loft boundary and the face next to it.
 // Probbl.h documents only TAN_COND_FREE for PRO_E_BNBLN_TAN_COND_TYPE, so the
 // tables below are measured, not read from the SDK (FEAT-065 T2b, 2026-11-11,
@@ -954,22 +1093,38 @@ static void generic_surface_loft(const J &op) {
         for (const auto &input : *inputs)
             publish_tan_cond = publish_tan_cond || input.source == "edge";
 
-    ProElement root = node(nullptr, PRO_E_FEATURE_TREE);
+    const J template_block = op.value("template", J(nullptr));
+    const bool template_tree = template_block.is_object();
     const SurfaceLoftMaterialState material_before = surface_loft_material_state();
-    integer(root, PRO_E_FEATURE_TYPE, PRO_FEAT_DATUM_SURF);
-    integer(root, PRO_E_FEATURE_FORM, PRO_USE_SURFS);
-    integer(root, PRO_E_DTM_SRF_TYPE, PRO_E_DTM_SRF_TYPE_BND_BLEND);
-    text(root, PRO_E_STD_FEATURE_NAME, wide(op["label"]).c_str());
-    ProElement curves = node(root, PRO_E_BNBLN_CURVES);
-    ProElement direction = node(curves, PRO_E_BNBLN_1DIR);
-    ProElement holders = node(direction, PRO_E_BNBLN_DIR_CURVES);
-    for (const auto &input : section_inputs)
-        surface_loft_chain(holders, input, details);
-    if (!guide_inputs.empty()) {
-        ProElement direction2 = node(curves, PRO_E_BNBLN_2DIR);
-        ProElement gholders = node(direction2, PRO_E_BNBLN_DIR_CURVES);
-        for (const auto &input : guide_inputs)
-            surface_loft_chain(gholders, input, details);
+    ProElement root = nullptr;
+    if (template_tree) {
+        // A template keeps the exporting run's TAN_COND subtree; overriding it is
+        // not implemented, so boundary conditions are refused instead of ignored.
+        if (!conditions.empty())
+            throw std::runtime_error(
+                "TEMPLATE_BOUNDARY_CONDITIONS_UNSUPPORTED: template trees keep the exporting "
+                "run's TAN_COND subtree, so boundary_conditions cannot be applied on the "
+                "template route; use the built route for tangent boundaries. No feature was "
+                "created");
+        root = surface_loft_load_template(template_block, op.value("label", std::string()),
+                                          section_inputs, guide_inputs, details);
+    } else {
+        root = node(nullptr, PRO_E_FEATURE_TREE);
+        integer(root, PRO_E_FEATURE_TYPE, PRO_FEAT_DATUM_SURF);
+        integer(root, PRO_E_FEATURE_FORM, PRO_USE_SURFS);
+        integer(root, PRO_E_DTM_SRF_TYPE, PRO_E_DTM_SRF_TYPE_BND_BLEND);
+        text(root, PRO_E_STD_FEATURE_NAME, wide(op["label"]).c_str());
+        ProElement curves = node(root, PRO_E_BNBLN_CURVES);
+        ProElement direction = node(curves, PRO_E_BNBLN_1DIR);
+        ProElement holders = node(direction, PRO_E_BNBLN_DIR_CURVES);
+        for (const auto &input : section_inputs)
+            surface_loft_chain(holders, input, details);
+        if (!guide_inputs.empty()) {
+            ProElement direction2 = node(curves, PRO_E_BNBLN_2DIR);
+            ProElement gholders = node(direction2, PRO_E_BNBLN_DIR_CURVES);
+            for (const auto &input : guide_inputs)
+                surface_loft_chain(gholders, input, details);
+        }
     }
 
     // INCOMPLETE lets the kernel fill the defaults it owns; the extracted tree

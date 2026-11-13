@@ -153,8 +153,10 @@ class SurfaceCurvatureRegistrationTests(unittest.IsolatedAsyncioTestCase):
 
     def test_readonly_admission_accepts_the_curvature_query(self):
         source = (ROOT / "generic_bridge.py").read_text(encoding="utf-8")
-        readonly_block = source[source.index("if readonly and any(") :][:400]
-        self.assertIn("surface_curvature", readonly_block)
+        whitelist = source[source.index("INSPECTION_ONLY_OPERATIONS = (") :][:400]
+        self.assertIn('"surface_curvature"', whitelist)
+        readonly_block = source[source.index("if readonly and any(") :][:200]
+        self.assertIn("INSPECTION_ONLY_OPERATIONS", readonly_block)
 
 
 class SurfaceCurvatureProjectionTests(unittest.TestCase):

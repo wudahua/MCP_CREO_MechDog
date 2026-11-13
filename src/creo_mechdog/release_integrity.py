@@ -23,6 +23,8 @@ SEED_LIBRARY = "seed_library"
 SEED_MANIFEST = "seed_manifest.json"
 DOCUMENTATION_MANIFEST = "docs/seed_manifest.json"
 POSTCHECK = "docs/development/RELEASE-POSTCHECK-2026-11-07.md"
+TEMPLATE_LIBRARY = "templates/elemtree"
+TEMPLATE_MANIFEST = "templates/elemtree/manifest.json"
 
 # DEV-083 (0.22.0 feedback): 0.22.0 and 0.23.0 were tagged before their
 # POSTCHECK/release records were backfilled, so the distributed source.zip still
@@ -155,6 +157,59 @@ def seed_library_files(root: Path) -> list[Path]:
     for path in files:
         if path.is_symlink():
             raise ValueError(f"Seed library file is an unexpected symlink: {path}")
+    return files
+
+
+def template_library_files(root: Path) -> list[Path]:
+    """Element tree templates that belong to the source release.
+
+    ``TEMPLATE_MANIFEST`` is the allowlist: every template it names must exist
+    with the declared size and SHA256, and a file the manifest does not name is
+    not shipped. A template without its provenance record would let a client
+    apply an element tree nobody measured, which is exactly what BUG-123 spent a
+    live run establishing.
+    """
+    library = Path(root) / TEMPLATE_LIBRARY
+    manifest_path = Path(root) / TEMPLATE_MANIFEST
+    if not manifest_path.is_file():
+        raise ValueError(
+            f"Element tree template manifest is missing: {manifest_path}; export a template "
+            "and record its digest before packaging source"
+        )
+    manifest = _read_json(manifest_path)
+    entries = manifest.get("templates")
+    if not isinstance(entries, list) or not entries:
+        raise ValueError(f"{TEMPLATE_MANIFEST} names no templates")
+    files = [manifest_path]
+    seen: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ValueError(f"{TEMPLATE_MANIFEST} has a template entry that is not an object")
+        name = entry.get("file")
+        if not isinstance(name, str) or not name or PurePosixPath(name).name != name:
+            raise ValueError(f"{TEMPLATE_MANIFEST} has an invalid template file name: {name!r}")
+        if name in seen:
+            raise ValueError(f"{TEMPLATE_MANIFEST} names {name} more than once")
+        seen.add(name)
+        path = library / name
+        if not path.is_file() or path.is_symlink():
+            raise ValueError(f"Manifest template is missing or is a symlink: {path}")
+        data = path.read_bytes()
+        declared = entry.get("sha256")
+        if not isinstance(declared, str) or not _DIGEST_PATTERN.fullmatch(declared):
+            raise ValueError(f"{TEMPLATE_MANIFEST} has no valid sha256 for {name}")
+        digest = hashlib.sha256(data).hexdigest()
+        if digest != declared:
+            raise ValueError(
+                f"Template {name} is {digest} but the manifest declares {declared}; re-export "
+                "the template instead of shipping changed bytes"
+            )
+        declared_bytes = entry.get("bytes")
+        if declared_bytes is not None and declared_bytes != len(data):
+            raise ValueError(
+                f"Template {name} is {len(data)} bytes but the manifest declares {declared_bytes}"
+            )
+        files.append(path)
     return files
 
 
@@ -413,12 +468,16 @@ def validate_release_inputs(root: Path, seed_archive: Path) -> dict[str, object]
                 raise ValueError(
                     f"Seed archive bytes for {relative} differ from the repository seed library"
                 )
+    # BUG-123: the source package now carries element tree templates, so the
+    # manifest must match the bytes on disk before anything is written.
+    template_count = len(template_library_files(root)) - 1
     return {
         **summary,
         "version": version,
         "readme_title_version": readme["title"],
         "readme_current_version": readme["current"],
         "manifest_seed_count": summary["seed_count"],
+        "template_count": template_count,
     }
 
 

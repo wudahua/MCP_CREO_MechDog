@@ -1094,9 +1094,10 @@ def record_channel_health(connected: bool, **fields) -> dict:
 def record_surface_loft_runtime(manifest: dict) -> None:
     """Persist the last kernel-completion observation from a job receipt.
 
-    BUG-120: this is disclosure only. ``require_worker_availability`` never reads
-    it, so a single failed attempt cannot lock a session; the observation is
-    keyed by worker SHA and only shown while that same executor is installed.
+    BUG-120 published this record; BUG-122 lets admission read it, but only the
+    measured signature (same worker SHA, create_code=0, extract_code=-18) refuses a
+    later request, so a transient rollback or another executor's record cannot lock
+    the route. The record is keyed by worker SHA and a new build clears it.
     """
     try:
         result = manifest.get("result")

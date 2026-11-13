@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
 import re
+from pathlib import Path
 from typing import Annotated, Any, Literal, Union
 
 from pydantic import (
@@ -1905,6 +1907,43 @@ class SimpleOp(StrictModel):
     op: Literal["regenerate", "save"]
 
 
+class AssertionBbox(StrictModel):
+    """FEAT-067: expected material bounding box of the model, in millimetres.
+
+    The native side compares the same per-body outline the inspection already
+    reports. A model whose principal length unit cannot be converted to
+    millimetres keeps its box unmeasured and fails the assertion instead of
+    comparing native units against millimetres.
+    """
+
+    min: list[float] = Field(min_length=3, max_length=3)
+    max: list[float] = Field(min_length=3, max_length=3)
+    tolerance_mm: float = Field(default=1e-3, gt=0)
+
+    @field_validator("min", "max", mode="before")
+    @classmethod
+    def _three_finite_coordinates(cls, value):
+        if not isinstance(value, (list, tuple)) or len(value) != 3:
+            raise ValueError("bbox_mm needs exactly three finite coordinates (X, Y, Z)")
+        coordinates = []
+        for item in value:
+            if (
+                isinstance(item, bool)
+                or not isinstance(item, (int, float))
+                or not math.isfinite(float(item))
+            ):
+                raise ValueError("bbox_mm needs exactly three finite coordinates (X, Y, Z)")
+            coordinates.append(float(item))
+        return coordinates
+
+    @model_validator(mode="after")
+    def _ordered_axes(self):
+        for low, high in zip(self.min, self.max):
+            if low > high:
+                raise ValueError("bbox_mm min must not exceed max on any axis")
+        return self
+
+
 class Assertions(StrictModel):
     require_solid: bool = False
     volume_mm3: float | None = Field(default=None, ge=0)
@@ -1915,6 +1954,46 @@ class Assertions(StrictModel):
     max_geometry_deviation_mm: Annotated[float, Field(gt=0)] | None = None
     require_exact_solve: bool = False
     preserve_input_geometry: bool = False
+    # FEAT-067: the expected millimetre bounding box of the material bodies. This
+    # is what a source drawing gives (e.g. the bulb X/Y/Z extents), so it is a
+    # plan-level gate like volume_mm3 and never a post-save observation.
+    bbox_mm: AssertionBbox | None = None
+    # FEAT-067: the expected total surface area of the part in square millimetres.
+    # The native side walks every face once, so this is the model's area and not a
+    # per-quilt figure. An unknown length unit keeps it unmeasured and fails the
+    # assertion instead of comparing native area against millimetres.
+    surface_area_mm2: float | None = Field(default=None, ge=0)
+    surface_area_tolerance_mm2: float = Field(default=0.01, gt=0)
+
+    @field_validator("surface_area_mm2", mode="before")
+    @classmethod
+    def _surface_area_is_finite_non_negative(cls, value):
+        if value is None:
+            return None
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+            or float(value) < 0
+        ):
+            raise ValueError(
+                "surface_area_mm2 must be a finite non-negative number of square millimeters"
+            )
+        return float(value)
+
+    @field_validator("surface_area_tolerance_mm2", mode="before")
+    @classmethod
+    def _surface_area_tolerance_is_finite_positive(cls, value):
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+            or float(value) <= 0
+        ):
+            raise ValueError(
+                "surface_area_tolerance_mm2 must be a finite positive number of square millimeters"
+            )
+        return float(value)
 
     @field_validator("max_geometry_deviation_mm", mode="before")
     @classmethod
@@ -1936,6 +2015,85 @@ class Assertions(StrictModel):
 class ExportOp(StrictModel):
     op: Literal["export"]
     format: Literal["step", "stl", "iges", "jpeg", "pdf", "native_bundle"] = "step"
+
+
+#: BUG-124/C1: the suffixes the two import formats actually ship with. The
+#: extension is the only offline evidence that the file matches ``format``; the
+#: native side re-checks neither name nor content beyond the importer's own code.
+IMPORT_GEOMETRY_SUFFIXES = {
+    "step": (".stp", ".step"),
+    "iges": (".igs", ".iges"),
+}
+
+
+class ImportGeometryOp(StrictModel):
+    """BUG-124/C1: import one STEP or IGES file into its own new part.
+
+    ``ProIntfimportModelWithOptionsMdlnameCreate`` always creates a model, so
+    this operation is the single operation of a new plan: the imported part is
+    what ``assemble_component`` then places, and the job never writes into
+    another model. ``profile`` is optional and defaults to Creo's own import
+    settings: the header documents that once a profile is set it stays valid for
+    the whole session, so a per-job tool only passes one when the caller insists
+    (``profile_source`` in the receipt says which way the job went).
+
+    Both digests are optional on input and filled in from the files on disk
+    when omitted; the native side re-hashes them before importing, so a file
+    swapped between submission and execution fails instead of being imported
+    silently.
+    """
+
+    op: Literal["import_geometry"]
+    file: Annotated[str, Field(min_length=1, max_length=220)]
+    profile: Annotated[str, Field(min_length=1, max_length=220)] | None = None
+    format: Literal["step", "iges"]
+    file_sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
+    profile_sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
+
+    @field_validator("file", "profile", mode="before")
+    @classmethod
+    def _absolute_existing_file(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("import_geometry file/profile must be a non-empty path")
+        candidate = Path(value).expanduser()
+        resolved = (candidate if candidate.is_absolute() else Path.cwd() / candidate).resolve()
+        if not resolved.is_file():
+            raise ValueError(f"import_geometry path does not exist: {resolved}")
+        return str(resolved)
+
+    @model_validator(mode="after")
+    def _format_matches_file_and_digests_are_real(self):
+        suffixes = IMPORT_GEOMETRY_SUFFIXES[self.format]
+        actual_suffix = Path(self.file).suffix.lower()
+        if actual_suffix not in suffixes:
+            raise ValueError(
+                f"import_geometry format={self.format} needs a {' or '.join(suffixes)} file, "
+                f"but file ends with {actual_suffix or 'no suffix'}; the extension is the only "
+                "offline check that the file is the format it claims"
+            )
+        if self.profile is None and self.profile_sha256 is not None:
+            raise ValueError(
+                "import_geometry profile_sha256 was given without a profile; Creo's default "
+                "import settings are not a file this tool can hash"
+            )
+        for field, path in (
+            ("file_sha256", self.file),
+            ("profile_sha256", self.profile),
+        ):
+            if path is None:
+                continue
+            digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+            declared = getattr(self, field)
+            if declared is None:
+                setattr(self, field, digest)
+            elif declared != digest:
+                raise ValueError(
+                    f"import_geometry {field} does not match the file on disk ({digest}); "
+                    "recompute it instead of importing changed input"
+                )
+        return self
 
 
 class DrawingModelOp(StrictModel):
@@ -2262,6 +2420,7 @@ Operation = Annotated[
         GenericFeatureOp,
         SimpleOp,
         ExportOp,
+        ImportGeometryOp,
         DumpTreeOp,
         MassPropertiesOp,
         DrawingModelOp,

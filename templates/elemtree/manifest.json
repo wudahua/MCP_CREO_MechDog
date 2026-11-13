@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "templates": [
+    {
+      "file": "loft_s3g3_creo12.4.xml",
+      "template_id": "loft_s3g3",
+      "sha256": "4ef01eed521c43c491f2ba788da93780d1a8729496e796e1bd15f11979a7508b",
+      "bytes": 14898,
+      "sections": 3,
+      "guides": 3,
+      "source": {
+        "tool": "creo_dump_feature_tree",
+        "creo_release_numeric": 44,
+        "worker_sha256": "517bfcc62cbb0a6977a89f7dae3f0843fd68ebc0d1dd20a463c7cbc94cba9cf8",
+        "worker_source_digest": "461eb2cf9880792ddf2ae53788246d434261e761c421881a9f510eedfd83394c",
+        "mcp_version": "0.23.2",
+        "model_id": "e1c69a8cba5c40c5aa025f586af928d6",
+        "feature_id": 80,
+        "job_ids": [
+          "cb65f609b5c1492cb2040e809f998ccc",
+          "c1d4789cf588423f9fbe69165c5c0856"
+        ],
+        "exported_at": "2026-11-13T02:48:02.141939+00:00",
+        "command": "tools/export_elemtree_template.py --live --confirm-session-usable --shape s3g3 --from-job cb65f609b5c1492cb2040e809f998ccc"
+      },
+      "measured": {
+        "feature_id": 80,
+        "create_code": 0,
+        "extract_code": 0,
+        "feature_incomplete": false,
+        "kernel_completion": "supported",
+        "section_count": 3,
+        "guide_count": 3,
+        "surface_area_mm2": 1600.0,
+        "tree_elements_read": 111
+      }
+    }
+  ]
+}

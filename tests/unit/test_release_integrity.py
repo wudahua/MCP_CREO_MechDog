@@ -37,6 +37,9 @@ class SeedArchiveFixture(unittest.TestCase):
         self.root = self.temp / "source"
         self.root.mkdir()
         shutil.copytree(ROOT / "seed_library", self.root / "seed_library")
+        # BUG-123: a source tree that claims to be releasable now also carries
+        # the element tree templates and their manifest.
+        shutil.copytree(ROOT / "templates", self.root / "templates")
         (self.root / "docs").mkdir()
         shutil.copy2(ROOT / "docs/seed_manifest.json", self.root / "docs/seed_manifest.json")
         shutil.copy2(ROOT / "LICENSE", self.root / "LICENSE")

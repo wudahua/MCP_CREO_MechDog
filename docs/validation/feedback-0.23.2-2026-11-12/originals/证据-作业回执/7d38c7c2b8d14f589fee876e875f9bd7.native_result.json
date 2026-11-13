@@ -1,0 +1,68 @@
+{
+  "code": "model_reconciliation_required",
+  "completion_stage": "result_delivery",
+  "connected": true,
+  "creo_release_numeric": 42,
+  "creo_release_query_code": 0,
+  "delivery_complete": true,
+  "disconnect_budget_seconds": 20.0,
+  "disconnect_code": 0,
+  "failed_model_cleanup": {
+    "absence_verified": false,
+    "attempted": false,
+    "erase_code": null,
+    "reason": "not_new_model_job",
+    "status": "skipped"
+  },
+  "failed_operation": {
+    "determinant": null,
+    "feature_label": null,
+    "index": null,
+    "input_matrix": null,
+    "matrix_source": null,
+    "message": "model_reconciliation_required: Saved feature/body count changed",
+    "message_truncated": false,
+    "operation": null,
+    "orthogonality_residual": null,
+    "pro_error": null,
+    "pro_error_source": "unsupported",
+    "sketch_name": null,
+    "stage": "connect",
+    "toolkit_call": null
+  },
+  "failed_operation_index": null,
+  "failed_stage": "connect",
+  "failed_toolkit_call": null,
+  "inspection": null,
+  "inspection_source": "unavailable",
+  "message": "model_reconciliation_required: Saved feature/body count changed",
+  "model_unchanged": true,
+  "native_pid": 32280,
+  "operations": [
+    {
+      "effect_status": "no_effect",
+      "execution_status": "not_executed",
+      "index": 0,
+      "label": "",
+      "op": "export",
+      "succeeded": false
+    }
+  ],
+  "rollback_succeeded": false,
+  "saved_file_reloaded_and_verified": false,
+  "session_fingerprint": "7785176304498676551",
+  "success": false,
+  "toolkit_code": -1,
+  "verify_stages": [
+    {
+      "elapsed_ms": 68,
+      "name": "connect",
+      "since_start_ms": 68
+    },
+    {
+      "elapsed_ms": 4725,
+      "name": "connected",
+      "since_start_ms": 4793
+    }
+  ]
+}

@@ -4378,6 +4378,7 @@ static J choice_inspection(const J &holder, const char *key);
 #include "surface_boundary_fill.cpp"
 #include "quilt_merge.cpp"
 #include "project_curve.cpp"
+#include "import_geometry.cpp"
 #include "udf.cpp"
 #include "loft_mode.cpp"
 #include "loft_seed.cpp"
@@ -4675,6 +4676,8 @@ static void execute_operation_body(const J &op) {
         generic_quilt_merge(op);
     else if (kind == "project_curve")
         generic_project_curve(op);
+    else if (kind == "import_geometry")
+        generic_import_geometry(op);
     else if (kind == "boolean_bodies")
         generic_boolean(op);
     else if (kind == "rib")
@@ -4999,6 +5002,108 @@ static void finalize_operation_results(const J &request, bool succeeded, bool ro
         append_operation_result(std::move(entry));
     }
 }
+// FEAT-067: the millimetre bounding box of the material bodies, taken from the
+// per-body outline the inspection already recorded. Native units are scaled,
+// never assumed: an unknown conversion leaves the box unmeasured so a plan can
+// never pass by comparing millimetres against native units.
+static J measured_bbox_mm(const J &state) {
+    const MillimeterScale scale = length_scale_to_mm(board, inspect_length_units(board));
+    if (!scale.known)
+        return {{"available", false},
+                {"reason", "the model length unit cannot be converted to millimetres"}};
+    double low[3] = {0.0, 0.0, 0.0}, high[3] = {0.0, 0.0, 0.0};
+    bool any = false;
+    if (state.contains("bodies") && state["bodies"].is_array())
+        for (const auto &body : state["bodies"]) {
+            if (!body.contains("bbox") || !body["bbox"].is_array() || body["bbox"].size() != 2)
+                continue;
+            for (int corner = 0; corner < 2; corner++) {
+                const J &point = body["bbox"][corner];
+                if (!point.is_array() || point.size() != 3)
+                    continue;
+                for (int axis = 0; axis < 3; axis++) {
+                    if (!point[axis].is_number())
+                        continue;
+                    const double value = point[axis].get<double>() * scale.scale;
+                    low[axis] = any ? std::min(low[axis], value) : value;
+                    high[axis] = any ? std::max(high[axis], value) : value;
+                    any = true;
+                }
+            }
+        }
+    if (!any)
+        return {{"available", false}, {"reason", "no material body bounding box was measured"}};
+    return {{"available", true},
+            {"min", J::array({low[0], low[1], low[2]})},
+            {"max", J::array({high[0], high[1], high[2]})}};
+}
+// FEAT-067: the total area of a part, summed over every face the kernel reports.
+// Unlike quilt_area_native this walks the whole solid, so "the area of the model"
+// is one number instead of one quilt's worth; a failed face fails the sum.
+struct TotalAreaAccumulator {
+    bool ok = true;
+    int count = 0;
+    ProError code = PRO_TK_NO_ERROR;
+    double area = 0.0;
+};
+static ProError total_area_surface_cb(ProSurface surface, ProError status, ProAppData data) {
+    auto *acc = (TotalAreaAccumulator *)data;
+    if (status) {
+        acc->ok = false;
+        acc->code = status;
+        return PRO_TK_NO_ERROR;
+    }
+    const MeasurementOutcome per = surface_area_native(surface);
+    if (!per.available) {
+        acc->ok = false;
+        acc->code = per.query_code;
+        return PRO_TK_NO_ERROR;
+    }
+    acc->count++;
+    acc->area += per.value;
+    return PRO_TK_NO_ERROR;
+}
+static MeasurementOutcome total_surface_area_native() {
+    TotalAreaAccumulator acc;
+    const ProError code =
+        ProSolidSurfaceVisit((ProSolid)board, total_area_surface_cb, nullptr, &acc);
+    MeasurementOutcome out;
+    if (code == PRO_TK_E_NOT_FOUND) {
+        out.reason = "the model has no surfaces";
+        return out;
+    }
+    if (code) {
+        out.query_code = code;
+        out.reason = "solid_surface_visit_failed";
+        return out;
+    }
+    if (!acc.ok) {
+        out.query_code = acc.code;
+        out.reason = "surface_area_eval_failed";
+        return out;
+    }
+    out.available = true;
+    out.value = acc.area;
+    return out;
+}
+// Millimetres squared only: the scale is applied twice, and an unknown unit
+// leaves the area unmeasured rather than comparing native area against mm2.
+static J measured_surface_area_mm2(const J &state) {
+    const std::string kind = state.value("model_type", std::string("part"));
+    if (kind == "assembly" || kind == "drawing")
+        return {{"available", false},
+                {"reason", "the surface area assertion measures a part, not a " + kind}};
+    const MillimeterScale scale = length_scale_to_mm(board, inspect_length_units(board));
+    if (!scale.known)
+        return {{"available", false},
+                {"reason", "the model length unit cannot be converted to millimetres"}};
+    const MeasurementOutcome area = total_surface_area_native();
+    if (!area.available)
+        return {{"available", false},
+                {"reason", area.reason ? std::string(area.reason)
+                                       : std::string("no surface area was measured")}};
+    return {{"available", true}, {"value", area.value * scale.scale * scale.scale}};
+}
 static void verify_assertions(const J &state, const J &a) {
     if (a.contains("volume_mm3")) {
         if (state["volume_mm3"].is_null() ||
@@ -5008,6 +5113,48 @@ static void verify_assertions(const J &state, const J &a) {
     }
     if (a.value("require_solid", false) && !state["has_solid"].get<bool>())
         throw std::runtime_error("Solid assertion failed");
+    // FEAT-067: the expected millimetre box of the material bodies. The measured
+    // side is the projection above; a box the model cannot express in
+    // millimetres fails here instead of passing on native units.
+    if (a.contains("bbox_mm") && a["bbox_mm"].is_object()) {
+        const J &want = a["bbox_mm"];
+        const double tolerance = want.value("tolerance_mm", 1e-3);
+        const J measured = measured_bbox_mm(state);
+        if (!measured.value("available", false))
+            throw std::runtime_error(
+                "Bounding box assertion failed: " +
+                measured.value("reason", std::string("no measured bounding box")));
+        for (int axis = 0; axis < 3; axis++) {
+            const double low = measured["min"][axis].get<double>();
+            const double high = measured["max"][axis].get<double>();
+            const double want_low = want["min"][axis].get<double>();
+            const double want_high = want["max"][axis].get<double>();
+            if (fabs(low - want_low) > tolerance || fabs(high - want_high) > tolerance)
+                throw std::runtime_error(
+                    std::string("Bounding box assertion failed on ") + "XYZ"[axis] +
+                    ": measured [" + std::to_string(low) + ", " + std::to_string(high) +
+                    "] expected [" + std::to_string(want_low) + ", " + std::to_string(want_high) +
+                    "] tolerance " + std::to_string(tolerance) + " mm");
+        }
+    }
+    // FEAT-067: the expected total surface area of the part. The measured side
+    // walks every face once; an unknown unit or a failed face measurement fails
+    // here instead of passing on native area units.
+    if (a.contains("surface_area_mm2")) {
+        const double want = a["surface_area_mm2"].get<double>();
+        const double tolerance = a.value("surface_area_tolerance_mm2", 0.01);
+        const J measured = measured_surface_area_mm2(state);
+        if (!measured.value("available", false))
+            throw std::runtime_error(
+                "Surface area assertion failed: " +
+                measured.value("reason", std::string("no measured surface area")));
+        const double value = measured["value"].get<double>();
+        if (fabs(value - want) > tolerance)
+            throw std::runtime_error("Surface area assertion failed: measured " +
+                                     std::to_string(value) + " mm2 expected " +
+                                     std::to_string(want) + " mm2 tolerance " +
+                                     std::to_string(tolerance) + " mm2");
+    }
     // DEV-077/R01: plan-level fidelity gates. Every sketch result already
     // carries its own geometry_deviation block, so the plan asserts over the
     // measured population instead of inventing a second measurement.
@@ -7680,6 +7827,8 @@ static int run_generic(const std::wstring &job) {
         }
         // FEAT-052: recolor evidence is job-scoped; reset before any op can run.
         recolor_reset();
+        // BUG-124: the import receipt comes from the model-setup step of this job.
+        import_geometry_reset();
         g_recolor_readonly = request.value("readonly", false);
         template_file = wide(request.at("template_file"));
         if (!model["part_file"].is_null())
@@ -7750,27 +7899,37 @@ static int run_generic(const std::wstring &job) {
                     throw std::runtime_error("New model name already exists in the Creo session");
                 if (found != PRO_TK_E_NOT_FOUND)
                     check(found, "CheckNewModelName");
-                ProPath original, destination, tfile;
-                CK(ProDirectoryCurrentGet(original));
-                path(destination, folder);
-                path(tfile, template_file);
-                CK(ProDirectoryChange(destination));
-                try {
-                    ProMdl templ;
-                    if (request.contains("loft_seed"))
-                        templ = load_isolated_loft_seed(template_file, report["seed_native_load"]);
-                    else
-                        CK(ProMdlFiletypeLoad(tfile, PRO_MDLFILE_UNUSED, PRO_B_FALSE, &templ));
-                    ProMdlName new_name;
-                    wcscpy_s(new_name, model_name.c_str());
-                    CK(ProMdlnameCopy(templ, new_name, &board));
-                    if (request.contains("loft_seed"))
-                        CK(ProMdlErase(templ));
-                } catch (...) {
-                    ProDirectoryChange(original);
-                    throw;
+                const J *import_op = import_geometry_choice(request);
+                if (import_op) {
+                    // BUG-124/C1: the importer creates the part itself, so the
+                    // template copy every other new part goes through must not run
+                    // first. The operation below only republishes this receipt.
+                    generic_stage("import_geometry");
+                    board = import_geometry_create(*import_op, model_name, report);
+                } else {
+                    ProPath original, destination, tfile;
+                    CK(ProDirectoryCurrentGet(original));
+                    path(destination, folder);
+                    path(tfile, template_file);
+                    CK(ProDirectoryChange(destination));
+                    try {
+                        ProMdl templ;
+                        if (request.contains("loft_seed"))
+                            templ =
+                                load_isolated_loft_seed(template_file, report["seed_native_load"]);
+                        else
+                            CK(ProMdlFiletypeLoad(tfile, PRO_MDLFILE_UNUSED, PRO_B_FALSE, &templ));
+                        ProMdlName new_name;
+                        wcscpy_s(new_name, model_name.c_str());
+                        CK(ProMdlnameCopy(templ, new_name, &board));
+                        if (request.contains("loft_seed"))
+                            CK(ProMdlErase(templ));
+                    } catch (...) {
+                        ProDirectoryChange(original);
+                        throw;
+                    }
+                    CK(ProDirectoryChange(original));
                 }
-                CK(ProDirectoryChange(original));
                 mutated = true;
                 new_model_evidence.created = true;
                 new_model_evidence.id_known =
@@ -7780,6 +7939,12 @@ static int run_generic(const std::wstring &job) {
                     ProMdlModificationVerify(board, &baseline) == PRO_TK_NO_ERROR;
                 new_model_evidence.baseline_modified = baseline == PRO_B_TRUE;
             } else {
+                // BUG-124/C1: the documented import creates its own model, so an
+                // existing model can never receive it. Python refuses this first.
+                if (import_geometry_choice(request))
+                    throw std::runtime_error(
+                        "import_geometry creates its own new part and cannot be appended to an "
+                        "existing model; submit it as the only operation of a new plan");
                 if (found == PRO_TK_E_NOT_FOUND) {
                     if (checkpoint.empty())
                         throw std::runtime_error(

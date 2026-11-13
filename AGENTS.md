@@ -33,6 +33,7 @@
 
 ## 开发准入与台账
 
+- Creo TOOLKIT API 查证与项目接入见 [中文开发指南](docs/development/CREO_TOOLKIT_GUIDE.md)；Git 检出后的 Codex 开发可使用项目 [creo-mechdog-dev skill](.agents/skills/creo-mechdog-dev/SKILL.md)。资料入口不改变本文件的实机确认制和 WorkBuddy 黑盒边界。
 - 以 `docs/DEVELOPMENT.md` 为开发入口、`docs/BACKLOG.md` 为唯一工作台账；每项功能、缺陷或工程整理在实现前登记固定 ID、目标、范围、验收方式和环境。小修复可精简，复杂条目使用 `docs/templates/WORK_ITEM.md`。
 - 先复现已报告缺陷，分别记录现象与推测根因。优先处理 P1 稳定性问题，再扩展建模能力。
 - 条目验收后同步状态、能力边界和本次证据。旧版本说明、测试日志和待办快照保留其历史日期，不作为当前台账。

@@ -164,6 +164,7 @@ _SOURCE_NAMES = (
     "native/surface_group.cpp",
     "native/quilt_merge.cpp",
     "native/project_curve.cpp",
+    "native/import_geometry.cpp",
     "native/component_transform.h",
     "native/assembly_pose.h",
     "native/constraint_names.h",

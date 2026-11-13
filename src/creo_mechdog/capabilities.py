@@ -53,6 +53,7 @@ REGISTERED_OPERATIONS = (
     "regenerate",
     "save",
     "export",
+    "import_geometry",
     "dump_tree",
     "mass_properties",
     "udf_inspect",
@@ -120,6 +121,10 @@ UNAVAILABLE_OPERATIONS: dict[str, str] = {
     ),
     # quilt_merge is published again in 0.19.0 (FEAT-039/H03 resolved the joined
     # target quilt); the old global gate is deliberately not carried forward.
+    # BUG-124/C1 left this table on 2026-11-13: STEP and IGES imports ran on Creo
+    # 12.4.0.0 (create_code=0, one closed 440.0 mm2 quilt and six quilts at
+    # 1540.0 mm2, both saved and reloaded), so the gate is gone. It goes back here
+    # if a later release cannot repeat that; Creo 10 is still unverified.
     "surface_boundary_fill": (
         "DEV-078 four-boundary two-direction blend is offline only and not published; "
         "the previous single-direction candidate creates and extracts (ProFeatureWithoptionsCreate=0, "
@@ -245,6 +250,40 @@ def require_worker_availability(operations: list[dict], identity: object) -> Non
         )
 
 
+def require_kernel_completion(operations: list[dict], identity: object) -> None:
+    """BUG-122: refuse a conditional operation whose host kernel rejected its own tree.
+
+    BUG-120 published this as disclosure only, so a Creo 10 request still created an
+    incomplete boundary-blend shell and rolled the whole job back. The observation is
+    actionable only when it carries the signature measured on this executor: the same
+    worker SHA, a successful create and a refused extraction. Unknown, foreign-worker
+    or transient observations keep the pass-through, so one rollback cannot lock the
+    route. Only an entry in ``UNAVAILABLE_OPERATIONS`` may remove a compiled tool, and
+    this refusal is about the host, not the build.
+    """
+    if not any(op.get("op") in WORKER_CONDITIONAL_OPERATIONS for op in operations):
+        return
+    feature = _verified_worker_feature(identity, "surface_loft")
+    if feature is None or feature.get("kernel_completion") != "unsupported":
+        return
+    evidence = feature.get("evidence")
+    if not isinstance(evidence, dict):
+        return
+    if evidence.get("create_code") != 0 or evidence.get("extract_code") != -18:
+        return
+    raise ValueError(
+        "surface_loft is refused before a job on this executor: the last run created the "
+        "boundary blend (create_code=0) but the host kernel refused to hand back its element "
+        f"tree (extract_code=-18, release_numeric={evidence.get('release_numeric')}, "
+        f"worker_sha256={identity.get('worker_sha256')}, job_id={feature.get('job_id')}). "
+        "No native job was queued and no feature would be created. Upgrade the host release, "
+        "rebuild the worker, or use a route that does not need the element tree (template XML "
+        "or an imported exact surface once those operations are published). The observation is "
+        "keyed by worker SHA256, so a new worker build clears it; read creo_capabilities for "
+        "the recorded evidence."
+    )
+
+
 def _kernel_observation(identity: object, runtime: object) -> dict:
     """The runtime observation that belongs to this exact worker, else unknown."""
     worker_sha = identity.get("worker_sha256") if isinstance(identity, dict) else None
@@ -263,8 +302,10 @@ def project_worker_availability(
 ) -> dict:
     """Show the verified worker's compiled feature state in capability families.
 
-    ``runtime`` is a disclosure-only observation (BUG-120): it never changes
-    ``available`` or ``enabled`` and is ignored when it came from another worker.
+    ``runtime`` is the last kernel-completion observation for this worker. It never
+    changes ``available`` or ``enabled`` (those describe the build), is ignored when
+    it came from another worker, and only adds ``runtime_admission`` when the measured
+    signature makes admission refuse the operation before a job (BUG-122).
     """
     feature = _verified_worker_feature(identity, "surface_loft")
     entry = families_doc.get("surface_loft")
@@ -292,6 +333,28 @@ def project_worker_availability(
             "and compiled availability does not prove this host kernel can complete the "
             "feature tree extraction"
         )
+        evidence = observation.get("evidence")
+        if (
+            observation["kernel_completion"] == "unsupported"
+            and isinstance(evidence, dict)
+            and evidence.get("create_code") == 0
+            and evidence.get("extract_code") == -18
+        ):
+            # BUG-122: the same signature requires admission to refuse before a job,
+            # so the projection must not read as "ready to call".
+            entry["runtime_admission"] = {
+                "status": "refused_before_job",
+                "reason": "host_kernel_extract_unsupported",
+                "create_code": evidence.get("create_code"),
+                "extract_code": evidence.get("extract_code"),
+                "release_numeric": evidence.get("release_numeric"),
+                "job_id": observation.get("job_id"),
+                "observed_at": observation.get("observed_at"),
+                "effect": (
+                    "creo_surface_loft is refused before a native job on this worker; no "
+                    "incomplete feature is created; a new worker build clears the record"
+                ),
+            }
     else:
         missing = ", ".join(_missing_requirements(feature))
         entry["enabled"] = False
@@ -914,6 +977,34 @@ def families() -> dict:
                 "surface_trim offset_mm removes a band instead of moving the cut; "
                 "curved-quilt thicken side options beyond the published symmetric case "
                 "need further native validation"
+            ),
+        },
+        "geometry_import": {
+            "enabled": True,
+            "tools": ["creo_execute_plan"],
+            "scope": (
+                "import one STEP or IGES file into its own new part: the plan holds exactly "
+                "the import_geometry operation and no model_id, and the native route calls "
+                "ProIntfimportModelWithOptionsMdlnameCreate with PRO_IMPORTREP_MASTER instead "
+                "of copying the part template; the imported part is what a later "
+                "assemble_component places (Creo 12.4.0.0 live-verified 2026-11-13)"
+            ),
+            "native_test": (
+                "2026-11-13 live on Creo 12.4.0.0: STEP import create_code=0, one closed "
+                "quilt 440.0 mm2, feature_count=2, saved and reloaded; IGES import "
+                "create_code=0, six quilts 1540.0 mm2, saved and reloaded; both in mm with "
+                "profile_source=creo_default"
+            ),
+            "limits": (
+                "one import per plan and never into an existing model, because the documented "
+                "call creates the model itself and returns it as the job's model; profile is "
+                "optional and defaults to Creo's own import settings (a passed profile stays "
+                "valid for the whole session, so the receipt reports profile_source); the "
+                "imported model must be millimetres or the existing unit gate refuses it after "
+                "the import; a licence refusal keeps its own code (PRO_TK_NO_LICENSE); quilt "
+                "closure is only reported when exactly one quilt exists; Creo 10 and "
+                "pure-surface (non-solid) imports are not live-verified, and the operation "
+                "cannot continue in the same plan with other features"
             ),
         },
         "surface_chain": {

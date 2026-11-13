@@ -1,0 +1,1692 @@
+{
+  "aliases": {
+    "sec_a": {
+      "dimension_ids": {},
+      "entity_ids": {
+        "wire": 5
+      },
+      "feature_id": 40,
+      "geometry": [
+        {
+          "closed": false,
+          "construction": false,
+          "name": "wire",
+          "points": [
+            [
+              0.0,
+              0.0
+            ],
+            [
+              50.0,
+              10.0
+            ],
+            [
+              100.0,
+              0.0
+            ]
+          ],
+          "type": "spline"
+        }
+      ],
+      "geometry_stale": false,
+      "last_dimensioning": "auto",
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "op": "sketch",
+      "origin": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "section_normal_sign": 1,
+      "solver": {
+        "completed": true,
+        "coordinate_scaling": false,
+        "epsilon_mm": 0.0001,
+        "epsilon_source": "mode_default",
+        "final_units": "mm",
+        "geometry_deviation": {
+          "accepted_by_request": null,
+          "accepted_rigid": false,
+          "available": true,
+          "enforced": false,
+          "exceeds_warning": false,
+          "max_deviation_mm": 1.0241392749410197e-31,
+          "measurement_scope": "named_section_entities",
+          "residual_mm": 6.827595166273464e-32,
+          "rigid": false,
+          "sample": [
+            {
+              "deviation_mm": 1.0241392749410197e-31,
+              "entity": "wire",
+              "kind": "spline",
+              "measurement": "control_points",
+              "reason": null
+            },
+            {
+              "deviation_mm": 1.0241392749410197e-31,
+              "entity": "wire",
+              "kind": "spline",
+              "measurement": "control_points",
+              "reason": null
+            }
+          ],
+          "shape_deviation_mm": 6.827595166273464e-32,
+          "shift_detected": null,
+          "stages": {
+            "complete_feature": {
+              "available": true,
+              "max_deviation_mm": 1.0241392749410197e-31,
+              "point_count": 3,
+              "residual_mm": 6.827595166273464e-32,
+              "rigid": false,
+              "sample": [
+                {
+                  "deviation_mm": 1.0241392749410197e-31,
+                  "entity": "wire",
+                  "kind": "spline",
+                  "measurement": "control_points",
+                  "reason": null
+                }
+              ],
+              "shape_deviation_mm": 6.827595166273464e-32,
+              "total": 1,
+              "translation_magnitude_mm": null,
+              "translation_mm": null,
+              "truncated": false,
+              "unavailable_reason": null
+            },
+            "section_regenerate": {
+              "available": true,
+              "max_deviation_mm": 1.0241392749410197e-31,
+              "point_count": 3,
+              "residual_mm": 6.827595166273464e-32,
+              "rigid": false,
+              "sample": [
+                {
+                  "deviation_mm": 1.0241392749410197e-31,
+                  "entity": "wire",
+                  "kind": "spline",
+                  "measurement": "control_points",
+                  "reason": null
+                }
+              ],
+              "shape_deviation_mm": 6.827595166273464e-32,
+              "total": 1,
+              "translation_magnitude_mm": null,
+              "translation_mm": null,
+              "truncated": false,
+              "unavailable_reason": null
+            }
+          },
+          "tolerance_source": "default_autodim",
+          "total": 2,
+          "translation_mm": null,
+          "truncated": false,
+          "unavailable_reason": null,
+          "warning_threshold_mm": 0.001
+        },
+        "native_section": {
+          "available": true,
+          "branched_points": 0,
+          "closed_contours": 0,
+          "construction_entities": 0,
+          "contours": 1,
+          "curves": 1,
+          "entities": 1,
+          "max_cluster_spread_mm": 0.0,
+          "max_endpoint_gap_mm": 100.0,
+          "open_end_samples": [
+            {
+              "entity": 5,
+              "nearest_entity": 5,
+              "nearest_gap_mm": 100.0,
+              "point": [
+                0.0,
+                -5.044843390299019e-48
+              ]
+            },
+            {
+              "entity": 5,
+              "nearest_entity": 5,
+              "nearest_gap_mm": 100.0,
+              "point": [
+                1.0241392749410197e-31,
+                100.0
+              ]
+            }
+          ],
+          "open_end_samples_truncated": false,
+          "open_ends": 2,
+          "reference_entities": 2,
+          "standalone_curves": 0,
+          "tolerance_mm": 1e-06,
+          "tolerance_scope": "diagnostic_endpoint_clustering",
+          "unsupported_entities": 0
+        },
+        "recovered": true,
+        "requested": "auto",
+        "section_location": {
+          "identity_plausible": true,
+          "matrix_identity": false,
+          "uv_mapping": "location_matrix"
+        },
+        "selection_reason": "unsupported_coordinate_entity",
+        "sketch_shifted": null,
+        "stages": {
+          "autodimension": 0,
+          "initial_solve": -1,
+          "section_regenerate": 0
+        },
+        "used": "autodim",
+        "weld_requested": false
+      },
+      "surface_id": 6,
+      "u_axis": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "v_axis": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    "sec_b": {
+      "dimension_ids": {},
+      "entity_ids": {
+        "wire": 5
+      },
+      "feature_id": 48,
+      "geometry": [
+        {
+          "closed": false,
+          "construction": false,
+          "name": "wire",
+          "points": [
+            [
+              0.0,
+              0.0
+            ],
+            [
+              50.0,
+              30.0
+            ],
+            [
+              100.0,
+              0.0
+            ]
+          ],
+          "type": "spline"
+        }
+      ],
+      "geometry_stale": false,
+      "last_dimensioning": "auto",
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "op": "sketch",
+      "origin": [
+        0.0,
+        0.0,
+        200.0
+      ],
+      "section_normal_sign": 1,
+      "solver": {
+        "completed": true,
+        "coordinate_scaling": false,
+        "epsilon_mm": 0.0001,
+        "epsilon_source": "mode_default",
+        "final_units": "mm",
+        "geometry_deviation": {
+          "accepted_by_request": null,
+          "accepted_rigid": false,
+          "available": true,
+          "enforced": false,
+          "exceeds_warning": false,
+          "max_deviation_mm": 2.1477114140598147e-31,
+          "measurement_scope": "named_section_entities",
+          "residual_mm": 1.4318076093732098e-31,
+          "rigid": false,
+          "sample": [
+            {
+              "deviation_mm": 2.1477114140598147e-31,
+              "entity": "wire",
+              "kind": "spline",
+              "measurement": "control_points",
+              "reason": null
+            },
+            {
+              "deviation_mm": 2.1477114140598147e-31,
+              "entity": "wire",
+              "kind": "spline",
+              "measurement": "control_points",
+              "reason": null
+            }
+          ],
+          "shape_deviation_mm": 1.4318076093732098e-31,
+          "shift_detected": null,
+          "stages": {
+            "complete_feature": {
+              "available": true,
+              "max_deviation_mm": 2.1477114140598147e-31,
+              "point_count": 3,
+              "residual_mm": 1.4318076093732098e-31,
+              "rigid": false,
+              "sample": [
+                {
+                  "deviation_mm": 2.1477114140598147e-31,
+                  "entity": "wire",
+                  "kind": "spline",
+                  "measurement": "control_points",
+                  "reason": null
+                }
+              ],
+              "shape_deviation_mm": 1.4318076093732098e-31,
+              "total": 1,
+              "translation_magnitude_mm": null,
+              "translation_mm": null,
+              "truncated": false,
+              "unavailable_reason": null
+            },
+            "section_regenerate": {
+              "available": true,
+              "max_deviation_mm": 2.1477114140598147e-31,
+              "point_count": 3,
+              "residual_mm": 1.4318076093732098e-31,
+              "rigid": false,
+              "sample": [
+                {
+                  "deviation_mm": 2.1477114140598147e-31,
+                  "entity": "wire",
+                  "kind": "spline",
+                  "measurement": "control_points",
+                  "reason": null
+                }
+              ],
+              "shape_deviation_mm": 1.4318076093732098e-31,
+              "total": 1,
+              "translation_magnitude_mm": null,
+              "translation_mm": null,
+              "truncated": false,
+              "unavailable_reason": null
+            }
+          },
+          "tolerance_source": "default_autodim",
+          "total": 2,
+          "translation_mm": null,
+          "truncated": false,
+          "unavailable_reason": null,
+          "warning_threshold_mm": 0.001
+        },
+        "native_section": {
+          "available": true,
+          "branched_points": 0,
+          "closed_contours": 0,
+          "construction_entities": 0,
+          "contours": 1,
+          "curves": 1,
+          "entities": 1,
+          "max_cluster_spread_mm": 0.0,
+          "max_endpoint_gap_mm": 100.0,
+          "open_end_samples": [
+            {
+              "entity": 5,
+              "nearest_entity": 5,
+              "nearest_gap_mm": 100.0,
+              "point": [
+                0.0,
+                1.0356963251607258e-48
+              ]
+            },
+            {
+              "entity": 5,
+              "nearest_entity": 5,
+              "nearest_gap_mm": 100.0,
+              "point": [
+                2.1477114140598147e-31,
+                100.0
+              ]
+            }
+          ],
+          "open_end_samples_truncated": false,
+          "open_ends": 2,
+          "reference_entities": 2,
+          "standalone_curves": 0,
+          "tolerance_mm": 1e-06,
+          "tolerance_scope": "diagnostic_endpoint_clustering",
+          "unsupported_entities": 0
+        },
+        "recovered": true,
+        "requested": "auto",
+        "section_location": {
+          "identity_plausible": false,
+          "matrix_identity": false,
+          "uv_mapping": "location_matrix"
+        },
+        "selection_reason": "unsupported_coordinate_entity",
+        "sketch_shifted": null,
+        "stages": {
+          "autodimension": 0,
+          "initial_solve": -1,
+          "section_regenerate": 0
+        },
+        "used": "autodim",
+        "weld_requested": false
+      },
+      "surface_id": 47,
+      "u_axis": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "v_axis": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    "side_nurbs": {
+      "dimension_ids": {},
+      "entity_ids": {
+        "side_guide_nurbs": 5
+      },
+      "feature_id": 54,
+      "geometry": [
+        {
+          "construction": false,
+          "control_points": [
+            [
+              6409.473617899999,
+              180.0
+            ],
+            [
+              6509.473617899999,
+              180.0
+            ],
+            [
+              7006.719689400001,
+              204.77412350000003
+            ],
+            [
+              7809.473617899999,
+              33.3333333
+            ],
+            [
+              7809.473617899999,
+              0.0
+            ]
+          ],
+          "degree": 3,
+          "knots": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.595088181,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "name": "side_guide_nurbs",
+          "type": "b_spline",
+          "weights": [
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      ],
+      "geometry_stale": false,
+      "last_dimensioning": "auto",
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "op": "sketch",
+      "origin": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "section_normal_sign": 1,
+      "solver": {
+        "completed": true,
+        "coordinate_scaling": false,
+        "epsilon_mm": 0.0001,
+        "epsilon_source": "mode_default",
+        "final_units": "mm",
+        "geometry_deviation": {
+          "accepted_by_request": null,
+          "accepted_rigid": false,
+          "available": true,
+          "enforced": false,
+          "exceeds_warning": true,
+          "max_deviation_mm": 0.0036178999980620574,
+          "measurement_scope": "named_section_entities",
+          "residual_mm": 2.3302533660563005e-13,
+          "rigid": true,
+          "sample": [
+            {
+              "deviation_mm": 0.0036178999980620574,
+              "entity": "side_guide_nurbs",
+              "kind": "b_spline",
+              "measurement": "control_points",
+              "reason": null
+            },
+            {
+              "deviation_mm": 0.0036178999980620574,
+              "entity": "side_guide_nurbs",
+              "kind": "b_spline",
+              "measurement": "control_points",
+              "reason": null
+            }
+          ],
+          "shape_deviation_mm": 2.3302533660563005e-13,
+          "shift_detected": null,
+          "stages": {
+            "complete_feature": {
+              "available": true,
+              "max_deviation_mm": 0.0036178999980620574,
+              "point_count": 5,
+              "residual_mm": 2.3302533660563005e-13,
+              "rigid": true,
+              "sample": [
+                {
+                  "deviation_mm": 0.0036178999980620574,
+                  "entity": "side_guide_nurbs",
+                  "kind": "b_spline",
+                  "measurement": "control_points",
+                  "reason": null
+                }
+              ],
+              "shape_deviation_mm": 2.3302533660563005e-13,
+              "total": 1,
+              "translation_magnitude_mm": 0.0036178999980620574,
+              "translation_mm": {
+                "u": -3.069871425720461e-13,
+                "v": -0.0036178999980620574
+              },
+              "truncated": false,
+              "unavailable_reason": null
+            },
+            "section_regenerate": {
+              "available": true,
+              "max_deviation_mm": 0.0036178999980620574,
+              "point_count": 5,
+              "residual_mm": 1.3142588553116673e-13,
+              "rigid": true,
+              "sample": [
+                {
+                  "deviation_mm": 0.0036178999980620574,
+                  "entity": "side_guide_nurbs",
+                  "kind": "b_spline",
+                  "measurement": "control_points",
+                  "reason": null
+                }
+              ],
+              "shape_deviation_mm": 1.3142588553116673e-13,
+              "total": 1,
+              "translation_magnitude_mm": 0.0036178999980620574,
+              "translation_mm": {
+                "u": -1.5279120877287334e-13,
+                "v": -0.0036178999980620574
+              },
+              "truncated": false,
+              "unavailable_reason": null
+            }
+          },
+          "tolerance_source": "default_autodim",
+          "total": 2,
+          "translation_mm": {
+            "u": -1.5279120877287334e-13,
+            "v": -0.0036178999980620574
+          },
+          "truncated": false,
+          "unavailable_reason": null,
+          "warning_threshold_mm": 0.001
+        },
+        "native_section": {
+          "available": true,
+          "branched_points": 0,
+          "closed_contours": 0,
+          "construction_entities": 0,
+          "contours": 1,
+          "curves": 1,
+          "entities": 1,
+          "max_cluster_spread_mm": 0.0,
+          "max_endpoint_gap_mm": 1411.5239990875111,
+          "open_end_samples": [
+            {
+              "entity": 5,
+              "nearest_entity": 5,
+              "nearest_gap_mm": 1411.5239990875111,
+              "point": [
+                -180.00000000000026,
+                6409.470000000001
+              ]
+            },
+            {
+              "entity": 5,
+              "nearest_entity": 5,
+              "nearest_gap_mm": 1411.5239990875111,
+              "point": [
+                -2.133262243464441e-13,
+                7809.470000000001
+              ]
+            }
+          ],
+          "open_end_samples_truncated": false,
+          "open_ends": 2,
+          "reference_entities": 2,
+          "standalone_curves": 0,
+          "tolerance_mm": 1e-06,
+          "tolerance_scope": "diagnostic_endpoint_clustering",
+          "unsupported_entities": 0
+        },
+        "recovered": true,
+        "requested": "auto",
+        "section_location": {
+          "identity_plausible": true,
+          "matrix_identity": false,
+          "uv_mapping": "location_matrix"
+        },
+        "selection_reason": "unsupported_coordinate_entity",
+        "sketch_shifted": null,
+        "stages": {
+          "autodimension": 0,
+          "initial_solve": -1,
+          "section_regenerate": 0
+        },
+        "used": "autodim",
+        "weld_requested": false
+      },
+      "surface_id": 6,
+      "u_axis": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "v_axis": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    }
+  },
+  "completion_stage": "result_delivery",
+  "connected": true,
+  "creo_release_numeric": 42,
+  "creo_release_query_code": 0,
+  "delivery_complete": true,
+  "disconnect_budget_seconds": 20.0,
+  "disconnect_code": 0,
+  "failed_model_cleanup": {
+    "absence_verified": false,
+    "attempted": false,
+    "erase_code": null,
+    "reason": "not_new_model_job",
+    "status": "skipped"
+  },
+  "failed_operation": {
+    "determinant": null,
+    "feature_label": "probe_formsweep",
+    "index": 0,
+    "input_matrix": null,
+    "matrix_source": null,
+    "message": "surface_loft boundary blend create failed (code -1, sections=2, section_curve_ids=[45, 53], 12 form candidates tried with no quilt; see form_candidates)",
+    "message_truncated": false,
+    "operation": "surface_loft",
+    "orthogonality_residual": null,
+    "pro_error": null,
+    "pro_error_source": "unsupported",
+    "sketch_name": null,
+    "stage": "execute_surface_loft",
+    "toolkit_call": null
+  },
+  "failed_operation_index": 0,
+  "failed_stage": "execute_surface_loft",
+  "failed_toolkit_call": null,
+  "inspection": {
+    "bodies": [
+      {
+        "has_geometry": null,
+        "id": -5778,
+        "material": false,
+        "state": 3,
+        "state_name": "no_geometry"
+      }
+    ],
+    "body_counts": {
+      "active": 0,
+      "counts_meaning": {
+        "bodies": "body_objects",
+        "with_material": "active_bodies_with_surfaces"
+      },
+      "objects": 1,
+      "records": 1,
+      "with_material": 0,
+      "without_material": 1
+    },
+    "center_of_gravity": null,
+    "datum_axes": [],
+    "datum_planes": [
+      {
+        "id": 2,
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "origin": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "id": 4,
+        "normal": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "origin": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "id": 6,
+        "normal": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "origin": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "id": 42,
+        "normal": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "origin": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "id": 47,
+        "normal": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "origin": [
+          0.0,
+          0.0,
+          200.0
+        ]
+      },
+      {
+        "id": 50,
+        "normal": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "origin": [
+          0.0,
+          0.0,
+          200.0
+        ]
+      },
+      {
+        "id": 56,
+        "normal": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "origin": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    ],
+    "edges": [],
+    "features": [
+      {
+        "child_ids": [
+          40,
+          48,
+          54
+        ],
+        "children_query_code": 0,
+        "dimensions": [],
+        "embedded": false,
+        "embedded_query_code": 0,
+        "geometry_items": [
+          {
+            "id": 2,
+            "type": 5
+          }
+        ],
+        "group_query_code": 0,
+        "group_status": 0,
+        "grppattern_query_code": 0,
+        "grppattern_status": 0,
+        "id": 1,
+        "incomplete": false,
+        "name": "RIGHT",
+        "parent_ids": [],
+        "parents_query_code": 0,
+        "pattern_query_code": 0,
+        "pattern_status": 0,
+        "status": 0,
+        "system_required": true,
+        "type": 923,
+        "type_name": "datum_plane"
+      },
+      {
+        "child_ids": [
+          40,
+          48,
+          54
+        ],
+        "children_query_code": 0,
+        "dimensions": [],
+        "embedded": false,
+        "embedded_query_code": 0,
+        "geometry_items": [
+          {
+            "id": 4,
+            "type": 5
+          }
+        ],
+        "group_query_code": 0,
+        "group_status": 0,
+        "grppattern_query_code": 0,
+        "grppattern_status": 0,
+        "id": 3,
+        "incomplete": false,
+        "name": "TOP",
+        "parent_ids": [],
+        "parents_query_code": 0,
+        "pattern_query_code": 0,
+        "pattern_status": 0,
+        "status": 0,
+        "system_required": true,
+        "type": 923,
+        "type_name": "datum_plane"
+      },
+      {
+        "child_ids": [
+          40,
+          46,
+          54
+        ],
+        "children_query_code": 0,
+        "dimensions": [],
+        "embedded": false,
+        "embedded_query_code": 0,
+        "geometry_items": [
+          {
+            "id": 6,
+            "type": 5
+          }
+        ],
+        "group_query_code": 0,
+        "group_status": 0,
+        "grppattern_query_code": 0,
+        "grppattern_status": 0,
+        "id": 5,
+        "incomplete": false,
+        "name": "FRONT",
+        "parent_ids": [],
+        "parents_query_code": 0,
+        "pattern_query_code": 0,
+        "pattern_status": 0,
+        "status": 0,
+        "system_required": true,
+        "type": 923,
+        "type_name": "datum_plane"
+      },
+      {
+        "child_ids": [],
+        "children_query_code": 0,
+        "dimensions": [],
+        "embedded": false,
+        "embedded_query_code": 0,
+        "geometry_items": [
+          {
+            "id": 8,
+            "type": 25
+          }
+        ],
+        "group_query_code": 0,
+        "group_status": 0,
+        "grppattern_query_code": 0,
+        "grppattern_status": 0,
+        "id": 7,
+        "incomplete": false,
+        "name": "PRT_CSYS_DEF",
+        "parent_ids": [],
+        "parents_query_code": 0,
+        "pattern_query_code": 0,
+        "pattern_status": 0,
+        "status": 0,
+        "system_required": true,
+        "type": 979,
+        "type_name": "other"
+      },
+      {
+        "child_ids": [
+          40
+        ],
+        "children_query_code": 0,
+        "dimensions": [],
+        "embedded": false,
+        "embedded_query_code": 0,
+        "geometry_items": [
+          {
+            "id": 42,
+            "type": 5
+          }
+        ],
+        "group_query_code": 0,
+        "group_status": 0,
+        "grppattern_query_code": 0,
+        "grppattern_status": 0,
+        "id": 41,
+        "incomplete": false,
+        "name": "no_name",
+        "parent_ids": [
+          1,
+          5
+        ],
+        "parents_query_code": 0,
+        "pattern_query_code": 0,
+        "pattern_status": 0,
+        "status": 0,
+        "system_required": false,
+        "type": 923,
+        "type_name": "datum_plane"
+      },
+      {
+        "child_ids": [],
+        "children_query_code": 0,
+        "dimensions": [
+          {
+            "editable": true,
+            "id": 0,
+            "owner_feature_id": 40,
+            "owner_feature_name": "SEC_A",
+            "owner_query_code": 0,
+            "relation_driven": false,
+            "relation_query_code": 0,
+            "symbol": "d0",
+            "type": -1,
+            "value": 0.0
+          },
+          {
+            "editable": true,
+            "id": 1,
+            "owner_feature_id": 40,
+            "owner_feature_name": "SEC_A",
+            "owner_query_code": 0,
+            "relation_driven": false,
+            "relation_query_code": 0,
+            "symbol": "d1",
+            "type": -1,
+            "value": 0.0
+          },
+          {
+            "editable": true,
+            "id": 2,
+            "owner_feature_id": 40,
+            "owner_feature_name": "SEC_A",
+            "owner_query_code": 0,
+            "relation_driven": false,
+            "relation_query_code": 0,
+            "symbol": "d2",
+            "type": 9,
+            "value": 100.0
+          }
+        ],
+        "embedded": false,
+        "embedded_query_code": 0,
+        "geometry_items": [
+          {
+            "id": 43,
+            "type": 62
+          },
+          {
+            "id": 44,
+            "type": 25
+          },
+          {
+            "id": 45,
+            "type": 62
+          }
+        ],
+        "group_query_code": 0,
+        "group_status": 0,
+        "grppattern_query_code": 0,
+        "grppattern_status": 0,
+        "id": 40,
+        "incomplete": false,
+        "name": "SEC_A",
+        "parent_ids": [
+          1,
+          3,
+          5
+        ],
+        "parents_query_code": 0,
+        "pattern_query_code": 0,
+        "pattern_status": 0,
+        "sketch_constraint_count": 4,
+        "sketch_dimensions": [
+          {
+            "id": 2,
+            "type": 2,
+            "value": 100.0
+          }
+        ],
+        "status": 0,
+        "system_required": false,
+        "type": 949,
+        "type_name": "sketch_or_curve"
+      },
+      {
+        "child_ids": [
+          48
+        ],
+        "children_query_code": 0,
+        "dimensions": [
+          {
+            "editable": true,
+            "id": 3,
+            "owner_feature_id": 46,
+            "owner_feature_name": "SEC_B_PLANE",
+            "owner_query_code": 0,
+            "relation_driven": false,
+            "relation_query_code": 0,
+            "symbol": "d3",
+            "type": 9,
+            "value": 200.0
+          }
+        ],
+        "embedded": false,
+        "embedded_query_code": 0,
+        "geometry_items": [
+          {
+            "id": 47,
+            "type": 5
+          }
+        ],
+        "group_query_code": 0,
+        "group_status": 0,
+        "grppattern_query_code": 0,
+        "grppattern_status": 0,
+        "id": 46,
+        "incomplete": false,
+        "name": "SEC_B_PLANE",
+        "parent_ids": [
+          5
+        ],
+        "parents_query_code": 0,
+        "pattern_query_code": 0,
+        "pattern_status": 0,
+        "status": 0,
+        "system_required": false,
+        "type": 923,
+        "type_name": "datum_plane"
+      },
+      {
+        "child_ids": [
+          48
+        ],
+        "children_query_code": 0,
+        "dimensions": [],
+        "embedded": false,
+        "embedded_query_code": 0,
+        "geometry_items": [
+          {
+            "id": 50,
+            "type": 5
+          }
+        ],
+        "group_query_code": 0,
+        "group_status": 0,
+        "grppattern_query_code": 0,
+        "grppattern_status": 0,
+        "id": 49,
+        "incomplete": false,
+        "name": "no_name",
+        "parent_ids": [
+          1,
+          46
+        ],
+        "parents_query_code": 0,
+        "pattern_query_code": 0,
+        "pattern_status": 0,
+        "status": 0,
+        "system_required": false,
+        "type": 923,
+        "type_name": "datum_plane"
+      },
+      {
+        "child_ids": [],
+        "children_query_code": 0,
+        "dimensions": [
+          {
+            "editable": true,
+            "id": 4,
+            "owner_feature_id": 48,
+            "owner_feature_name": "SEC_B",
+            "owner_query_code": 0,
+            "relation_driven": false,
+            "relation_query_code": 0,
+            "symbol": "d4",
+            "type": -1,
+            "value": 0.0
+          },
+          {
+            "editable": true,
+            "id": 5,
+            "owner_feature_id": 48,
+            "owner_feature_name": "SEC_B",
+            "owner_query_code": 0,
+            "relation_driven": false,
+            "relation_query_code": 0,
+            "symbol": "d5",
+            "type": -1,
+            "value": 0.0
+          },
+          {
+            "editable": true,
+            "id": 6,
+            "owner_feature_id": 48,
+            "owner_feature_name": "SEC_B",
+            "owner_query_code": 0,
+            "relation_driven": false,
+            "relation_query_code": 0,
+            "symbol": "d6",
+            "type": 9,
+            "value": 100.0
+          }
+        ],
+        "embedded": false,
+        "embedded_query_code": 0,
+        "geometry_items": [
+          {
+            "id": 51,
+            "type": 62
+          },
+          {
+            "id": 52,
+            "type": 25
+          },
+          {
+            "id": 53,
+            "type": 62
+          }
+        ],
+        "group_query_code": 0,
+        "group_status": 0,
+        "grppattern_query_code": 0,
+        "grppattern_status": 0,
+        "id": 48,
+        "incomplete": false,
+        "name": "SEC_B",
+        "parent_ids": [
+          1,
+          3,
+          46
+        ],
+        "parents_query_code": 0,
+        "pattern_query_code": 0,
+        "pattern_status": 0,
+        "sketch_constraint_count": 4,
+        "sketch_dimensions": [
+          {
+            "id": 2,
+            "type": 2,
+            "value": 100.0
+          }
+        ],
+        "status": 0,
+        "system_required": false,
+        "type": 949,
+        "type_name": "sketch_or_curve"
+      },
+      {
+        "child_ids": [
+          54
+        ],
+        "children_query_code": 0,
+        "dimensions": [],
+        "embedded": false,
+        "embedded_query_code": 0,
+        "geometry_items": [
+          {
+            "id": 56,
+            "type": 5
+          }
+        ],
+        "group_query_code": 0,
+        "group_status": 0,
+        "grppattern_query_code": 0,
+        "grppattern_status": 0,
+        "id": 55,
+        "incomplete": false,
+        "name": "no_name",
+        "parent_ids": [
+          1,
+          5
+        ],
+        "parents_query_code": 0,
+        "pattern_query_code": 0,
+        "pattern_status": 0,
+        "status": 0,
+        "system_required": false,
+        "type": 923,
+        "type_name": "datum_plane"
+      },
+      {
+        "child_ids": [],
+        "children_query_code": 0,
+        "dimensions": [
+          {
+            "editable": true,
+            "id": 7,
+            "owner_feature_id": 54,
+            "owner_feature_name": "SIDE_NURBS",
+            "owner_query_code": 0,
+            "relation_driven": false,
+            "relation_query_code": 0,
+            "symbol": "d7",
+            "type": -1,
+            "value": 0.0
+          },
+          {
+            "editable": true,
+            "id": 8,
+            "owner_feature_id": 54,
+            "owner_feature_name": "SIDE_NURBS",
+            "owner_query_code": 0,
+            "relation_driven": false,
+            "relation_query_code": 0,
+            "symbol": "d8",
+            "type": -1,
+            "value": 0.0
+          },
+          {
+            "editable": true,
+            "id": 9,
+            "owner_feature_id": 54,
+            "owner_feature_name": "SIDE_NURBS",
+            "owner_query_code": 0,
+            "relation_driven": false,
+            "relation_query_code": 0,
+            "symbol": "d9",
+            "type": 9,
+            "value": 180.0
+          },
+          {
+            "editable": true,
+            "id": 10,
+            "owner_feature_id": 54,
+            "owner_feature_name": "SIDE_NURBS",
+            "owner_query_code": 0,
+            "relation_driven": false,
+            "relation_query_code": 0,
+            "symbol": "d10",
+            "type": 9,
+            "value": 6409.47
+          },
+          {
+            "editable": true,
+            "id": 11,
+            "owner_feature_id": 54,
+            "owner_feature_name": "SIDE_NURBS",
+            "owner_query_code": 0,
+            "relation_driven": false,
+            "relation_query_code": 0,
+            "symbol": "d11",
+            "type": 9,
+            "value": 7809.47
+          }
+        ],
+        "embedded": false,
+        "embedded_query_code": 0,
+        "geometry_items": [
+          {
+            "id": 57,
+            "type": 62
+          },
+          {
+            "id": 58,
+            "type": 25
+          },
+          {
+            "id": 59,
+            "type": 62
+          }
+        ],
+        "group_query_code": 0,
+        "group_status": 0,
+        "grppattern_query_code": 0,
+        "grppattern_status": 0,
+        "id": 54,
+        "incomplete": false,
+        "name": "SIDE_NURBS",
+        "parent_ids": [
+          1,
+          3,
+          5
+        ],
+        "parents_query_code": 0,
+        "pattern_query_code": 0,
+        "pattern_status": 0,
+        "sketch_constraint_count": 4,
+        "sketch_dimensions": [
+          {
+            "id": 2,
+            "type": 2,
+            "value": 180.0
+          },
+          {
+            "id": 3,
+            "type": 2,
+            "value": 6409.47
+          },
+          {
+            "id": 4,
+            "type": 2,
+            "value": 7809.47
+          }
+        ],
+        "status": 0,
+        "system_required": false,
+        "type": 949,
+        "type_name": "sketch_or_curve"
+      }
+    ],
+    "has_solid": false,
+    "healthy": true,
+    "inspection_available": true,
+    "inspection_source": "rollback_verified",
+    "length_unit": {
+      "name": "mm",
+      "query_code": 0,
+      "scale_query_codes": {
+        "conversion": 0,
+        "mm_unit": 0,
+        "unit": 0
+      },
+      "scale_to_mm": 1.0,
+      "scale_to_mm_known": true
+    },
+    "model_type": "part",
+    "parameters": {
+      "DESCRIPTION": {
+        "type": 51,
+        "value": ""
+      },
+      "MODELED_BY": {
+        "type": 51,
+        "value": ""
+      },
+      "PTC_MASTER_MATERIAL": {
+        "type": 51,
+        "value": "PTC_SYSTEM_MTRL_PROPS"
+      },
+      "PTC_MATERIAL_NAME": {
+        "type": 51,
+        "value": ""
+      },
+      "PTC_REPORTED_MATERIAL": {
+        "type": 51,
+        "value": ""
+      }
+    },
+    "quilts": [],
+    "quilts_visit": {
+      "visit_code": -4,
+      "visit_failed": true
+    },
+    "surfaces": [],
+    "units": "mm",
+    "units_query_code": 0,
+    "volume_mm3": null,
+    "volume_query_code": null,
+    "wall_contour_check": {
+      "bounded": false,
+      "budget": 256,
+      "checked_edges": 0,
+      "edges": [],
+      "enabled": false,
+      "query": "ProSmtedgeContourGet"
+    }
+  },
+  "inspection_source": "rollback_verified",
+  "loft_checks": {
+    "loaded": {},
+    "rollback": {}
+  },
+  "message": "surface_loft boundary blend create failed (code -1, sections=2, section_curve_ids=[45, 53], 12 form candidates tried with no quilt; see form_candidates)",
+  "native_pid": 35848,
+  "operations": [
+    {
+      "convergence_point": null,
+      "create_code": -1,
+      "create_element_errors": {
+        "sample": [],
+        "total": 0
+      },
+      "effect_status": "rolled_back",
+      "execution_status": "failed",
+      "feature_errors": {
+        "api": "ProFeatureWithoptionsCreate",
+        "code": -1,
+        "element_errors": {
+          "sample": [],
+          "total": 0,
+          "truncated": false
+        },
+        "failed_stage": "surface_loft_create",
+        "section_errors": {
+          "available": false,
+          "sample": [],
+          "total": null,
+          "truncated": false,
+          "unavailable_reason": "no section solve ran before this failure"
+        }
+      },
+      "form_candidate_count": 12,
+      "form_candidates": [
+        {
+          "add_closed_written": false,
+          "create_code": -1,
+          "create_element_errors": {
+            "sample": [],
+            "total": 0
+          },
+          "diagnostic_count": 0,
+          "diagnostics": [],
+          "dtm_srf_type_written": true,
+          "feature_form_value": -1,
+          "form": "no_form",
+          "ruled_written": false,
+          "verify_code": -2
+        },
+        {
+          "add_closed_written": false,
+          "create_code": -1,
+          "create_element_errors": {
+            "sample": [],
+            "total": 0
+          },
+          "dtm_srf_type_written": true,
+          "feature_form_value": 0,
+          "form": "notype",
+          "ruled_written": false
+        },
+        {
+          "add_closed_written": false,
+          "create_code": -1,
+          "create_element_errors": {
+            "sample": [],
+            "total": 0
+          },
+          "dtm_srf_type_written": true,
+          "feature_form_value": 8,
+          "form": "blend",
+          "ruled_written": false
+        },
+        {
+          "add_closed_written": false,
+          "create_code": -1,
+          "create_element_errors": {
+            "sample": [],
+            "total": 0
+          },
+          "dtm_srf_type_written": true,
+          "feature_form_value": 128,
+          "form": "thin",
+          "ruled_written": false
+        },
+        {
+          "add_closed_written": false,
+          "create_code": 0,
+          "create_element_errors": {
+            "sample": [],
+            "total": 0
+          },
+          "delete_code": 0,
+          "dtm_srf_type_written": true,
+          "extract_code_in_loop": -18,
+          "feature_form_value": 512,
+          "feature_id": 64,
+          "feature_status": 0,
+          "form": "use_surfs",
+          "geometry_item_count": 0,
+          "incomplete": true,
+          "legacy_elemtree_create_code": -18,
+          "quilt_count": 0,
+          "ruled_written": false,
+          "surface_count": 0
+        },
+        {
+          "add_closed_written": false,
+          "create_code": 0,
+          "create_element_errors": {
+            "sample": [],
+            "total": 0
+          },
+          "delete_code": 0,
+          "dtm_srf_type_written": true,
+          "extract_code_in_loop": 0,
+          "feature_form_value": 1024,
+          "feature_id": 65,
+          "feature_status": 0,
+          "form": "flat",
+          "geometry_item_count": 0,
+          "incomplete": true,
+          "legacy_elemtree_create_code": 0,
+          "legacy_tree_elements": 29,
+          "quilt_count": 0,
+          "ruled_written": false,
+          "surface_count": 0
+        },
+        {
+          "add_closed_written": false,
+          "create_code": -2,
+          "create_element_errors": {
+            "sample": [],
+            "total": 0
+          },
+          "dtm_srf_type_written": true,
+          "feature_form_value": 4096,
+          "form": "copy",
+          "ruled_written": false
+        },
+        {
+          "add_closed_written": false,
+          "create_code": -1,
+          "create_element_errors": {
+            "sample": [],
+            "total": 0
+          },
+          "dtm_srf_type_written": true,
+          "feature_form_value": 16384,
+          "form": "adv_surf",
+          "ruled_written": false
+        },
+        {
+          "add_closed_written": false,
+          "create_code": 0,
+          "create_element_errors": {
+            "sample": [],
+            "total": 0
+          },
+          "delete_code": 0,
+          "dtm_srf_type_written": true,
+          "extract_code_in_loop": 0,
+          "feature_form_value": 262144,
+          "feature_id": 68,
+          "feature_status": 0,
+          "form": "shut",
+          "geometry_item_count": 0,
+          "incomplete": true,
+          "legacy_elemtree_create_code": 0,
+          "legacy_tree_elements": 13,
+          "quilt_count": 0,
+          "ruled_written": false,
+          "surface_count": 0
+        },
+        {
+          "add_closed_written": false,
+          "create_code": -2,
+          "create_element_errors": {
+            "sample": [],
+            "total": 0
+          },
+          "dtm_srf_type_written": true,
+          "feature_form_value": 524288,
+          "form": "skirt_ext",
+          "ruled_written": false
+        },
+        {
+          "add_closed_written": false,
+          "create_code": -2,
+          "create_element_errors": {
+            "sample": [],
+            "total": 0
+          },
+          "dtm_srf_type_written": true,
+          "feature_form_value": 1048576,
+          "form": "skirt_fill",
+          "ruled_written": false
+        },
+        {
+          "add_closed_written": false,
+          "create_code": 0,
+          "create_element_errors": {
+            "sample": [],
+            "total": 0
+          },
+          "delete_code": 0,
+          "dtm_srf_type_written": true,
+          "extract_code_in_loop": 0,
+          "feature_form_value": 2097152,
+          "feature_id": 71,
+          "feature_status": 0,
+          "form": "prtsplit",
+          "geometry_item_count": 0,
+          "incomplete": true,
+          "legacy_elemtree_create_code": 0,
+          "legacy_tree_elements": 29,
+          "quilt_count": 0,
+          "ruled_written": false,
+          "surface_count": 0
+        }
+      ],
+      "guide_count": 0,
+      "guide_curve_ids": [],
+      "guide_geometry_ids": [],
+      "guide_source_kinds": [],
+      "guide_sources": [],
+      "guides": [],
+      "index": 0,
+      "interpolation": "straight",
+      "label": "probe_formsweep",
+      "op": "surface_loft",
+      "piecewise_ruled": true,
+      "route": "probbl_boundary_blend",
+      "section_count": 2,
+      "section_curve_ids": [
+        45,
+        53
+      ],
+      "section_geometry_ids": [
+        [
+          45
+        ],
+        [
+          53
+        ]
+      ],
+      "section_source_kinds": [
+        "sketch",
+        "sketch"
+      ],
+      "section_sources": [
+        {
+          "feature_id": 40,
+          "geometry_type": "curve",
+          "ids": [
+            45
+          ],
+          "index": 0,
+          "live_verified": true,
+          "source": "sketch"
+        },
+        {
+          "feature_id": 48,
+          "geometry_type": "curve",
+          "ids": [
+            53
+          ],
+          "index": 1,
+          "live_verified": true,
+          "source": "sketch"
+        }
+      ],
+      "sections": [
+        40,
+        48
+      ],
+      "succeeded": false,
+      "unverified_input_forms": []
+    }
+  ],
+  "rollback_succeeded": true,
+  "saved_file_reloaded_and_verified": false,
+  "session_fingerprint": "7785176304498676551",
+  "success": false,
+  "toolkit_code": -1,
+  "verify_stages": [
+    {
+      "elapsed_ms": 82,
+      "name": "connect",
+      "since_start_ms": 82
+    },
+    {
+      "elapsed_ms": 4689,
+      "name": "connected",
+      "since_start_ms": 4772
+    }
+  ]
+}

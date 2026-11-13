@@ -8,7 +8,9 @@ re-exports these classes, so both import paths stay valid.
 
 from __future__ import annotations
 
+import hashlib
 import re
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from pydantic import Field, field_validator, model_validator
@@ -281,6 +283,54 @@ class LoftBoundaryCondition(StrictModel):
     condition: Literal["free", "tangent", "curvature", "normal"]
 
 
+class LoftTemplate(StrictModel):
+    """BUG-123: build the blend from an element tree dumped by another release.
+
+    ``file`` is the XML ``creo_dump_feature_tree`` wrote for a real boundary
+    blend; the native side replaces only its curve collections and keeps every
+    other default, so the holder counts must match the request exactly (checked
+    natively, where the tree is parsed). The digest is optional but recommended:
+    a template that changes under the model would otherwise be applied silently.
+    """
+
+    file: str
+    sha256: str | None = None
+
+    @field_validator("file")
+    @classmethod
+    def _existing_xml(cls, value: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("template.file must be a non-empty path")
+        candidate = Path(value).expanduser()
+        if candidate.suffix.lower() != ".xml":
+            raise ValueError("template.file must be the XML written by creo_dump_feature_tree")
+        resolved = (candidate if candidate.is_absolute() else Path.cwd() / candidate).resolve()
+        if not resolved.is_file():
+            raise ValueError(f"template.file does not exist: {resolved}")
+        return str(resolved)
+
+    @field_validator("sha256")
+    @classmethod
+    def _digest_shape(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", text):
+            raise ValueError("template.sha256 must be a 64-character hex digest")
+        return text
+
+    @model_validator(mode="after")
+    def _digest_matches_the_file(self):
+        if self.sha256 is not None:
+            actual = hashlib.sha256(Path(self.file).read_bytes()).hexdigest()
+            if actual != self.sha256:
+                raise ValueError(
+                    "template.sha256 does not match the file on disk (" + actual + "); "
+                    "re-export or update the digest instead of loading a changed tree"
+                )
+        return self
+
+
 class SurfaceLoftOp(StrictModel):
     """Boundary blend with one or two directions (FEAT-009/H02, FEAT-065 M1/M2/M3).
 
@@ -324,6 +374,19 @@ class SurfaceLoftOp(StrictModel):
     guides: Annotated[list[LoftInput], Field(max_length=8)] = []
     # FEAT-065/M4: None keeps the dumped plan of every earlier request unchanged.
     boundary_conditions: Annotated[list[LoftBoundaryCondition], Field(max_length=4)] | None = None
+    # BUG-123/B2: read the tree from a dumped template instead of building it.
+    # The receipt then reports tree_source="template_xml" and the parsed counts.
+    template: LoftTemplate | None = None
+
+    @model_validator(mode="after")
+    def template_route_limits(self):
+        if self.template is not None and self.boundary_conditions:
+            raise ValueError(
+                "template trees keep the exporting run's TAN_COND subtree, so "
+                "boundary_conditions cannot be applied on the template route; remove the "
+                "template to use tangent boundaries"
+            )
+        return self
 
     @field_validator("sections", mode="before")
     @classmethod

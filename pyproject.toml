@@ -25,6 +25,12 @@ extend-exclude = [
     ".tmp", "build", "jobs", "models", "native/third_party",
     # BUG-001: historical evidence is immutable, including archived Python drivers.
     "docs/validation",
+    # BUG-089/BUG-123: the seed library is a hash-pinned distributed artifact -
+    # its bytes are what docs/seed_package.json and the published seed archive
+    # describe. Reformatting it silently changes the trusted archive digest, so
+    # style changes here are a release action (repackage + backfill the record),
+    # never a lint fix.
+    "seed_library",
 ]
 
 [tool.ruff.lint]

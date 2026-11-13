@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 from creo_mechdog.release_integrity import (
     seed_library_files,
+    template_library_files,
     validate_asset_paths,
     validate_release_inputs,
     validate_release_records,
@@ -83,6 +84,9 @@ def source_files():
         if p.is_file() and p.suffix in {".md", ".yml", ".yaml"}
     )
     files.extend(seed_library_files(ROOT))
+    # BUG-123: element tree templates ship with their manifest, which is also the
+    # allowlist and the digest record checked by validate_release_inputs().
+    files.extend(template_library_files(ROOT))
     for path in files:
         if not path.is_file() or path.is_symlink():
             raise ValueError(f"Missing source file or unexpected symlink: {path}")

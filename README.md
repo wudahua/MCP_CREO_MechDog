@@ -1,8 +1,8 @@
-# MCP_CREO_MechDog 0.23.2
+# MCP_CREO_MechDog 0.24.0
 
-![version](https://img.shields.io/badge/version-0.23.2-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
+![version](https://img.shields.io/badge/version-0.24.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.23.2**（PATCH——BUG-120/DEV-083：Creo 10 运行期 `surface_loft` 创建成功但元素树不可提取时，回执改为带 `extract_unsupported`、`kernel_completion="unsupported"`、`kernel_evidence` 与 `SURFACE_LOFT_EXTRACT_UNSUPPORTED` 的明确诊断并照旧回滚；`creo_session_status`/`creo_capabilities` 按 worker SHA 披露 `kernel_completion` 观测，不改变可用性判定；发布记录门禁新增逐 ID 状态归一化、主台账全表扫描与发布文档本地链接检查；公开工具仍 107） · [版本说明](docs/RELEASE_NOTES_0.23.2.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
+当前正式版 **0.24.0**（MINOR——BUG-121/122/123/124、FEAT-067：只读型计划自动按只读准入并为写计划失败补 `creo_reconcile_model` 指引；`surface_loft` 按同一 worker 实测的内核签名在提交前拒绝、不再留空壳；元素树模板 XML 路线（导出、原生 loader、双路线一致性）；STEP/IGES `import_geometry` 导入通道（独立新 part、许可与失败码原样透出）；计划级 `assertions.bbox_mm` 与 `assertions.surface_area_mm2` 断言；公开工具仍 107） · [版本说明](docs/RELEASE_NOTES_0.24.0.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 
