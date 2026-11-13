@@ -155,6 +155,9 @@ static ProError verify_surface(ProSurface s, ProError status, ProAppData) {
     return PRO_TK_NO_ERROR;
 }
 static int hole_definitions = 0;
+// A no-graphics session (-g:no_graphics) has no activatable model window; that
+// UI step must not turn a geometrically verified build into a failed job.
+static int window_activate_code = -1;
 static ProError verify_feature(ProFeature *f, ProError status, ProAppData) {
     if (status)
         throw status;
@@ -309,7 +312,8 @@ static std::wstring create_plate() {
     CK(ProViewMatrixSet(board, nullptr, preview_isometric_view));
     CK(ProWindowRefit(win));
     CK(ProWindowRepaint(win));
-    CK(ProWindowActivate(win));
+    window_activate_code = ProWindowActivate(win);
+    log("ProWindowActivate(win)=%d\n", window_activate_code);
     return saved;
 }
 #include "generic.cpp"
@@ -484,6 +488,7 @@ int wmain(int argc, wchar_t *argv[]) {
         << ",\"expected_volume_mm3\":" << expected_volume() << ",\"extrude_count\":" << counts[0]
         << ",\"round_count\":" << counts[1] << ",\"hole_count\":" << counts[2]
         << ",\"preview_code\":" << preview_code << ",\"disconnect_code\":" << disconnect_code
+        << ",\"window_activate_code\":" << window_activate_code
         << ",\"saved_file_reloaded_and_verified\":" << (result ? "false" : "true") << "}";
     J plate_result = J::parse(out.str());
     if (!preview_report.is_null()) {

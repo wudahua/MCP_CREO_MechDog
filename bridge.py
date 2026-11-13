@@ -744,7 +744,13 @@ def build_native() -> Path:
         data = b"\0SDK_HEADER\0" + p.relative_to(includes).as_posix().encode() + p.read_bytes()
         digest.update(data)
         abi.update(data)
-    startup_keys = {"auto_start_creo", "creo_startup_timeout_seconds", "creo_startup_psf"}
+    startup_keys = {
+        "auto_start_creo",
+        "creo_startup_timeout_seconds",
+        "creo_startup_psf",
+        "creo_startup_args",
+        "creo_worker_launch",
+    }
     settings = json.dumps(
         {key: value for key, value in c.items() if key not in startup_keys}, sort_keys=True
     ).encode()
@@ -1208,6 +1214,66 @@ def apply_terminal_stage(manifest: dict) -> None:
             manifest["stage"] = result["failed_stage"]
 
 
+WORKER_LAUNCH_MODES = ("auto", "direct", "desktop")
+TOOLKIT_HINTS = {
+    0: "Toolkit connection verified",
+    -4: (
+        "PRO_TK_BAD_CONTEXT: this worker process has no Toolkit context. That is a "
+        "worker process-context failure, not a license or Creo version problem; "
+        "compare creo_worker_launch modes before retrying"
+    ),
+    -8: "PRO_TK_E_NOT_FOUND: no current model is active; Creo itself is reachable",
+    -36: "Multiple Creo sessions match; configure creo_session_id before retrying",
+    -38: (
+        "PRO_TK_E_BUSY: Creo's message loop is blocked, typically by a modal dialog "
+        "such as a GPU driver error window. Check the xtop.exe window title before "
+        "retrying; a retry cannot clear the dialog"
+    ),
+}
+
+
+def worker_launch_mode() -> str:
+    """How the status probe starts the worker; see BUG-127."""
+    value = config().get("creo_worker_launch")
+    if value is None:
+        return "auto"
+    if not isinstance(value, str) or value not in WORKER_LAUNCH_MODES:
+        raise ValueError("creo_worker_launch must be 'auto', 'direct' or 'desktop'")
+    return value
+
+
+def toolkit_hint(value: dict) -> str:
+    """Actionable text for a Toolkit return code without exposing local paths."""
+    message = TOOLKIT_HINTS.get(
+        value.get("toolkit_code"),
+        f"Toolkit returned {value.get('toolkit_code')}; inspect native.log and the Creo session",
+    )
+    if value.get("worker_exit_code"):
+        message += (
+            f". The probe exited {value['worker_exit_code']}; exit 20 is its convention "
+            "for any failed connection, not a separate Creo error"
+        )
+    return message
+
+
+def _desktop_probe(
+    command: list[str], env: dict[str, str], budget: float, identity: dict
+) -> dict | None:
+    """Probe once through Explorer; None keeps the direct result authoritative."""
+    import desktop_worker
+
+    result = desktop_worker.run(command, ROOT / "build", env, budget, ROOT / "build/desktop_runs")
+    if result is None:
+        return None
+    try:
+        payload = json.loads(result.stdout.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return None
+    if not isinstance(payload, dict) or not isinstance(payload.get("connected"), bool):
+        return None
+    return _record_probe_result(result, worker_identity=identity)
+
+
 def session_status(connect_timeout_seconds: int = 30, *, build_worker: bool = True) -> dict:
     if (
         isinstance(connect_timeout_seconds, bool)
@@ -1215,6 +1281,7 @@ def session_status(connect_timeout_seconds: int = 30, *, build_worker: bool = Tr
         or not 1 <= connect_timeout_seconds <= 30
     ):
         raise ValueError("connect_timeout_seconds must be 1–30")
+    mode = worker_launch_mode()
     with toolkit_lock(operation="session_status"):
         exe = build_native() if build_worker else ROOT / "build/creo_worker.exe"
         if not build_worker and not exe.is_file():
@@ -1224,26 +1291,57 @@ def session_status(connect_timeout_seconds: int = 30, *, build_worker: bool = Tr
                 "message": "Native worker is unavailable; request creo_startup_status(retry=true)",
             }
         budget = connect_timeout_seconds + min(connect_timeout_seconds, 15) + 5
-        try:
-            result = subprocess.run(
-                [str(exe), "status", str(connect_timeout_seconds)],
-                cwd=ROOT / "build",
-                env=native_environment(),
-                capture_output=True,
-                timeout=budget,
-                creationflags=HIDDEN,
-            )
-        except subprocess.TimeoutExpired:
-            return record_channel_health(
-                False,
-                connection_state="probe_timeout",
-                toolkit_code=None,
-                probe_budget_seconds=budget,
-                message="Toolkit connection probe timed out; only this probe helper was stopped. "
-                "Inspect Creo dialogs and occupying jobs; preserve unknown jobs/models, then "
-                "request creo_startup_status(retry=true). No Creo process was closed.",
-            )
-        return _record_probe_result(result, worker_identity=worker_build_identity())
+        command = [str(exe), "status", str(connect_timeout_seconds)]
+        env = native_environment()
+        identity = worker_build_identity()
+        value = None
+        if mode != "desktop":
+            try:
+                result = subprocess.run(
+                    command,
+                    cwd=ROOT / "build",
+                    env=env,
+                    capture_output=True,
+                    timeout=budget,
+                    creationflags=HIDDEN,
+                )
+            except subprocess.TimeoutExpired:
+                return record_channel_health(
+                    False,
+                    connection_state="probe_timeout",
+                    toolkit_code=None,
+                    probe_budget_seconds=budget,
+                    message="Toolkit connection probe timed out; only this probe helper was stopped. "
+                    "Inspect Creo dialogs and occupying jobs; preserve unknown jobs/models, then "
+                    "request creo_startup_status(retry=true). No Creo process was closed.",
+                )
+            value = _record_probe_result(result, worker_identity=identity)
+            value["worker_launch"] = "direct"
+        # A worker that cannot see the Toolkit channel in this process tree can
+        # still connect when explorer.exe starts it outside the MCP host's job.
+        if mode == "desktop" or (
+            mode == "auto" and value is not None and value.get("toolkit_code") == -4
+        ):
+            desktop = _desktop_probe(command, env, budget, identity)
+            if desktop is None:
+                if value is None:
+                    return record_channel_health(
+                        False,
+                        connection_state="worker_unavailable",
+                        message="Toolkit worker could not be started through the desktop; check "
+                        "the interactive Explorer session, or set creo_worker_launch to direct",
+                    )
+                value["desktop_retry"] = "unavailable"
+            elif mode == "desktop" or desktop.get("connected") or desktop.get("toolkit_code") != -4:
+                desktop["worker_launch"] = "desktop"
+                value = desktop
+            else:
+                value["desktop_retry"] = {
+                    "connected": desktop.get("connected"),
+                    "toolkit_code": desktop.get("toolkit_code"),
+                }
+        value["toolkit_hint"] = toolkit_hint(value)
+        return value
 
 
 def _record_probe_result(

@@ -1,8 +1,8 @@
-# MCP_CREO_MechDog 0.24.0
+# MCP_CREO_MechDog 0.24.1
 
-![version](https://img.shields.io/badge/version-0.24.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
+![version](https://img.shields.io/badge/version-0.24.1-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.24.0**（MINOR——BUG-121/122/123/124、FEAT-067：只读型计划自动按只读准入并为写计划失败补 `creo_reconcile_model` 指引；`surface_loft` 按同一 worker 实测的内核签名在提交前拒绝、不再留空壳；元素树模板 XML 路线（导出、原生 loader、双路线一致性）；STEP/IGES `import_geometry` 导入通道（独立新 part、许可与失败码原样透出）；计划级 `assertions.bbox_mm` 与 `assertions.surface_area_mm2` 断言；公开工具仍 107） · [版本说明](docs/RELEASE_NOTES_0.24.0.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
+当前正式版 **0.24.1**（PATCH——BUG-125/126/127/128、DEV-089：`config.json` 新增 `creo_startup_args`，把 `-g:no_graphics`/`-i:rpc_input` 传给 `parametric.exe`（PSF 内 `RUN=` 追加会被丢弃）；无图形会话中 `ProWindowActivate` 失败不再判建模失败，改为记录 `window_activate_code`；`creo_worker_launch` 支持 `auto`/`direct`/`desktop`，`-4` 时经 Explorer 隐藏复核一次 worker 并回退直连；`session_status` 新增 `toolkit_hint` 区分 `-4`/`-38` 与退出码 20；安装文档补编译工具链实物预检与 Creo 13.4 编译层实测。本机 Creo 12.4 实测 GUI 与无图形会话均完成连接、拉伸/圆角/通孔、保存重载与预览；公开工具仍 107） · [版本说明](docs/RELEASE_NOTES_0.24.1.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 

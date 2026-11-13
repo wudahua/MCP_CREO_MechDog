@@ -124,6 +124,34 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -CreoRoot 'C
 
 ## 常见问题
 
+### 编译工具链实物预检
+
+`vswhere` 能列出 Visual Studio 实例、`setup.ps1` 的前置文件检查也通过，都不代表 C++ 工具链可用：只有 MSBuild、或只有 Windows SDK 的 `UnionMetadata` 时，问题要到编译阶段才以「找不到 `cl.exe`」或 `COMPILER_PREFLIGHT` exit 4 暴露。安装前先做三条实物检查，路径按实际版本替换：
+
+```powershell
+Test-Path "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe"
+Test-Path "C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\um\windows.h"
+Test-Path "C:\Program Files (x86)\Windows Kits\10\Lib\10.0.26100.0\um\x64\kernel32.lib"
+```
+
+三项都为 `True` 再安装。缺第一项时，给现有实例加 C++ 工作负载（管理员 PowerShell，约 2–4 GB）：
+
+```powershell
+& "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe" modify `
+  --installPath "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools" `
+  --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --quiet --norestart
+```
+
+`--quiet` 模式下控制台全程没有输出，日志在 `%TEMP%\dd_installer_elevated_*.log`；以三条实物检查为准，不要以「没有输出」判定卡死。
+
+若 `vcvars64.bat` 返回 0 但 `tools/compiler_preflight.py` 报缺 `stdio.h`、`windows.h` 或 `ucrt.lib`（构建 exit 4），通常是 SDK 探测被宿主安全策略拦截（例如 `reg.exe` 被禁用），不是机器缺少 SDK。这时用 `-VcVars64` 指定一个经审核的本机包装脚本，由它调用已安装的 `vcvars64.bat` 并显式补 `INCLUDE`、`LIB`、`PATH`：
+
+```powershell
+.\setup.ps1 -CreoRoot 'C:\Program Files\PTC\Creo 12.4.0.0' -VcVars64 'C:\MCP_CREO_MechDog\vcvars64_local.cmd'
+```
+
+包装脚本只写本机路径，不写许可值。MSVC 或 Windows SDK 升级、版本号目录变化后要同步修改脚本，否则重新编译会再次报同样的 exit 4。
+
 ### MCP 自动启动 Creo（FEAT-019）
 
 同时存在安装版和开发版时，重启客户端中的目标 MCP 服务后调用 `creo_capabilities`，核对 `runtime.python_executable`、`runtime.server_entry` 和 `runtime.code_root` 的实际路径。`runtime.source_fingerprints_at_startup` 记录服务初始化时的源码指纹（统一换行后计算），`runtime.source_changed_since_startup=true` 表示磁盘源码已变化，应重启服务再验收。服务名称和同为 `0.2.6` 的版本号不能区分两份源码；客户端配置改动也不会替换已运行的服务进程。
@@ -135,10 +163,22 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -CreoRoot 'C
 | `auto_start_creo` | `true` | 自动检测、复用；确认没有目标会话时启动 Creo。`false` 时由使用者手动打开 |
 | `creo_startup_timeout_seconds` | `120` | 原生准备完成后的连接等待，整数 10～600 秒 |
 | `creo_startup_psf` | `null` | 使用安装内 `Parametric/bin/parametric.psf`；可指定绝对 `.psf` 路径 |
+| `creo_startup_args` | `[]` | 追加给 `parametric.exe` 的参数数组，例如 `["-g:no_graphics", "-i:rpc_input"]`。参数加在 PSF 之后；PSF 内 `RUN=` 追加会被丢弃。只接受非空字符串，含控制字符时拒绝启动 |
+| `creo_worker_launch` | `"auto"` | 状态探针的 worker 启动方式。`direct` 只直连；`desktop` 只经 Explorer 隐藏启动；`auto` 先直连，仅在返回 `-4` 时再复核一次桌面启动 |
 
 后台初始化不会等待 Creo 启动完成才响应 MCP 握手。`creo_startup_status` 返回 `checking`、`building_worker`、`starting`、`waiting_for_connection` 或终态；只有实际 Toolkit 连接成功才返回 `ready`。原生准备另有 180 秒等待上限及构建子进程超时。等待或失败时建模入口拒绝入队，历史任务查询和能力查询仍可用。
 
 服务通过现有 Explorer 的 `ShellExecute` 启动配置安装内的 `parametric.exe`，PSF 经 Windows 参数编码单独传入，支持含空格路径，不拼接 `cmd.exe` 命令。自动启动需要同一用户、同一 Windows 会话中可访问的 Explorer 桌面。Creo 作为独立桌面程序保留，关闭 MCP 客户端不会主动关闭它。GUI 继承 Explorer 的桌面环境，并使用自身 PSF；原生 worker 所需的 Windows 环境变量会从当前用户环境补齐，许可值不进入诊断。没有可用桌面时可手动启动 Creo，再请求重新检测。
+
+`creo_startup_args` 把参数交给 `parametric.exe`，不是写进 PSF。希望 Creo 不进入 GPU 图形路径时：
+
+```json
+"creo_startup_args": ["-g:no_graphics", "-i:rpc_input"]
+```
+
+这两项来自 PTC 自带的 `proe_start.bat` 写法；Creo 13.4 的配置库已没有 `win32_gdi` 软件渲染选项，因此在旧显卡驱动会触发 TDR 蓝屏的环境里，无图形启动是当前唯一的项目侧入口。修改 `config.json` 后必须重启 MCP 服务，运行中的进程不重新读取配置。Creo 12.4 实测：`xtop.exe` 命令行出现同名参数、无界面，Toolkit 连接 `toolkit_code=0`；板件建模（拉伸、圆角、通孔、保存重载、预览）成功，`window_activate_code=-8` 只作诊断记录、不再判失败（见 [BUG-126](work-items/BUG-126.md)）。Creo 13.4 未测，失败时不要用连接成功代替建模验收。
+
+原生状态探针默认以子进程直接启动 `build/creo_worker.exe`。`auto` 模式下若探针返回 `-4`（`PRO_TK_BAD_CONTEXT`，worker 没有 Toolkit 上下文），服务会再经同一个 Explorer 以隐藏窗口启动一次 worker 复核，用于判断该差异是否随 MCP 宿主进程树出现（见 [BUG-127](work-items/BUG-127.md)）。桌面路径不可用、超时或仍返回 `-4` 时保留直连结果，并附 `desktop_retry` 说明，不改变错误语义；该路径只用于状态探针，不改建模作业的启动方式。
 
 同一用户会话、安装和 PSF 的多个服务共享 `%LOCALAPPDATA%/MCP_CREO_MechDog/startup/<目标摘要>/` 下的锁、`state.json` 和 `startup.log`。启动预留先于实际拉起写入；先前结果不确定且当前没有进程时，需要显式调用 `creo_startup_status(retry=true)`。重试会复查实际进程，正在启动或已有 Creo 时继续等待，不重复创建。日志不包含许可或敏感会话 ID。冷启动时先依据进程检查拉起 GUI，再进行真实 Toolkit 探测，避免首次探测创建的名称服务随 MCP 主机退出而被清理。Explorer 启动接口不提供子进程退出码；请求异常记录为失败，无就绪确认则有界超时，不将启动请求返回当作成功。
 
@@ -155,6 +195,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -CreoRoot 'C
 | `vcvars64` 成功但缺少 `stdio.h` / SDK 库 | 核对推荐组件、Windows SDK 与注册表 / `reg.exe` 探测；由管理员修复环境，或用 `vcvars64_env` / `-VcVars64Env` 提供完整环境，仍须通过编译前置自检 |
 | 原生构建 `error C2065`，名称为 `PRO_*` | 检查失败消息中的 SDK 版本方向提示和末尾最多 15 条 error 摘要；提示只表示可能使用了较新 SDK 常量，不能直接断言所需版本。完整错误保留在 `build/build.log` |
 | 文件检查通过但 Toolkit 连接失败 | 确认只打开一个 Creo 会话，处理模态对话框，再核查当前 PTC 许可；检查 `license_diagnostics`，路径拼写错误可能导致许可文件不存在 |
+| `toolkit_code=-4`、`worker_exit_code=20` | `PRO_TK_BAD_CONTEXT` 表示该 worker 进程没有 Toolkit 上下文，不是许可或 Creo 版本问题。先看返回的 `toolkit_hint` 与 `worker_launch`；需要区分宿主进程树时可把 `creo_worker_launch` 设为 `desktop`（见 [BUG-127](work-items/BUG-127.md)） |
+| `toolkit_code=-38` | `PRO_TK_E_BUSY`：Creo 消息循环被模态对话框堵住。先看 `xtop.exe` 的窗口标题（例如 `NVIDIA OpenGL Driver` 错误框），处理对话框后再查；直接重试不会清除对话框 |
+| 冷启动后首次查询仍是 `waiting_for_connection` 或 `timeout` | 冷启动常见 60–120 秒。按 `creo_startup_timeout_seconds` 的预算轮询，不要在一次探针失败后立刻重启 Creo；确实超时再请求 `retry=true` |
+| `lmutil lmstat` / `ptcstatus.bat` 报 `-13,66` | 节点锁定许可文件没有 `SERVER` 行，这两个工具不适用。以 `support.inf` 的许可段和实际建模结果判断，不能据此认定许可无效 |
 | 客户端发现工具但调用报缺少 `config.json` | 在同一源码目录完成 `setup.ps1`，核查客户端 command/args |
 | 参数变化后版本不匹配 | 查询最新模型 revision；修改现有零件时提供 `expected_revision` |
 | Creo 路径长度错误 | 将源码放入较短路径，并重新安装及生成客户端配置 |

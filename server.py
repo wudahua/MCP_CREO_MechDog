@@ -82,6 +82,7 @@ _SOURCE_NAMES = (
     "capabilities.py",
     "bridge.py",
     "creo_startup.py",
+    "desktop_worker.py",
     "src/creo_mechdog/__init__.py",
     "src/creo_mechdog/paths.py",
     "src/creo_mechdog/validation_errors.py",

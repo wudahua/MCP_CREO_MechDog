@@ -7,5 +7,7 @@
   "creo_session_id": "",
   "auto_start_creo": true,
   "creo_startup_timeout_seconds": 120,
-  "creo_startup_psf": null
+  "creo_startup_psf": null,
+  "creo_startup_args": [],
+  "creo_worker_launch": "auto"
 }

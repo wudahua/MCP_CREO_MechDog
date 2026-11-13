@@ -6,7 +6,8 @@
 
 2026-11-08 DEV-080补充：`creo_surface_boundary_fill` 与 `creo_surface_loft` 同源于 `Probbl.h` 的边界混合元素树；不含该头的 Toolkit SDK（已观测：Creo 10.0.0.0）上两者均不可用。执行器在 `creo_worker.exe build-info` 自报头条件状态，Python 侧按已验证的 worker 身份在提交作业前拒绝，给出 `SURFACE_LOFT_SDK_UNAVAILABLE` 一类明确降级回执，不伪造几何，也不应被误判为安装失败；`surface_boundary_fill` 另保持能力面 GATED。缺头 SDK 的整包编译还受 `native/surface_boundary_fill.cpp` 复用 `surface_loft.cpp` 内部符号影响，根因、抽头方案与不依赖 `Probbl.h` 的等价元素树见 [DEV-080](work-items/DEV-080.md) H01；需 Creo 10 SDK 编译与实机几何验收，本机未验，不据门控夹具外推为通过。
 
-> **版本归属说明（2026-11-11）：** 当前**已发布**版本为 **0.22.0**（以 [version.py](../version.py) 为准；MINOR，[FEAT-065](work-items/FEAT-065.md) M3/M4：`creo_surface_loft` 接受已有曲线与 quilt 边、首末截面可用收敛点，新增 `boundary_conditions` 的边来源 `tangent`，`creo_measure_surface_group` 回执新增 `open_edge_records`，见下方 0.22.0 分节、[版本说明](RELEASE_NOTES_0.22.0.md)与[发布记录](validation/RELEASE-0.22.0.md)）。0.19.0 之后依次发布 0.19.1—0.19.3、0.20.0（DEV-081 B 批，含选择性切除作用域，见下方 2026-11-10 分节）、0.21.0（[FEAT-065](work-items/FEAT-065.md) M1/M2：`creo_surface_loft` 2—32 截面与 2—8 条第二方向导线，见下方 0.21.0/0.21.1 分节与[发布记录](validation/RELEASE-0.21.0.md)）、0.21.1（[BUG-118](work-items/BUG-118.md) compact 回执保留曲面放样测量值，见[版本说明](RELEASE_NOTES_0.21.1.md)与[发布记录](validation/RELEASE-0.21.1.md)）与 0.22.0，均未新增工具，公开工具仍 **107**。下文分节按写作时点保留各自结论，**章节顺序不代表版本顺序**；"当前"字样属于该节的写作时点，不作为今天的交付状态。
+> **版本归属说明（2026-11-13）：** 当前**已发布**版本为 **0.24.0**；本分支候选 **0.24.1**（PATCH：`creo_startup_args` 启动参数、`creo_worker_launch` 桌面复核、`toolkit_hint` 诊断、无图形 `ProWindowActivate` 容错，公开工具仍 107；见 [0.24.1 版本说明](RELEASE_NOTES_0.24.1.md)）。下文各条"当前"字样属于该条写作时点。
+> **版本归属说明（2026-11-11）：** 当时**已发布**版本为 **0.22.0**（以 [version.py](../version.py) 为准；MINOR，[FEAT-065](work-items/FEAT-065.md) M3/M4：`creo_surface_loft` 接受已有曲线与 quilt 边、首末截面可用收敛点，新增 `boundary_conditions` 的边来源 `tangent`，`creo_measure_surface_group` 回执新增 `open_edge_records`，见下方 0.22.0 分节、[版本说明](RELEASE_NOTES_0.22.0.md)与[发布记录](validation/RELEASE-0.22.0.md)）。0.19.0 之后依次发布 0.19.1—0.19.3、0.20.0（DEV-081 B 批，含选择性切除作用域，见下方 2026-11-10 分节）、0.21.0（[FEAT-065](work-items/FEAT-065.md) M1/M2：`creo_surface_loft` 2—32 截面与 2—8 条第二方向导线，见下方 0.21.0/0.21.1 分节与[发布记录](validation/RELEASE-0.21.0.md)）、0.21.1（[BUG-118](work-items/BUG-118.md) compact 回执保留曲面放样测量值，见[版本说明](RELEASE_NOTES_0.21.1.md)与[发布记录](validation/RELEASE-0.21.1.md)）与 0.22.0，均未新增工具，公开工具仍 **107**。下文分节按写作时点保留各自结论，**章节顺序不代表版本顺序**；"当前"字样属于该节的写作时点，不作为今天的交付状态。
 > **版本归属说明（2026-11-08）：** 当时**已发布**版本为 **0.19.0**（DEV-074 曲面与整链批：FEAT-055/H08 新增 `creo_surface_round` 与只读 `creo_measure_surface_curvature`，FEAT-039/H03 重新公开 `creo_quilt_merge`，H10 五爪整瓶整链实机；公开工具 104→107；钣金成形类、独立 quilt 偏置与任意非平面 fill 仍不可用，门禁保持，见[发布记录](validation/RELEASE-0.19.0.md)）；下文分节按写作时点保留各自结论，**章节顺序不代表版本顺序**；"当前"字样属于该节的写作时点，不作为今天的交付状态。
 > **版本归属说明（2026-11-07 补记）：** 当时**已发布**版本为 **0.18.4**（DEV-074 0.18.3 后续实机批：FEAT-039/H09 旋转球面替代、H10 多 quilt 整链、H07 独立 quilt 偏置反证，FEAT-055/H08 曲面边圆角可行性，FEAT-014/H05 钣金附着增料反证，BUG-115/H12 回执复验；公开工具仍 104，无新增能力，见[发布记录](validation/RELEASE-0.18.4.md)）；上文分节按写作时点保留各自结论，**章节顺序不代表版本顺序**；"当前"字样属于该节的写作时点，不作为今天的交付状态。
 > **版本归属说明（2026-11-07 补记）：** 当时**已发布**版本为 **0.18.3**（DEV-074 0.17.4 反馈批：FEAT-058/H01 非零 origin 大跨度 resize 修复、FEAT-009/H02 `creo_surface_loft`、FEAT-039/H04 `creo_measure_surface_group` 与 H06 保留侧几何，公开工具 102→104，见[发布记录](validation/RELEASE-0.18.3.md)）；上文分节按写作时点保留各自结论，**章节顺序不代表版本顺序**；"当前"字样属于该节的写作时点，不作为今天的交付状态。
@@ -14,6 +15,13 @@
 > **版本归属说明（2026-11-06 补记）：** 当时**已发布**版本为 **0.16.0**（FEAT-014 miter cuts 四壁与 FEAT-004 尺寸守卫，公开工具仍 100，见[发布记录](validation/RELEASE-0.16.0.md)）；下文分节按写作时点保留各自结论，**章节顺序不代表版本顺序**；"当前"字样属于该节的写作时点，不作为今天的交付状态。
 > **版本归属说明（2026-11-05 补记）：** 当时**已发布**版本为 **0.12.1**，本次交付候选为 **0.13.0**（开发分支验收完成，未合并 main、未发布，见[发布记录](validation/RELEASE-0.13.0.md)）；下文分节按写作时点保留各自结论，**章节顺序不代表版本顺序**；"当前"字样属于该节的写作时点，不作为今天的交付状态。
 > **版本归属说明（2026-11-04 补记）：** 当时正式版为 **0.12.0**（见下方对应分节）。本文件按版本分节保留各自时点的结论，**章节顺序不代表版本顺序**；"当前"字样属于该节的写作时点，不作为今天的交付状态。
+
+## 2026-11-13：Creo 13.4.0.0 编译层实测与无图形启动（随 0.24.1 披露）
+
+- **编译证据**：报告环境 Creo 13.4.0.0（`release_numeric=45`）用 13.4 Toolkit SDK 一次编译通过，`creo_worker.exe constants` 自检 rc=0，`native/constants.inc` 正常生成。本机无 Creo 13.4 SDK，未复现。
+- **运行期未验收**：该环境 worker 直连返回 `toolkit_code=-4`（`PRO_TK_BAD_CONTEXT`），建模未完成；0.24.1 提供 `creo_worker_launch="desktop"` 复核路径（[BUG-127](work-items/BUG-127.md)），报告宿主是否因此恢复仍未验证。
+- **无图形启动**：本机 Creo 12.4.0.0 实测 `-g:no_graphics` + `-i:rpc_input` 下 `xtop.exe` 带同名参数且无界面，连接 `toolkit_code=0`，板件建模成功（`window_activate_code=-8` 仅记录），见 [BUG-125](work-items/BUG-125.md)/[BUG-126](work-items/BUG-126.md)。
+- **不支持声明**：以上不构成 Creo 13 支持声明；Creo 9/10 运行期状态不变，Creo 10 仍按下方 0.23.2 分节处理。
 
 ## 2026-11-13：Creo 10 运行期边界混合不可提取（随 0.23.2 披露）
 

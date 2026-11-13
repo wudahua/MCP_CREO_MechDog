@@ -1,5 +1,7 @@
 # 统一开发台账
 
+2026-11-13（0.24.1 启动参数与无图形批）：[BUG-125](work-items/BUG-125.md) 新增 `creo_startup_args`，参数经 `parametric.exe` 传给 `xtop.exe`；[BUG-126](work-items/BUG-126.md) 无图形会话中 `ProWindowActivate` 失败只记录 `window_activate_code`，不再判建模失败；[BUG-127](work-items/BUG-127.md) `creo_worker_launch` 三段配置与 `-4` 时经 Explorer 隐藏复核一次 worker；[BUG-128](work-items/BUG-128.md) `toolkit_hint` 区分 `-4`/`-38` 与退出码 20；[DEV-089](work-items/DEV-089.md) 安装文档补编译工具链实物预检与 Creo 13.4 编译层实测。五项无保留范围，按台账规则直接归档至[完成档案](BACKLOG_COMPLETED.md#已完成事项)，主台账表行仍 **185**（BUG 83 / FEAT 64 / DEV 38）；编号新增 BUG-125—128、DEV-089。本机 Creo 12.4.0.0 GUI 与 `-g:no_graphics` 会话各完成一次板件建模（job `3e57c202…` 29332.6105317228 vs 29332.61056745 mm³、job `907995ee…` 12475.327397219 vs 12475.3274122872 mm³，保存重载 verified），`direct`/`desktop` 两路径均 `toolkit_code=0`。全量 3570 项单测 3567 通过；`unit.test_inspection_only_admission` 3 项在本机因 `.tmp` 下 `runner.log` 被占用（`WinError 32`）失败，未含本版改动的基线同样复现，属本机环境问题。随 **0.24.1** 发布，四附件与 sidecar 远端核对见[发布记录](validation/RELEASE-0.24.1.md)，未测范围见[证据](validation/STARTUP-HEADLESS-2026-11-13.md)。
+
 2026-11-13 [DEV-088](work-items/DEV-088.md)：明确开发 AI 自主承担参照取样、取树、单变量对照、引用重绑与重建/独立验收，不让维护者代做技术判断；离线核验、四情境只读试用和终审通过，移入[完成档案](BACKLOG_COMPLETED.md)。保留当次实机确认与缺口报告，本次未编译或真实取样。
 
 2026-11-13 [DEV-087](work-items/DEV-087.md)：为不熟悉机械/Creo 的软件维护者补白话变更说明，按目标、因果、前后行为、独立预期与未证明范围汇报；两例历史说明、独立只读试用/局部复验及终审通过，移入[完成档案](BACKLOG_COMPLETED.md)。只改资料，保留其它任务现场；未编译或实机。

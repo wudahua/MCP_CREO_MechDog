@@ -349,6 +349,16 @@ class SeedPackagerAllowlistTests(unittest.TestCase):
         self.assertIn("tests/native/test_surface_measure_guard.cpp", fixtures)
         self.assertEqual({name for name in packaged if name.startswith("tests/native/")}, fixtures)
 
+    def test_source_package_ships_every_root_module(self):
+        packaged = {path.relative_to(ROOT).as_posix() for path in package.source_files()}
+        root_modules = {path.name for path in ROOT.glob("*.py") if path.is_file()}
+        self.assertTrue(root_modules)
+        self.assertEqual(
+            sorted(root_modules - packaged),
+            [],
+            "a root-level module is imported at runtime but missing from the source allowlist",
+        )
+
     def test_seeds_module_exposes_the_trusted_digest_entry_point(self):
         self.assertEqual(
             seeds.expected_archive_sha256(), release_integrity.trusted_seed_archive_digest(ROOT)

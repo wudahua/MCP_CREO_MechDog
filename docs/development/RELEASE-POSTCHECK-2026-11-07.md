@@ -9,6 +9,16 @@
 - 环境：Windows x64；Python 3.12 虚拟环境（`.venv`）；`gh` 已登录；源码目录 `C:\i0182`（`origin/main` 的独立工作树，0.18.2 开发分支），核对对象是已发布远端 Release，不受工作区改动影响。
 - 命令输出原文见本轮 `build/postcheck/postcheck.log`；下表 digest 由 GitHub Release API 的 `assets[].digest` 读出，与本地重算结果一致。
 
+## v0.24.1（2026-11-13）
+
+- 版本与范围：`0.24.1` PATCH，公开工具仍 107；交付 [BUG-125](../work-items/BUG-125.md)、[BUG-126](../work-items/BUG-126.md)、[BUG-127](../work-items/BUG-127.md)、[BUG-128](../work-items/BUG-128.md) 与 [DEV-089](../work-items/DEV-089.md)，五项无保留范围、按台账规则归档至[完成档案](../BACKLOG_COMPLETED.md)；发布记录见 [RELEASE-0.24.1](../validation/RELEASE-0.24.1.md)。
+- 打包顺序：`tools\package_seeds.py` → 回填 `docs/seed_package.json` → 重建确认摘要不变 → `tools\package.py`（内置四附件与发布记录门禁）→ 打标签并发布 → `tools\check_release_assets.py --tag v0.24.1`。
+- 种子包 SHA256 `ee15813b935e14f7f84c49ea80160c28b45b18947f8b87bcdd5a297a40ce365d`（24 个文件、9 个种子、493 442 字节；回填后本地重算摘要一致，包内 `seed_manifest.json` 声明 `compatible_server_version=0.24.1`）。
+- 源码包 `MCP_CREO_MechDog-0.24.1-source.zip` 由发布提交源码构建，`package.py` 的四附件门禁与发布记录门禁均通过；字节数与 SHA256 见同名 sidecar 与 Release 正文，不写入包内文件。
+- Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.24.1`；四附件为 `MCP_CREO_MechDog-0.24.1-source.zip`、`MCP_CREO_MechDog-0.24.1-source.zip.sha256`、`MCP_CREO_MechDog-0.24.1-seed-library.zip` 与 `MCP_CREO_MechDog-0.24.1-seed-library.zip.sha256`；`source.zip` 的摘要见同名 sidecar，不写入包内。
+- 核对命令：`tools\check_release_assets.py --tag v0.24.1` → 期望 exit 0，四附件齐全、两个 sidecar 与对应 ZIP 摘要一致；Release id、时间戳与逐附件 digest 由该命令的发布后结果回写本段。
+- 本版含 `native/worker.cpp` 变更，升级后必须重编 worker；手工改 `creo_startup_args` 或 `creo_worker_launch` 后必须重启 MCP 服务。本段只做附件与标签核对，不重新验证包内功能；功能验收与未测范围以 [RELEASE-0.24.1](../validation/RELEASE-0.24.1.md) 与 Release 正文为准。
+
 ## v0.17.4
 
 - 标签对象：`v0.17.4` → 提交 `b57dbdac7747c670433b964a5294f8373b6c757b`；发布 2026-11-07T05:24:16Z；非 Pre-release。

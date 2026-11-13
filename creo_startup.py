@@ -78,6 +78,22 @@ def _retry_explanation(state: str, *, allowed: bool, blocked_by: str | None, run
     return {"next_allowed_retry_at": None, "next_allowed_retry_reason": reason}
 
 
+def _startup_args(value: object) -> tuple[str, ...]:
+    """Extra parametric.exe arguments; a PSF's own RUN= additions are dropped."""
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ValueError("creo_startup_args must be an array of strings")
+    args: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item:
+            raise ValueError("creo_startup_args items must be non-empty strings")
+        if any(character in item for character in "\r\n\0"):
+            raise ValueError("creo_startup_args items cannot contain control characters")
+        args.append(item)
+    return tuple(args)
+
+
 @dataclass(frozen=True)
 class Settings:
     executable: Path
@@ -85,6 +101,7 @@ class Settings:
     auto_start: bool
     timeout: int
     selected: bool
+    args: tuple[str, ...] = ()
 
     @classmethod
     def load(cls) -> Settings:
@@ -110,9 +127,10 @@ class Settings:
         selected = value.get("creo_session_id", "")
         if not isinstance(selected, str) or any(c in selected for c in "\r\n\0"):
             raise ValueError("creo_session_id must be a string without control characters")
+        args = _startup_args(value.get("creo_startup_args"))
         # Missing launch files do not prevent reuse or manual connection when
         # automatic startup is disabled; validate them immediately before launch.
-        return cls(executable.resolve(), psf.resolve(), auto, timeout, bool(selected))
+        return cls(executable.resolve(), psf.resolve(), auto, timeout, bool(selected), args)
 
 
 _kernel = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -210,9 +228,11 @@ def launch_creo(settings: Settings, directory: Path) -> DesktopLaunch:
         # outside the stdio host's KILL_ON_JOB_CLOSE tree. Its installed PSF
         # supplies GUI runtime/license settings; worker-specific DLL paths are
         # kept out of the GUI process. ShellExecute's return is NOT readiness.
+        # Extra arguments must follow the PSF on parametric.exe; the PSF's own
+        # RUN= line ignores them, and copying the PSF breaks %CREOAPP_DIRECTORY%.
         shell.ShellExecute(
             str(settings.executable),
-            subprocess.list2cmdline([str(settings.psf)]),
+            subprocess.list2cmdline([str(settings.psf), *settings.args]),
             str(directory),
             "open",
             1,
@@ -1283,9 +1303,10 @@ class CreoStartup:
                     )
                     return
                 if native.get("connection_state") not in ("no_session", "not_found_or_unreadable"):
+                    detail = native.get("toolkit_hint") or "inspect the native code before retrying"
                     self._publish(
                         "launch_failed",
-                        "Toolkit connection failed for a reason other than an absent session; inspect the native code before retrying",
+                        f"Toolkit connection failed for a reason other than an absent session: {detail}",
                         native=native,
                     )
                     return
