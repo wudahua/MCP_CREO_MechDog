@@ -60,8 +60,19 @@
 - `MCP_CREO_MechDog-0.24.1-seed-library.zip.sha256`（种子包摘要同样在 sidecar 中）
 
 - 种子包 SHA256：`ee15813b935e14f7f84c49ea80160c28b45b18947f8b87bcdd5a297a40ce365d`（24 个文件、9 个种子、493 442 字节，与 `docs/seed_package.json` 一致）。
-- Release 地址：<https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.24.1>；标签 `v0.24.1` 指向本版发布提交，Release id、`created_at`、`published_at` 与四附件的远端 digest 由发布后的 `tools/check_release_assets.py --tag v0.24.1` 结果回写到本段与本文件 POSTCHECK `## v0.24.1` 段。
-- 发布后核对命令：`tools\check_release_assets.py --tag v0.24.1`，期望 exit 0 且输出「four assets downloaded and verified; both sidecars match」；该命令同时解压源码包运行记录门禁。
+- Release：[v0.24.1](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.24.1)，id `444282824`，非 draft、非 prerelease，`created_at=2026-11-13T13:46:35Z`，`published_at=2026-11-13T13:47:10Z`，target `main`（提交 `39c54ccf7689ac16e489082cd035082950f16de0`，标签对象 `f1f08ee3cb562279e45c4e57ac33a9d679497a8c`）。
+- 核对命令：`tools\check_release_assets.py --tag v0.24.1` → exit 0，「four assets downloaded and verified; both sidecars match」；该命令同时解压源码包运行记录门禁并通过。
+- 四附件（逐个上传，不用通配；远端 `sha256:` digest、本地重算与 sidecar 内容逐一致）：
+
+| 附件 | 字节 | SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.24.1-source.zip` | 10 125 185 | `b74672b5915f8733fd1e950e76aebbe25fe37bd988a72d23796a5584d3b2712b` |
+| `MCP_CREO_MechDog-0.24.1-source.zip.sha256` | 101 | `b2d8b116d7288dcb429018491d197de4d692c39410536ebb05ea2ff6b59b7dfa` |
+| `MCP_CREO_MechDog-0.24.1-seed-library.zip` | 493 442 | `ee15813b935e14f7f84c49ea80160c28b45b18947f8b87bcdd5a297a40ce365d` |
+| `MCP_CREO_MechDog-0.24.1-seed-library.zip.sha256` | 107 | `98d9a250872b84c6a7dbb04f049177d4fda39b536b5902c131fcc063a0e45ced` |
+
+- 重建核对：在发布提交的干净克隆中重跑两个打包脚本，种子包摘要仍为 `ee15813b…`（确定性构建）；源码包 1853 个成员中 1851 个 CRC 与发布包相同，差异仅 `native/third_party/json.hpp` 与 `LICENSE.nlohmann-json` —— 工作树保留供应商 CRLF 原件、仓库 blob 为 LF，第三方原件未改动，与 0.24.0 包的处理一致。ZIP 内文件时间戳不参与摘要比对。
+- 本版未连接 Creo 复跑、未在报告宿主（WorkBuddy）上验证 `desktop` 路径；实机数据属于 0.24.1 交付前取得的当次会话，实际发布结果只回填到 `main` 的本段与 POSTCHECK `## v0.24.1` 段，不回写包内快照。
 
 ## 逐 ID 状态核对
 
