@@ -103,7 +103,7 @@ Creo 软件、SDK、模板与许可需自行取得；MIT 只覆盖本项目原�
 | 我想… | 看这里 |
 | --- | --- |
 | 安装、排错、升级 | [docs/INSTALL.md](docs/INSTALL.md) |
-| 查工具参数与引用格式 | [docs/REFERENCE_SYNTAX.md](docs/REFERENCE_SYNTAX.md)、[docs/MODELING_0.21.md](docs/MODELING_0.21.md) |
+| 查工具参数与引用格式 | [docs/REFERENCE_SYNTAX.md](docs/REFERENCE_SYNTAX.md) |
 | 找可复制的建模方案 | [examples/](examples/) |
 | 确认哪些功能已实测 | [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) |
 | 种子库 / 换电脑换 Agent | [docs/SEED_LIBRARY.md](docs/SEED_LIBRARY.md)、[docs/MIGRATION.md](docs/MIGRATION.md) |

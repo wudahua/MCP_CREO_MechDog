@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 与用户沟通一律使用中文（2026-11-11 用户要求）。
 
-上面导入的 AGENTS.md 是仓库约束的权威来源（台账准入、Creo 实机放行确认制、WorkBuddy 黑盒约定、合入 main 必须同次发布 Release 等），本文件只补充它没写的操作细节，不重复其规则。开发入口见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)，唯一台账见 [docs/BACKLOG.md](docs/BACKLOG.md)，发布流程见 [docs/development/RELEASING.md](docs/development/RELEASING.md)。
+上面导入的 AGENTS.md 是仓库约束的权威来源（台账准入、本机实机常设授权、WorkBuddy 黑盒约定、合入 main 必须同次发布 Release 等），本文件只补充它没写的操作细节，不重复其规则。开发入口见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)，唯一台账见 [docs/BACKLOG.md](docs/BACKLOG.md)，发布流程见 [docs/development/RELEASING.md](docs/development/RELEASING.md)。
 
 ## 命令（本会话 shell 是 Git Bash）
 
@@ -25,7 +25,7 @@ AGENTS.md 中的命令是 PowerShell 写法；在 Bash 中改用正斜杠：
 ```
 
 - 分拆运行的单测不能代替最终 `dev_check.py` 全量结论；单元阶段默认 900 s（`--unit-timeout-seconds` 调整），超时按未通过记。
-- `tools/test_*.py` 是集成/离线驱动：多数默认只做离线契约检查，加 `--live --confirm-session-usable` 才会通过公开 MCP 工具驱动真实 Creo，必须先得到用户当次确认。部分驱动（如 `tools/test_assembly_pose.py`）用 `config.json` 的 vcvars64 编译 `tests/native/*.cpp`，只测与 SDK 无关的原生辅助头文件，不算建模证据。
+- 各集成驱动的启动参数见其 `--help`。例如 `tools/test_surface_chain.py` 默认运行离线检查，须同时传入 `--live --confirm-session-usable` 才启用实机模式。本机操作范围见[实机常设授权](AGENTS.md#配置许可与本机实机常设授权)。部分驱动（如 `tools/test_assembly_pose.py`）用 `config.json` 的 vcvars64 编译 `tests/native/*.cpp`，只测与 SDK 无关的原生辅助头文件，不算建模证据。
 - 从仓库根全量 Glob/Grep 容易超时（`jobs/`、`models/`、`build/`、`.venv/` 很大）；把搜索限定在 `src/`、`native/`、`tools/`、`tests/`、`docs/` 或根 `*.py`。`docs/validation/` 是逐字节冻结的历史原件，只读。
 
 ## 一次建模任务的进程链

@@ -40,16 +40,8 @@ DEV-004 在上下文明确后逐个模块转为独立编译，维护头文件依
 | DEV-003 | C++ 执行上下文、资源与声明 | 模块边界明确；匹配 SDK 构建和受影响实机用例通过 |
 | DEV-004 | 逐模块独立编译、原生测试归档 | 取消相应文本包含；构建缓存正确；保存重载及回滚验收通过 |
 
-每批是独立工作，DEV-002 第一、二批已完成，第二批已通过本机开发验收及 WorkBuddy 已测场景；按用户 2026-10-15 要求取消 Creo 10 独立验收门槛，进度见 [任务卡](../work-items/DEV-002.md)。原有历史测试和证据保留，迁移时不得改写其验收日期与支持范围。
-
 ## DEV-002 当前批次
 
-第一批已将 update_check 实现迁入 src/creo_mechdog，对应单元迁入 tests/unit。paths.ProjectPaths 显式区分包、资源与数据根目录，默认资源/数据仍在原安装目录；bridge.ROOT 等旧消费者尚待后续迁移，当前没有新增生产数据目录开关。包通过 setup.ps1 或 requirements-dev.txt 的标准 editable 安装加载，根 server.py / bridge.py 与唯一 version.py 保留兼容。安装与源码包独立验证见 [第一批证据](../validation/DEV-002-batch1.md)。
+当前进度、剩余验收与依赖见 [DEV-002 工作卡](../work-items/DEV-002.md)。
 
-第二批将 schema、profile_checks、airfoil 的实现迁入同一包。根同名模块只转发导出，旧导入和包内导入共享模型类型；服务、桥接及测试消费者使用包内入口。源码身份清单同时覆盖包内实现与根包装，标准安装同时安装三个兼容模块。26 项纯校验/辅助回归迁入 tests/unit，涉及桥接保护和种子的混合用例继续保留原位置，完整发现数为 199（原 191 加新增 8），无漏发现或重复。代码/资源/数据位置、后台入口和 version.py 不变。
-
-第二批开发验收与 [WorkBuddy 已测场景](../validation/DEV-002-batch2-WorkBuddy-acceptance-20261015.md)的历史结果见[第二批记录](../validation/DEV-002-batch2.md)。第三批将 seeds、capabilities 的实现迁入包内，保留根薄导出与 seeds CLI，并让 editable 安装支持仓库外旧导入。详见[第三批计划](../superpowers/plans/2026-11-02-dev002-batch3-package-migration.md)和[本批证据](../validation/DEV-002-batch3.md)。
-
-第四批迁移服务、桥接与启动实现。安装器、MCP 客户端和已接受作业继续使用各自的根入口，包内运行时模块直接使用包内桥接。迁移及验收见 [DEV-002 任务卡](../work-items/DEV-002.md)。
-
-第五批将新客户端配置改为包入口，由 `src/creo_mechdog/__main__.py` 启动同一个服务。运行诊断中的 `server_entry` 对应实际入口文件，源码指纹包含包入口和根兼容入口。
+早期包化验收按批次查阅[第一批记录](../validation/DEV-002-batch1.md)、[第二批记录](../validation/DEV-002-batch2.md)和[第三批记录](../validation/DEV-002-batch3.md)。第二批另有 [WorkBuddy 验收记录](../validation/DEV-002-batch2-WorkBuddy-acceptance-20261015.md)。第三批的迁移设计见[已归档的历史计划](../archive/superpowers/plans/2026-11-02-dev002-batch3-package-migration.md)。
