@@ -45,8 +45,8 @@
 | 其它 agent 处理范围 | 20 |
 | 开发中 | 10 |
 | 部分交付，剩余待验收 | 62 |
-| 部分交付，剩余待规划 | 7 |
-| 待规划 | 56 |
+| 部分交付，剩余待规划 | 11 |
+| 待规划 | 52 |
 
 BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与真实缺口，勿重复派工。
 
@@ -317,6 +317,10 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 <a id="未来能力候选"></a>
 <a id="当前优先功能"></a>
+| [DEV-081](work-items/DEV-081.md) | P1 | B1/B2/B3/B4 已随 0.20.0 实机验收交付；B5/B6 与 C 批黑盒待做 | 0.20.0 | 第四份0.19.0反馈（护卫舰）F01—F11；A批F02圆弧闭合误拒/F03半径上限/F07更新提示/F04 connect −4回执/F11平面语义文档/F05限制说明已离线交付，六个提交与统一dev_check证据见[MAPPING第五节](validation/feedback-0.19.0-frigate-2026-11-08/MAPPING.md)；A批仅「离线已交付、实机未验」，计划见[离线批次计划](archive/superpowers/plans/2026-11-09-feedback0190-frigate-offline.md)；B1—B6原生/实机与C0—C5黑盒拆项、前置条件见[B/C批子计划](archive/superpowers/plans/2026-11-09-feedback0190-frigate-bc-batches.md)，[WorkBuddy提示词](validation/feedback-0.19.0-frigate-2026-11-08/workbuddy-blackbox-prompt.md)仅阶段0/1可试、建模与并发留卡，未连Creo未做黑盒。 |
+| [FEAT-001](work-items/FEAT-001.md) | P1 | 部分交付 0.15.0，剩余待规划 | 未排期 | 启动/重连/多会话状态检测及普通 retry、损坏通道恢复完整验收仍开放。 |
+| [FEAT-009](work-items/FEAT-009.md) | P2 | 已交付 0.18.3 子项；动态准入已补；多截面/导线已由 FEAT-065 M1/M2 随 0.21.0 交付；闭合/连续性/非平面未排期 | 0.18.3（子项已交付） | 两截面直纹曲面放样 `creo_surface_loft` 在Creo12.4已实机验收（quilt 800 mm²、trim 两侧各 400、2 mm 加厚 1600 mm³）；H13 worker构建身份/动态准入与提交前拒绝已实现并在Creo12.4核验，Creo10缺Probbl.h实机与完整放样路线仍未验。2026-11-11 更正：多截面已由 [FEAT-065](work-items/FEAT-065.md) M1/M2 随 0.21.0 发布并在 Creo 12.4 实机验收——2—32 截面（两截面 straight 直纹，3 截面以上必须 smooth）、可选 2—8 条第二方向导线；闭合曲面、相切/曲率连续性、非平行/扭转/任意正交平面截面、圆弧截面、端点收敛仍不公开或未测，Creo 9/10 未验。 |
+| [FEAT-055](work-items/FEAT-055.md) | P2 | 已交付 0.18.4/0.19.0 子项（H08 曲面边圆角与数值曲率/G1 已公开并实机）；其余未排期 | 0.19.0（H08 子项已交付）；剩余未排期 | `creo_surface_round` 与 `creo_measure_surface_curvature` 已公开，公开工具 107；edge-chain、变半径/过渡、斑马/曲率梳图像无 API；重拟曲面操作链、merge/放样及原生查询补证未排期。 |
 
 ## 待规划
 
@@ -348,11 +352,8 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [DEV-058](work-items/DEV-058.md) | P3 | 待规划 | 未排期 | WorkBuddy 提示词需按当前契约更新，公开 MCP 黑盒尚未执行；不以开发者证据替代。 |
 | [DEV-059](work-items/DEV-059.md) | P3 | 待规划 | 未排期 | 核实旧 22 项环境 errors 是否仍存在；余下统计校验与计划状态规范，历史清理已完成。 |
 | [DEV-063](work-items/DEV-063.md) | P3 | 待规划 | 未排期 | compact erase 摘要和预览矩阵 false 的说明待补；full 字段不裁剪。 |
-| [DEV-081](work-items/DEV-081.md) | P1 | B1/B2/B3/B4 已随 0.20.0 实机验收交付；B5/B6 与 C 批黑盒待做 | 0.20.0 | 第四份0.19.0反馈（护卫舰）F01—F11；A批F02圆弧闭合误拒/F03半径上限/F07更新提示/F04 connect −4回执/F11平面语义文档/F05限制说明已离线交付，六个提交与统一dev_check证据见[MAPPING第五节](validation/feedback-0.19.0-frigate-2026-11-08/MAPPING.md)；A批仅「离线已交付、实机未验」，计划见[离线批次计划](archive/superpowers/plans/2026-11-09-feedback0190-frigate-offline.md)；B1—B6原生/实机与C0—C5黑盒拆项、前置条件见[B/C批子计划](archive/superpowers/plans/2026-11-09-feedback0190-frigate-bc-batches.md)，[WorkBuddy提示词](validation/feedback-0.19.0-frigate-2026-11-08/workbuddy-blackbox-prompt.md)仅阶段0/1可试、建模与并发留卡，未连Creo未做黑盒。 |
-| [FEAT-001](work-items/FEAT-001.md) | P1 | 待规划 | 未排期 | 启动/重连/多会话状态检测及普通 retry、损坏通道恢复完整验收仍开放。 |
 | [FEAT-002](BACKLOG_COMPLETED.md#legacy-feat-002) | P2 | 待规划 | 未排期 | 遇到 DLL 提示等需要人工处理的情况时，说明正在等什么。测试等待超时后，任务上下文是否保留、相关模块能否清理。 |
 | [FEAT-003](BACKLOG_COMPLETED.md#legacy-feat-003) | P2 | 待规划 | 未排期 | 支持并测试带单位的关系式，例如 `8[mm]`。确认它能真实驱动尺寸、带动相关参数变化，并保留用户对单位的检查设置。 |
-| [FEAT-009](work-items/FEAT-009.md) | P2 | 已交付 0.18.3 子项；动态准入已补；多截面/导线已由 FEAT-065 M1/M2 随 0.21.0 交付；闭合/连续性/非平面未排期 | 0.18.3（子项已交付） | 两截面直纹曲面放样 `creo_surface_loft` 在Creo12.4已实机验收（quilt 800 mm²、trim 两侧各 400、2 mm 加厚 1600 mm³）；H13 worker构建身份/动态准入与提交前拒绝已实现并在Creo12.4核验，Creo10缺Probbl.h实机与完整放样路线仍未验。2026-11-11 更正：多截面已由 [FEAT-065](work-items/FEAT-065.md) M1/M2 随 0.21.0 发布并在 Creo 12.4 实机验收——2—32 截面（两截面 straight 直纹，3 截面以上必须 smooth）、可选 2—8 条第二方向导线；闭合曲面、相切/曲率连续性、非平行/扭转/任意正交平面截面、圆弧截面、端点收敛仍不公开或未测，Creo 9/10 未验。 |
 | [FEAT-011](BACKLOG_COMPLETED.md#legacy-feat-011) | P2 | 待规划 | 未排期 | 增加复合轨迹、可变截面和螺旋扫掠，分别明确范围并测试。 |
 | [FEAT-013](BACKLOG_COMPLETED.md#legacy-feat-013) | P2 | 待规划 | 未排期 | 增加剖视、局部放大、装配图和 BOM（物料清单），逐项检查模型变化后图纸能否同步更新。 |
 | [FEAT-015](BACKLOG_COMPLETED.md#legacy-feat-015) | P3 | 待规划 | 未排期 | 评估模具、NC 加工和仿真能力，先选一个最小场景做完整流程，暂不承诺支持全部模块。 |
@@ -371,7 +372,6 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [FEAT-049](work-items/FEAT-049.md) | P1 | 待规划 | 未排期 | 显式目标参考约束克隆；核现有六类回放，不重复实现；完整快照/映射尚未交付。 |
 | [FEAT-050](work-items/FEAT-050.md) | P2 | 待规划 | 未排期 | 冻结基准和显式映射后比对组件集、位姿、约束、包络/体积，缺数据标未验证。 |
 | [FEAT-054](work-items/FEAT-054.md) | P2 | 待规划 | 未排期 | 待裁定四带几何偏差与求解路线，再推进全叶片/轮毂阵列；缺原始四带输入。 |
-| [FEAT-055](work-items/FEAT-055.md) | P2 | 已交付 0.18.4/0.19.0 子项（H08 曲面边圆角与数值曲率/G1 已公开并实机）；其余未排期 | 0.19.0（H08 子项已交付）；剩余未排期 | `creo_surface_round` 与 `creo_measure_surface_curvature` 已公开，公开工具 107；edge-chain、变半径/过渡、斑马/曲率梳图像无 API；重拟曲面操作链、merge/放样及原生查询补证未排期。 |
 | [FEAT-060](work-items/FEAT-060.md) | P2 | 待规划 | 未排期 | 骨架驱动首壁参数；依赖 FEAT-059 真实骨架，先冻结日志/依赖闭包与 revision 契约。 |
 | [FEAT-061](work-items/FEAT-061.md) | P2 | 待规划 | 未排期 | 单层受管装配配置切换/抑制恢复；保留身份、约束和位姿，尚未实施。 |
 | [FEAT-062](work-items/FEAT-062.md) | P2 | 待规划 | 未排期 | 独立零件 rename/derive；统一名称冲突、身份与检查点恢复，尚未实施。 |
