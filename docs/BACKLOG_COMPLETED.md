@@ -8,6 +8,7 @@
 
 | ID | 优先级 | 状态 | 目标版本 | 完成摘要与证据 |
 | --- | --- | --- | --- | --- |
+| [DEV-104](work-items/DEV-104.md) | P2 | 已完成（0.47.1 交付） | 0.47.1 | 2026-11-26：统一 `CLAUDE.md`/`README.md`/`docs/DEVELOPMENT.md`/`docs/development/ARCHITECTURE.md` 开发入口，完成四批 P1/P2 台账复核与分类校正（归档 `BUG-133`/`BUG-080`，对齐 `BUG-146/148/149/132/129/102/108/193`、`FEAT-078/001/009/055`、`DEV-076/081/095` 归属与计数）。随 v0.47.1 合入发布。[发布记录](validation/RELEASE-0.47.1.md) |
 | [BUG-080](work-items/BUG-080.md) | P1 | 验收完成（0.5.2） | 0.5.2 | 单层英寸装配与毫米组件的变换、原始矩阵及只读重复查询已通过[第三轮 WorkBuddy 黑盒](validation/wb080-blackbox-round3-2026-10-24.md)。多级嵌套、缺件、父变换失败、子装配遍历失败仅有离线覆盖，实机范围见 [0.5.2 发布记录](validation/RELEASE-0.5.2.md)。 |
 | [BUG-133](work-items/BUG-133.md) | P1 | 已交付 0.35.4 | 0.35.4 | Python 与原生旋转矩阵准入容差统一为 `1e-7`，Creo 10 已实测边界；其他 Creo 版本及 WorkBuddy 未测。[发布记录](validation/RELEASE-0.35.4.md) |
 | [DEV-103](work-items/DEV-103.md) | P2 | 已完成（0.46.1 交付） | 0.46.1 | 2026-11-26：新增 docs/README.md 文档目录与维护规范，AGENTS.md 历史演进抽离至 docs/development/GOVERNANCE_HISTORY.md，70 个过程文档零改动归档至 docs/archive/（stage-notes、superpowers）；受发布完整性约束的台账与发布文档保留原路径。随 v0.46.1 合入发布。未测：无（纯文档整理）。 |

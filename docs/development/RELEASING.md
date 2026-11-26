@@ -15,7 +15,9 @@
 
 ## 版本约定
 
-当前版本为 0.46.1（2026-11-26 PATCH，交付 [BUG-193](../work-items/BUG-193.md) 的提交前零锁 callback 预检，公开工具 111）。 [版本说明](../release-notes/RELEASE_NOTES_0.46.1.md) · [发布记录](../validation/RELEASE-0.46.1.md)
+当前版本为 0.47.1（2026-11-26 PATCH，交付 [BUG-187](../work-items/BUG-187.md) 主基准面偏移默认法线对齐与草图 `frame_mismatch` 告警及 [DEV-104](../work-items/DEV-104.md) 开发入口统一与台账复核，公开工具 112）。 [版本说明](../release-notes/RELEASE_NOTES_0.47.1.md) · [发布记录](../validation/RELEASE-0.47.1.md)
+
+此前的 0.46.1（2026-11-26 PATCH，交付 [BUG-193](../work-items/BUG-193.md) 的提交前零锁 callback 预检，公开工具 111）。 [版本说明](../release-notes/RELEASE_NOTES_0.46.1.md) · [发布记录](../validation/RELEASE-0.46.1.md)
 
 此前的 0.46.0（2026-11-26 MINOR，交付 [BUG-192](../work-items/BUG-192.md)、[FEAT-090](../work-items/FEAT-090.md)、[BUG-193](../work-items/BUG-193.md) 与 [DEV-102](../work-items/DEV-102.md)，公开工具 111）。 [版本说明](../release-notes/RELEASE_NOTES_0.46.0.md) · [发布记录](../validation/RELEASE-0.46.0.md)
 

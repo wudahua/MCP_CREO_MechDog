@@ -73,5 +73,32 @@ class SketchFrameTests(unittest.TestCase):
         self.assertIn("numeric 3D vector", str(caught.exception))
 
 
+class Bug187CanonicalFrameAndWarningContractTests(unittest.TestCase):
+    def test_compact_sections_preserve_plane_frame_and_frame_warning(self):
+        from creo_mechdog.compact_sections import OPERATION_KEYS
+
+        self.assertIn("plane_frame", OPERATION_KEYS)
+        self.assertIn("frame_warning", OPERATION_KEYS)
+
+    def test_native_generic_implements_canonical_offset_alignment_and_frame_mismatch_warning(self):
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[2]
+        cpp = (root / "native" / "generic.cpp").read_text(encoding="utf-8")
+        self.assertIn("canonical_principal_normal", cpp)
+        self.assertIn("canonical_frame_aligned", cpp)
+        self.assertIn('"frame_warning"', cpp)
+        self.assertIn('"frame_mismatch"', cpp)
+
+    def test_server_capabilities_publishes_frames_note(self):
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[2]
+        server_py = (root / "src" / "creo_mechdog" / "server.py").read_text(encoding="utf-8")
+        self.assertIn('"frames_note"', server_py)
+        self.assertIn("frame_mismatch", server_py)
+        self.assertIn("geometry_tolerance_mm", server_py)
+
+
 if __name__ == "__main__":
     unittest.main()

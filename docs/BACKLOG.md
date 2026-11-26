@@ -1,5 +1,7 @@
 # 统一开发台账
 
+2026-11-26（0.47.1 PATCH，公开工具 112）：归档 0.46.1 外部反馈原件至 [feedback-0.46.1-2026-11-26](validation/feedback-0.46.1-2026-11-26/SOURCE_MANIFEST.json)，追加交付 [BUG-187](work-items/BUG-187.md)（主基准面偏移默认法线对齐 `frames.XY/XZ/YZ`、`datum_plane` 新增 `plane_frame` 回执、字典草图反向法线输出 `frame_warning` 与 `frames_note` 文档，本机 Creo 10 三组实机保存重载通过）并随版收口 [DEV-104](work-items/DEV-104.md)（转入完成档案，活跃 ID 279→278）。 [版本说明](release-notes/RELEASE_NOTES_0.47.1.md) · [发布记录](validation/RELEASE-0.47.1.md)
+
 2026-11-26（0.47.0 MINOR，公开工具 112）：交付 [BUG-194](work-items/BUG-194.md)（`auto` 求解器恢复将 `b_spline`/`arc`/`spline`/`ellipse` 路由到 `autodim`，失败回执补 `dimensioning='autodim'`/`geometry_tolerance_mm=<cap>` 自助提示）、[BUG-195](work-items/BUG-195.md)（`bounding_box_status` 披露面细分内缩误差界、空件平面报错指向 `datum_plane`、边选择器歧义附 `adjacent_surfaces` 与新出口）、[FEAT-091](work-items/FEAT-091.md)（`round` 期望凹凸/加减料断言与 `sheetmetal_base_flange` `envelope_mm`）与 [FEAT-092](work-items/FEAT-092.md)（只读 `creo_server_info` 与 `region.closed_chain`）；Creo 10.0.0.0 10 项实机与 4548 项单测全过。 [版本说明](release-notes/RELEASE_NOTES_0.47.0.md) · [发布记录](validation/RELEASE-0.47.0.md)
 
 2026-11-26（0.46.1 PATCH，公开工具 111）：交付 [BUG-193](work-items/BUG-193.md) 的提交前零锁 callback 预检——`callback_admission_status()` 零锁判定 `loft` / `surface_loft` 准入，未就绪时在建 job 与取 Toolkit 锁之前直接拒绝；Creo 10.0.0.0（`release_numeric=42`）未加载零锁/零作业拦截、启动回调自动准入与加载态建模保存重载全链路实机通过。另交付 [DEV-103](work-items/DEV-103.md) 文档目录治理。 [版本说明](release-notes/RELEASE_NOTES_0.46.1.md) · [发布记录](validation/RELEASE-0.46.1.md)
@@ -34,7 +36,7 @@
 
 诊断交付不等于根因修复；部分交付不关整卡；缺其他版本证据不自动判未修。观察项等自然新现场，不制造故障。已完成且无保留范围的行移入 [完成档案](BACKLOG_COMPLETED.md#已完成事项)。原进展/证据保留日期，不再回填第二份待办。小修复沿用卡与证据，复杂跨模块任务才另建完整计划。
 
-当前唯一 ID **279**（BUG **142**、FEAT **89**、DEV **48**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
+当前唯一 ID **278**（BUG **142**、FEAT **89**、DEV **47**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
 
 | 当前分类 | 唯一 ID 数 |
 | --- | --- |
@@ -43,7 +45,7 @@
 | 已有修复但待验收 | 87 |
 | 观察中 | 3 |
 | 其它 agent 处理范围 | 20 |
-| 开发中 | 10 |
+| 开发中 | 9 |
 | 部分交付，剩余待验收 | 62 |
 | 部分交付，剩余待规划 | 11 |
 | 待规划 | 52 |
@@ -112,7 +114,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [FEAT-090](work-items/FEAT-090.md) | P1 | 已有修复但待验收 | 0.46.0 | 暴露草图端点焊接参数并支持 `arc-arc` 近容差共点吸附，Creo 10 实机 40 弧微间隙拉伸通过。剩：外部原件 gear10.json、Creo 9/12.4 与 WorkBuddy 黑盒。 |
 | [DEV-102](work-items/DEV-102.md) | P2 | 已有修复但待验收 | 0.46.0 | `creo_capabilities` 新增 `registered_but_unavailable_operations` 并补全 `region.interior_point_yz_mm` 文档。剩：WorkBuddy 黑盒。 |
 | [BUG-036](work-items/BUG-036.md) | P1 | 已有修复但待验收 | 0.44.1 | 本版交付平面配合位姿校验。本机 Creo 10 复现约束写入成功而位姿未更新，冲突请求明确拒绝并验证回滚。外部 Creo 9 原案、Creo 12.4 与 WorkBuddy 待验证。 |
-| [BUG-187](work-items/BUG-187.md) | P0 | 已有修复但待验收 | 0.44.0 | 偏移基准面 `flip` 与草图显式 `v_axis`（`u_axis × v_axis` 确定法线），本机 Creo 10 正反例（`1000.0 mm³`、Z `[0,20]`、保存重载与回滚）通过。剩：Creo 9/12、WorkBuddy 黑盒。 |
+| [BUG-187](work-items/BUG-187.md) | P0 | 已有修复但待验收 | 0.47.1 | 0.47.1 交付主基准面偏移默认法线对齐 `frames.XY/XZ/YZ`、`plane_frame` 回执与字典草图 `frame_mismatch` 告警，本机 Creo 10 三组对照（`5600.0 mm³`、默认 `y∈[-37,-30]`、`flip` 告警与 `v_axis` 覆盖、保存重载）通过。剩：Creo 9/12.4、WorkBuddy 黑盒。 |
 | [BUG-188](work-items/BUG-188.md) | P0 | 已有修复但待验收 | 0.44.0 | `coordinates` 放行 `PRO_2D_CONSTR_CIRCLE` 并标记 `construction=true`，本机 Creo 10（2 构造圆+3 构造线、`1000.0 mm³`、保存重载）通过。剩：Creo 9/12、WorkBuddy 黑盒。 |
 | [BUG-189](work-items/BUG-189.md) | P2 | 已有修复但待验收 | 0.44.0 | `ValidationMCPServer.call_tool` 按 schema 拒绝未知工具参数并附拼写建议；单测与 `test_mcp.py --offline` 通过。剩：WorkBuddy 黑盒。 |
 | [BUG-190](work-items/BUG-190.md) | P2 | 已有修复但待验收 | 0.44.0 | `creo_get_job` 失败作业顶层透传 `failed_operation_index`/`failed_stage`/`failure_phase`/`native_result_path`/`round_failure_summary`，原生 `round_failure` 文案指明 `operations[<i>]`；单测通过。剩：WorkBuddy 黑盒。 |
@@ -225,7 +227,6 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
-| [DEV-104](work-items/DEV-104.md) | P2 | 开发中 | 未排期 | 入口与前三批 P1 归类已整理。第三批复核 58 项，8 项转部分交付、1 项归档。待分支审阅，集成时核对并行变更的计数。 |
 | [DEV-101](work-items/DEV-101.md) | P1 | 开发中 | 未排期 | 复核 0.43.1/0.43.2 四份反馈，P0 先修基准面法线与构造实体。 |
 | [DEV-100](work-items/DEV-100.md) | P1 | 开发中 | 未排期 | 归档 0.43.0 机械臂反馈，逐项核对并分批验收。 |
 | [DEV-002](work-items/DEV-002.md) | P2 | 部分交付，剩余待验收 | 0.45.2（第四、五批） | Python 服务包化、新旧 MCP 入口、离线协议和独立安装验收完成。第三批 T5 实机及其余测试布局仍开放。 |

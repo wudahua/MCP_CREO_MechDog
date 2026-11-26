@@ -2126,15 +2126,66 @@ static void body_options(ProElement root, const J &op) {
         ProSelectionFree(&s);
     }
 }
+static bool canonical_principal_normal(const J &reference, V &expected_normal) {
+    if (!reference.is_object() || reference.value("kind", "") != "datum_plane")
+        return false;
+    auto it = reference.find("axis");
+    if (it == reference.end() || !it->is_string())
+        return false;
+    const std::string axis = it->get<std::string>();
+    if (axis == "z") {
+        expected_normal = {0, 0, 1};
+        return true;
+    }
+    if (axis == "y") {
+        expected_normal = {0, -1, 0};
+        return true;
+    }
+    if (axis == "x") {
+        expected_normal = {1, 0, 0};
+        return true;
+    }
+    return false;
+}
 static ProFeature offset_plane(const J &reference, double offset, const std::wstring &name,
-                               double *angle = nullptr, const J *axis = nullptr,
-                               bool flip = false) {
+                               double *angle = nullptr, const J *axis = nullptr, bool flip = false,
+                               bool *effective_flip_out = nullptr,
+                               bool *canonical_aligned_out = nullptr) {
     ProElement root = node(nullptr, PRO_E_FEATURE_TREE);
     integer(root, PRO_E_FEATURE_TYPE, PRO_FEAT_DATUM);
     text(root, PRO_E_STD_FEATURE_NAME, name.c_str());
     ProElement constraints = node(root, PRO_E_DTMPLN_CONSTRAINTS);
     ProElement c = node(constraints, PRO_E_DTMPLN_CONSTRAINT);
     ProSelection s = resolve(reference);
+    // BUG-187: align non-angled offset datum planes created from principal
+    // references (axis="x"|"y"|"z") to the canonical capabilities frames
+    // (YZ=+X, XZ=-Y, XY=+Z) by default, so default XZ offsets do not silently
+    // inherit Creo's +Y TOP normal and invert sketch v_axis/extrude direction.
+    bool effective_flip = flip;
+    bool canonical_aligned = false;
+    V canonical_n = {};
+    if (!angle && canonical_principal_normal(reference, canonical_n)) {
+        ProModelitem ref_item;
+        if (ProSelectionModelitemGet(s, &ref_item) == PRO_TK_NO_ERROR) {
+            ProSurface ref_surface;
+            if (ProSurfaceInit((ProSolid)board, ref_item.id, &ref_surface) == PRO_TK_NO_ERROR) {
+                ProGeomitemdata *ref_data = nullptr;
+                if (ProSurfaceDataGet(ref_surface, &ref_data) == PRO_TK_NO_ERROR && ref_data) {
+                    auto ref_shape = ref_data->data.p_surface_data;
+                    if (ref_shape && ref_shape->type == PRO_SRF_PLANE) {
+                        V ref_n = normalized({ref_shape->srf_shape.plane.e3[0],
+                                              ref_shape->srf_shape.plane.e3[1],
+                                              ref_shape->srf_shape.plane.e3[2]});
+                        if (dot(ref_n, canonical_n) < -0.9999) {
+                            effective_flip = !flip;
+                            canonical_aligned = true;
+                        }
+                    }
+                    ProGeomitemdataFree(&ref_data);
+                }
+            }
+        }
+    }
     integer(c, PRO_E_DTMPLN_CONSTR_TYPE, angle ? PRO_DTMPLN_ANG : PRO_DTMPLN_OFFS);
     ref(c, PRO_E_DTMPLN_CONSTR_REF, s);
     real(c, angle ? PRO_E_DTMPLN_CONSTR_REF_ANGLE : PRO_E_DTMPLN_CONSTR_REF_OFFSET,
@@ -2149,12 +2200,12 @@ static ProFeature offset_plane(const J &reference, double offset, const std::wst
         ref(through, PRO_E_DTMPLN_CONSTR_REF, s);
         ProSelectionFree(&s);
     }
-    // BUG-187: the support normal is not under the caller's control when a
-    // sketch is attached to an offset datum plane. An explicit flip keeps the
-    // plane in place while publishing the opposite normal, so the sketch v_axis
-    // and the extrusion direction stay predictable.
-    if (flip)
+    if (effective_flip)
         integer(root, PRO_E_DTMPLN_FLIP_DIR, PRO_DTMPLN_FLIP_DIR_YES);
+    if (effective_flip_out)
+        *effective_flip_out = effective_flip;
+    if (canonical_aligned_out)
+        *canonical_aligned_out = canonical_aligned;
     ProFeature f = create(root);
     CK(ProElementFree(&root));
     return f;
@@ -3802,6 +3853,40 @@ static J sketch(J op) {
                        {"geometry_deviation", geometry_deviation},
                        {"section_location", section_location},
                        {"entity_ids", ids}};
+    // BUG-187: warn when an implicit dictionary sketch plane (no explicit
+    // v_axis and no flip=true) resolves to the opposite normal of one of the
+    // canonical principal frames (XY=+Z, XZ=-Y, YZ=+X), preventing silent
+    // v_axis/extrusion sign inversion.
+    if (!op.at("plane").is_string() && !op.at("plane").contains("v_axis") &&
+        !op.at("plane").value("flip", false)) {
+        struct PrincipalFrameSpec {
+            const char *name;
+            V normal;
+            V v_axis;
+        };
+        static const PrincipalFrameSpec kCanonicalFrames[] = {
+            {"XY", {0, 0, 1}, {0, 1, 0}},
+            {"XZ", {0, -1, 0}, {0, 0, 1}},
+            {"YZ", {1, 0, 0}, {0, 0, 1}},
+        };
+        for (const auto &spec_frame : kCanonicalFrames) {
+            if (dot(frame.n, spec_frame.normal) < -1.0 + 1e-6) {
+                sketch_result["frame_warning"] = {
+                    {"code", "frame_mismatch"},
+                    {"principal_frame", spec_frame.name},
+                    {"canonical_normal", xyz(spec_frame.normal.data())},
+                    {"canonical_v_axis", xyz(spec_frame.v_axis.data())},
+                    {"actual_normal", frame.n},
+                    {"actual_v_axis", frame.v},
+                    {"message",
+                     std::string("Dictionary sketch plane normal is opposite to frames.") +
+                         spec_frame.name +
+                         " canonical normal; pass explicit v_axis or flip=true if you intended "
+                         "the canonical frame orientation."}};
+                break;
+            }
+        }
+    }
     // FEAT-039/W01: the endpoint weld is reported with what the native side
     // actually did. The coordinates were regularised before the entities were
     // written, so the move is bounded by the request, and the residual is
@@ -7906,10 +7991,34 @@ static void execute_operation_body(const J &op) {
                         (axis_kind.empty() ? std::string("(missing kind)") : axis_kind));
             }
             J axis = op.value("axis", J());
+            bool requested_flip = op.value("flip", false);
+            bool effective_flip = requested_flip;
+            bool canonical_aligned = false;
             auto f = offset_plane(op["reference"], op.value("offset", 0.0), wide(op["label"]),
                                   op.contains("angle") ? &angle : nullptr,
-                                  op.contains("axis") ? &axis : nullptr, op.value("flip", false));
+                                  op.contains("axis") ? &axis : nullptr, requested_flip,
+                                  &effective_flip, &canonical_aligned);
             remember(op, f);
+            planes.clear();
+            if (ProFeatureGeomitemVisit(&f, PRO_SURFACE, geom_cb, nullptr, nullptr) ==
+                    PRO_TK_NO_ERROR &&
+                planes.size() == 1) {
+                auto units = inspect_length_units(board);
+                MillimeterScale unit_scale = length_scale_to_mm(board, units);
+                double scale_mm = unit_scale.known ? unit_scale.scale : 1.0;
+                const Plane &surface = planes[0];
+                V normal = normalized(V{surface.n[0], surface.n[1], surface.n[2]});
+                V origin = {surface.o[0] * scale_mm, surface.o[1] * scale_mm,
+                            surface.o[2] * scale_mm};
+                details = {{"mode", op.contains("angle") ? "angled" : "offset"},
+                           {"plane_frame",
+                            {{"surface_id", surface.id},
+                             {"origin", xyz(origin.data())},
+                             {"normal", xyz(normal.data())},
+                             {"requested_flip", requested_flip},
+                             {"effective_flip", effective_flip},
+                             {"canonical_frame_aligned", canonical_aligned}}}};
+            }
         }
     } else if (kind == "datum_axis") {
         ProElement root = node(nullptr, PRO_E_FEATURE_TREE);

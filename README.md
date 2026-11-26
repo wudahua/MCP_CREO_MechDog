@@ -1,8 +1,8 @@
-# MCP_CREO_MechDog 0.47.0
+# MCP_CREO_MechDog 0.47.1
 
-![version](https://img.shields.io/badge/version-0.47.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
+![version](https://img.shields.io/badge/version-0.47.1-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.47.0**（MINOR，公开工具 112）。修复 `auto` 草图求解器将 B 样条/圆弧改判 `coordinates` 导致的 `1e-5 mm` 硬拒回归并补齐自助出口提示（[BUG-194](docs/work-items/BUG-194.md)），显式披露包围盒面细分内缩误差界、空件平面报错与边选择器歧义提示（[BUG-195](docs/work-items/BUG-195.md)），新增 `round` 期望凹凸/加减料断言与 `sheetmetal_base_flange` 包络偏移字段（[FEAT-091](docs/work-items/FEAT-091.md)），以及只读 `creo_server_info` 工具与 `region.closed_chain` 封闭链选区（[FEAT-092](docs/work-items/FEAT-092.md)）。 [版本说明](docs/release-notes/RELEASE_NOTES_0.47.0.md) · [下载页](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.47.0)
+当前正式版 **0.47.1**（PATCH，公开工具 112）。修复默认主基准面偏移（如 XZ `axis="y"`）法线与 `capabilities.frames` 矛盾导致的草图静默反号问题，为 `datum_plane` 补齐 `plane_frame` 回执、为字典草图面反向法线补齐 `frame_warning` 告警与 `frames_note` 文档（[BUG-187](docs/work-items/BUG-187.md)），并合入开发入口统一与四批 P1/P2 台账复核（[DEV-104](docs/work-items/DEV-104.md)）。 [版本说明](docs/release-notes/RELEASE_NOTES_0.47.1.md) · [下载页](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.47.1)
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 

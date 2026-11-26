@@ -884,6 +884,16 @@ def _capabilities_payload(tool_entries: list[dict[str, Any]]) -> dict[str, Any]:
             "XZ": "u=+X,v=+Z,normal=-Y",
             "YZ": "u=+Y,v=+Z,normal=+X",
         },
+        "frames_note": (
+            "Offset datum_plane ops referencing principal axis='x'|'y'|'z' align their default "
+            "published normal to frames.YZ/XZ/XY (+X/-Y/+Z) and return plane_frame. Dictionary "
+            "sketch planes on arbitrary supports inherit the support normal unless v_axis or "
+            "flip=true is supplied, and emit frame_warning (code='frame_mismatch') when an "
+            "implicit axis-aligned support normal is opposite to frames.XY/XZ/YZ. "
+            "Sketch coordinates deviation tolerance is configured via SketchOp.geometry_tolerance_mm "
+            "(not deviation_tolerance_mm); bounding_box_mm is tessellation-based; use "
+            "creo_get_mass_properties_batch for multi-model mass queries."
+        ),
         "tools": tool_entries,
         "references": reference_capabilities(),
         "arbitrary_planar_support": "plane={reference:{kind:surface,id:...},origin:[x,y,z],u_axis:[x,y,z]}",

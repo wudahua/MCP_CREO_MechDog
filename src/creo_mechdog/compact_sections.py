@@ -213,6 +213,8 @@ OPERATION_KEYS = (
     "normal",
     "u_axis",
     "v_axis",
+    "plane_frame",
+    "frame_warning",
     "datum_axes",
     "axes_query_code",
     "length_unit",

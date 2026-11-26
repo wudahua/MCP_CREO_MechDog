@@ -1,0 +1,13 @@
+{
+  "archived_at": "2026-11-26",
+  "feedback_version": "0.46.1",
+  "host": "Creo Parametric 9.0.0.0 (release_numeric=41)",
+  "files": [
+    {
+      "source_filename": "2026-11-26_CREO_0.46.1_默认XZ偏移面法线仍与capabilities矛盾致草图静默反号（已加flip-v-axis可规避）.md",
+      "archived_path": "originals/xz-offset-normal-contradiction.md",
+      "bytes": 14581,
+      "sha256": "9733e44e7699e1a5f6bb6dd82ab5e8540ec3b102d9923976fc3eaadabcbd74b9"
+    }
+  ]
+}
