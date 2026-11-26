@@ -140,7 +140,7 @@ class SurfaceCurvatureRegistrationTests(unittest.IsolatedAsyncioTestCase):
         # creo_sheetmetal_base_flange (DEV-089 T3) on 2026-11-15 and
         # creo_cancel_job (BUG-131) with the job-control work.
         # creo_get_mass_properties_batch (FEAT-073/T10) is published too.
-        self.assertEqual(len(tools), 111)
+        self.assertEqual(len(tools), 112)
 
     def test_capability_family_publishes_the_numeric_equivalence(self):
         self.assertIn("creo_measure_surface_curvature", families()["surface_chain"]["tools"])

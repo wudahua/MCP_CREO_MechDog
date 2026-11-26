@@ -176,7 +176,7 @@ class BoundaryFillCapabilityTests(unittest.TestCase):
         # (DEV-089 T3, live 2026-11-15) and creo_cancel_job (BUG-131) stay
         # published.
         # creo_get_mass_properties_batch (FEAT-073/T10) is published too.
-        self.assertEqual(len(tools), 111)
+        self.assertEqual(len(tools), 112)
 
     def test_require_available_refuses_the_gated_operation(self):
         from creo_mechdog.capabilities import require_available

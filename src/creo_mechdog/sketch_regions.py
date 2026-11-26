@@ -576,6 +576,78 @@ def _tolerance(selector: dict[str, Any]) -> float:
     return number
 
 
+def _resolve_closed_chain(
+    sketch: dict[str, Any],
+    closed_chain: list[dict[str, Any]],
+    tolerance: float,
+) -> tuple[frozenset[int], list[dict[str, Any]]]:
+    """Resolve an explicit ``closed_chain`` of geo/spline/entity references."""
+    raw_entities = sketch.get("entities") or []
+    geos: list[tuple[int, dict[str, Any]]] = []
+    splines: list[tuple[int, dict[str, Any]]] = []
+    by_name: dict[str, tuple[int, dict[str, Any]]] = {}
+    for idx, ent in enumerate(raw_entities):
+        if ent.get("construction"):
+            continue
+        kind = ent.get("type")
+        if kind == "centerline":
+            continue
+        name = ent.get("name")
+        if isinstance(name, str) and name:
+            by_name[name] = (idx, ent)
+        if kind in ("b_spline", "spline"):
+            splines.append((idx, ent))
+        elif kind in ("line", "arc", "polyline"):
+            geos.append((idx, ent))
+    chosen: list[tuple[int, dict[str, Any], bool]] = []
+    seen: set[int] = set()
+    for pos, item in enumerate(closed_chain):
+        rev = bool(item.get("reversed", False))
+        if "geo" in item and item["geo"] is not None:
+            g_idx = item["geo"]
+            if g_idx < 0 or g_idx >= len(geos):
+                raise ValueError(
+                    f"region.closed_chain[{pos}].geo={g_idx} out of range (0..{len(geos) - 1})"
+                )
+            src_idx, ent = geos[g_idx]
+        elif "spline" in item and item["spline"] is not None:
+            s_idx = item["spline"]
+            if s_idx < 0 or s_idx >= len(splines):
+                raise ValueError(
+                    f"region.closed_chain[{pos}].spline={s_idx} out of range "
+                    f"(0..{len(splines) - 1})"
+                )
+            src_idx, ent = splines[s_idx]
+        else:
+            ename = item.get("entity", "")
+            if ename not in by_name:
+                raise ValueError(f"region.closed_chain[{pos}].entity={ename!r} not found in sketch")
+            src_idx, ent = by_name[ename]
+        if src_idx in seen:
+            raise ValueError(f"region.closed_chain[{pos}] repeats entity index {src_idx}")
+        seen.add(src_idx)
+        chosen.append((src_idx, ent, rev))
+    if len(chosen) < 2:
+        raise ValueError("region.closed_chain requires at least 2 distinct entities")
+    directed: list[tuple[list[float], list[float]]] = []
+    for pos, (_, ent, rev) in enumerate(chosen):
+        endpoints = entity_endpoints(ent)
+        if endpoints is None:
+            raise ValueError(f"region.closed_chain[{pos}] entity has no boundary endpoints")
+        start, end = (endpoints[1], endpoints[0]) if rev else (endpoints[0], endpoints[1])
+        directed.append((start, end))
+    for pos in range(len(directed)):
+        _, curr_end = directed[pos]
+        next_start, _ = directed[(pos + 1) % len(directed)]
+        gap = math.dist(curr_end, next_start)
+        if gap > tolerance:
+            raise ValueError(
+                f"region.closed_chain is not closed between segment {pos} end and segment "
+                f"{(pos + 1) % len(directed)} start (gap={gap:.6g} mm > tolerance={tolerance} mm)"
+            )
+    return frozenset(seen), [ent for _, ent, _ in chosen]
+
+
 def adapt_region_extrudes(
     operations: list[Any],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -624,22 +696,27 @@ def adapt_region_extrudes(
                 "an earlier sketch operation in this plan"
             )
         _usable_sketch(source, source_label)
-        frame = resolve_frame(selector, source)
         tolerance = _tolerance(selector)
+        closed_chain = selector.get("closed_chain")
         signature = selector.get("signature_yz_mm")
         interior_raw = selector.get("interior_point_yz_mm")
-        if signature is None and interior_raw is None:
-            raise ValueError(
-                "region requires at least one of signature_yz_mm or interior_point_yz_mm"
-            )
-        if signature is not None and not isinstance(signature, str):
-            raise ValueError("region.signature_yz_mm must be a string")
         interior_pt: tuple[float, float] | None = None
-        if interior_raw is not None:
-            if not isinstance(interior_raw, (list, tuple)) or len(interior_raw) != 2:
-                raise ValueError("region.interior_point_yz_mm must be [y, z]")
-            interior_pt = (float(interior_raw[0]), float(interior_raw[1]))
-        cycle, entities = find_region(source, signature, frame, tolerance, interior_pt)
+        if closed_chain is not None:
+            cycle, entities = _resolve_closed_chain(source, closed_chain, tolerance)
+        else:
+            frame = resolve_frame(selector, source)
+            if signature is None and interior_raw is None:
+                raise ValueError(
+                    "region requires at least one of signature_yz_mm, interior_point_yz_mm, or "
+                    "closed_chain"
+                )
+            if signature is not None and not isinstance(signature, str):
+                raise ValueError("region.signature_yz_mm must be a string")
+            if interior_raw is not None:
+                if not isinstance(interior_raw, (list, tuple)) or len(interior_raw) != 2:
+                    raise ValueError("region.interior_point_yz_mm must be [y, z]")
+                interior_pt = (float(interior_raw[0]), float(interior_raw[1]))
+            cycle, entities = find_region(source, signature, frame, tolerance, interior_pt)
         key = (source_label, cycle)
         label = cache.get(key)
         if label is None:

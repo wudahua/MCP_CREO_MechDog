@@ -1,8 +1,8 @@
-# MCP_CREO_MechDog 0.46.1
+# MCP_CREO_MechDog 0.47.0
 
-![version](https://img.shields.io/badge/version-0.46.1-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
+![version](https://img.shields.io/badge/version-0.47.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.46.1**（PATCH）。交付放样 `loft` / `surface_loft` 提交前零锁 callback 预检（[BUG-193](docs/work-items/BUG-193.md) 追加）：未就绪时在建 job 与取 Toolkit 锁之前直接拒绝，不再为拒绝本身占用通道；另交付文档目录治理（[DEV-103](docs/work-items/DEV-103.md)）。公开工具以 `creo_capabilities` 的 `tool_count` 为准。 [版本说明](docs/release-notes/RELEASE_NOTES_0.46.1.md) · [下载页](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.46.1)
+当前正式版 **0.47.0**（MINOR，公开工具 112）。修复 `auto` 草图求解器将 B 样条/圆弧改判 `coordinates` 导致的 `1e-5 mm` 硬拒回归并补齐自助出口提示（[BUG-194](docs/work-items/BUG-194.md)），显式披露包围盒面细分内缩误差界、空件平面报错与边选择器歧义提示（[BUG-195](docs/work-items/BUG-195.md)），新增 `round` 期望凹凸/加减料断言与 `sheetmetal_base_flange` 包络偏移字段（[FEAT-091](docs/work-items/FEAT-091.md)），以及只读 `creo_server_info` 工具与 `region.closed_chain` 封闭链选区（[FEAT-092](docs/work-items/FEAT-092.md)）。 [版本说明](docs/release-notes/RELEASE_NOTES_0.47.0.md) · [下载页](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.47.0)
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 

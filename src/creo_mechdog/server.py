@@ -909,6 +909,21 @@ def _capabilities_payload(tool_entries: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 @mcp.tool(annotations=READ)
+async def creo_server_info() -> dict[str, Any]:
+    """Return read-only server identity, version, tool count, and channel policy without connecting Toolkit."""
+    tools = await mcp.list_tools()
+    cfg = bridge.config() if (bridge.ROOT / "config.json").exists() else {}
+    return {
+        "server_name": "MCP_CREO_MechDog",
+        "version": VERSION,
+        "tool_count": len(tools),
+        "toolkit_channel_mode": "single_channel_nonblocking",
+        "units": {"length": "mm", "angle": "deg"},
+        "creo_root": cfg.get("creo_root"),
+    }
+
+
+@mcp.tool(annotations=READ)
 async def creo_capabilities(
     detail: Literal["compact", "full"] = "compact",
     section: str | None = None,
@@ -1674,6 +1689,20 @@ async def creo_round(
             )
         ),
     ],
+    expected_round_kind: Annotated[
+        Literal["convex", "concave"] | None,
+        Field(
+            default=None,
+            description="Optional assertion: reject and roll back if measured round_kind differs",
+        ),
+    ] = None,
+    expected_material_delta_sign: Annotated[
+        Literal["negative", "positive"] | None,
+        Field(
+            default=None,
+            description="Optional assertion: reject and roll back if material_delta_mm3 sign differs",
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """Create a native constant-radius fillet on edges or face pairs. Each set is {edge:reference} or {surfaces:[reference,reference]}.
 
@@ -1687,9 +1716,19 @@ async def creo_round(
     and reference_application with requested_set_count beside the tree-proven
     applied_set_count (null when the tree cannot prove it).
     """
+    op: dict[str, Any] = {
+        "op": "round",
+        "label": label,
+        "size": radius,
+        "references": references,
+    }
+    if expected_round_kind is not None:
+        op["expected_round_kind"] = expected_round_kind
+    if expected_material_delta_sign is not None:
+        op["expected_material_delta_sign"] = expected_material_delta_sign
     return await invoke(
         general.submit,
-        [{"op": "round", "label": label, "size": radius, "references": references}],
+        [op],
         model_id,
         None,
         expected_revision,

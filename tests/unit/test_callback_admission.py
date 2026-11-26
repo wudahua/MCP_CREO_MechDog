@@ -95,7 +95,7 @@ class CallbackAdmission(unittest.TestCase):
         # creo_surface_boundary_fill is gated (DEV-074/H09 live refutation).
         # creo_get_mass_properties_batch (FEAT-073/T10) adds the bounded
         # read-only batch on top of those.
-        self.assertEqual(len(tools), 111)
+        self.assertEqual(len(tools), 112)
         self.assertIn("creo_reconcile_model", tools)
         self.assertTrue(tools["creo_callback_status"].annotations.read_only_hint)
         with (

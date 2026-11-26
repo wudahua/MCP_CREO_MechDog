@@ -318,7 +318,7 @@ class ReferenceContractTests(unittest.TestCase):
         # later live tools.
         # 110 adds creo_get_mass_properties_batch (FEAT-073/T10): up to 16 models
         # read serially, one read-only job each, per-item receipts.
-        self.assertEqual(len(tools), 111)
+        self.assertEqual(len(tools), 112)
         axis = tools["creo_axis_pattern"].input_schema["properties"]["axis"]
         self.assertEqual(
             {form["properties"]["kind"]["const"] for form in axis["oneOf"]},

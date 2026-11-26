@@ -937,23 +937,62 @@ class ExtrudeScope(StrictModel):
 
 
 class SketchRegionSelector(StrictModel):
-    """P1/FEAT-069 + FEAT-083: one closed region of an earlier sketch.
+    """P1/FEAT-069 + FEAT-083 + FEAT-092: one closed region of an earlier sketch.
 
     Selects one closed loop by ``signature_yz_mm`` (boundary endpoint pairs), by
     ``interior_point_yz_mm`` (a 2D ``[y, z]`` point inside the desired loop,
-    evaluated against exact sampled lines, arcs and B-splines), or by both
-    together (using the interior point to disambiguate loops sharing endpoints).
-    Both ``signature_yz_mm`` and ``interior_point_yz_mm`` require explicit
-    ``line``, ``arc``, or ``b_spline`` entities in the source sketch (not
-    ``rectangle``, ``circle``, or ``ellipse`` primitives).
+    evaluated against exact sampled lines, arcs and B-splines), by both
+    together (using the interior point to disambiguate loops sharing endpoints),
+    or by ``closed_chain`` (an ordered sequence of ``{"geo": i, "reversed": bool}``,
+    ``{"spline": j, "reversed": bool}``, or ``{"entity": name, "reversed": bool}``
+    items referencing the source sketch entities directly).
     ``frame`` is the sketch's local-to-world basis (``origin + u*xdir + v*ydir``);
-    it may be omitted for a named YZ plane.
+    it may be omitted for a named YZ plane or when ``closed_chain`` is used.
     """
 
     signature_yz_mm: str | None = None
     interior_point_yz_mm: list[float] | None = None
+    closed_chain: Annotated[list[dict[str, Any]], Field(min_length=2, max_length=64)] | None = None
     frame: dict[str, Any] | None = None
     tolerance_mm: Annotated[float, Field(gt=0, le=10)] | None = None
+
+    @field_validator("closed_chain", mode="before")
+    @classmethod
+    def closed_chain_valid(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if not isinstance(value, (list, tuple)):
+            raise ValueError("region.closed_chain must be a list of segment selectors")
+        normalized: list[dict[str, Any]] = []
+        for idx, item in enumerate(value):
+            if not isinstance(item, dict):
+                raise ValueError(f"region.closed_chain[{idx}] must be an object")
+            allowed = {"geo", "spline", "entity", "reversed"}
+            extra = set(item) - allowed
+            if extra:
+                raise ValueError(f"region.closed_chain[{idx}] has unknown fields: {sorted(extra)}")
+            keys = [k for k in ("geo", "spline", "entity") if k in item and item[k] is not None]
+            if len(keys) != 1:
+                raise ValueError(
+                    f"region.closed_chain[{idx}] requires exactly one of 'geo', 'spline', or 'entity'"
+                )
+            key = keys[0]
+            raw_ref = item[key]
+            if key in ("geo", "spline"):
+                if isinstance(raw_ref, bool) or not isinstance(raw_ref, int) or raw_ref < 0:
+                    raise ValueError(
+                        f"region.closed_chain[{idx}].{key} must be a nonnegative integer"
+                    )
+            else:
+                if not isinstance(raw_ref, str) or not raw_ref.strip():
+                    raise ValueError(
+                        f"region.closed_chain[{idx}].entity must be a non-empty string"
+                    )
+            rev = item.get("reversed", False)
+            if type(rev) is not bool:
+                raise ValueError(f"region.closed_chain[{idx}].reversed must be true or false")
+            normalized.append({key: raw_ref, "reversed": rev})
+        return normalized
 
     @field_validator("signature_yz_mm")
     @classmethod
@@ -987,9 +1026,17 @@ class SketchRegionSelector(StrictModel):
 
     @model_validator(mode="after")
     def require_selector_mode(self):
+        if self.closed_chain is not None:
+            if self.signature_yz_mm is not None or self.interior_point_yz_mm is not None:
+                raise ValueError(
+                    "region.closed_chain cannot be combined with signature_yz_mm or "
+                    "interior_point_yz_mm"
+                )
+            return self
         if self.signature_yz_mm is None and self.interior_point_yz_mm is None:
             raise ValueError(
-                "region requires at least one of signature_yz_mm or interior_point_yz_mm"
+                "region requires at least one of signature_yz_mm, interior_point_yz_mm, or "
+                "closed_chain"
             )
         return self
 
@@ -1276,6 +1323,22 @@ class RoundOp(StrictModel):
             "for it; it stays opt-in until the live probe records acceptance and geometry",
         ),
     ] = None
+    expected_round_kind: Annotated[
+        Literal["convex", "concave"] | None,
+        Field(
+            default=None,
+            description="Optional assertion (FEAT-091): reject and roll back if measured "
+            "round_kind differs",
+        ),
+    ] = None
+    expected_material_delta_sign: Annotated[
+        Literal["negative", "positive"] | None,
+        Field(
+            default=None,
+            description="Optional assertion (FEAT-091): reject and roll back if measured "
+            "material_delta_mm3 sign differs",
+        ),
+    ] = None
 
     @field_validator("curvature_continuous", mode="before")
     @classmethod
@@ -1298,6 +1361,13 @@ class RoundOp(StrictModel):
             if getattr(self, alias) is None:
                 raise ValueError(f"Provide 'size' or '{alias}' for op '{self.op}'")
             self.size = getattr(self, alias)
+        if self.expected_round_kind is not None and self.expected_material_delta_sign is not None:
+            want_sign = "negative" if self.expected_round_kind == "convex" else "positive"
+            if self.expected_material_delta_sign != want_sign:
+                raise ValueError(
+                    f"expected_round_kind={self.expected_round_kind!r} conflicts with "
+                    f"expected_material_delta_sign={self.expected_material_delta_sign!r}"
+                )
         # DEV-089 T1: a reference may be a geometric anchor selector instead of
         # a rebuild-unstable id. Validate the frozen selector shape here so the
         # executor never receives a malformed filter.

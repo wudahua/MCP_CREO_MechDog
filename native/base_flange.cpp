@@ -274,6 +274,11 @@ static void generic_sheetmetal_base_flange(const J &op) {
          {"height_mm", second_leg + thickness},
          {"angle_deg", 90.0},
          {"radius_mm", radius}});
+    J envelope_mm = {
+        {"u", J::array({envelope["u"]["min"], envelope["u"]["max"]})},
+        {"v", J::array({envelope["v"]["min"], envelope["v"]["max"]})},
+        {"n", J::array({envelope["n"]["min"], envelope["n"]["max"]})},
+    };
     stage_operation_result(
         {{"op", "sheetmetal_base_flange"},
          {"feature", label},
@@ -294,6 +299,7 @@ static void generic_sheetmetal_base_flange(const J &op) {
          {"flange_height_mm", second_leg + thickness},
          {"direction", direction},
          {"flip_thickness", flip_thickness},
+         {"u_extension_from_flip_thickness_mm", flip_thickness ? thickness : 0.0},
          {"volume_mm3", measured},
          {"expected_volume_mm3", expected},
          {"volume_delta_mm3", measured - expected},
@@ -301,6 +307,7 @@ static void generic_sheetmetal_base_flange(const J &op) {
          {"bend_removed_mm3", removed},
          {"frame", frame},
          {"envelope", envelope},
+         {"envelope_mm", envelope_mm},
          {"bounds_mm", bounds},
          {"width_direction_frame", "model"},
          {"width_direction_world", xyz(width_axis.data())},

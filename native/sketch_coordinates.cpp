@@ -16,8 +16,12 @@ static J profile_dimensioning_choice(const J &op) {
         return choice("autodim", "supplied_dimensions_or_constraints");
     for (const auto &e : op.at("entities")) {
         const auto &type = e.at("type").get_ref<const std::string &>();
+        // BUG-194: Creo coordinate dimensioning quantizes b_spline control points
+        // and arc center_radius_angles to ~1e-4..1e-3 mm, exceeding the 1e-5 mm
+        // coordinate cap. Auto mode routes b_spline/arc/spline/ellipse to autodim
+        // while explicit dimensioning="coordinates" still supports exact b_spline/arc.
         if (type != "line" && type != "centerline" && type != "rectangle" && type != "polyline" &&
-            type != "circle" && type != "arc" && type != "b_spline")
+            type != "circle")
             return choice("autodim", "unsupported_coordinate_entity");
     }
     return choice("coordinates", "unconstrained_coordinate_profile");
@@ -490,6 +494,9 @@ static J verify_coordinate_plan(ProSection section, const J &targets, int origin
                 top.push_back(shift_sample[i]);
             message += "; shifted_sample=" + top.dump();
         }
+        message += "; hint: this sketch used coordinates; spline/arc quantization alone can "
+                   "exceed 1e-5 mm. Pass dimensioning='autodim' to accept with a 1e-3 mm warning, "
+                   "or geometry_tolerance_mm=<cap> to set an explicit acceptance threshold";
         throw std::runtime_error(message);
     }
     if (deviation > tolerance_mm && rigid_accepted)
@@ -1125,6 +1132,12 @@ static void enforce_geometry_deviation(const J &report, const DeviationPolicy &p
                            std::to_string(stage["translation_magnitude_mm"].get<double>()) +
                            " mm, beyond the rigid translation limit of " +
                            std::to_string(RIGID_TRANSLATION_LIMIT_MM) + " mm)";
+            if (report.value("tolerance_source", "") == "default_coordinates" ||
+                report.value("tolerance_source", "") == "request")
+                message += "; hint: this sketch used coordinates; spline/arc quantization alone "
+                           "can exceed 1e-5 mm. Pass dimensioning='autodim' to accept with a "
+                           "1e-3 mm warning, or geometry_tolerance_mm=<cap> to set an explicit "
+                           "acceptance threshold";
             reject(message);
         }
     }

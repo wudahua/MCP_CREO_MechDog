@@ -617,6 +617,32 @@ static GeometrySelectorOutcome match_geometry_edge_selector(const J &selector, c
                           {"candidate_count", candidates},
                           {"matched_ids", J(matches)}};
     outcome.error = selector_edge_error(form, matches, candidates, tolerance, same_circle);
+    if (matches.size() > 1 && !same_circle) {
+        std::string adj_hint;
+        int first_surface_id = -1;
+        for (int match_id : matches) {
+            for (const auto &edge : state.value("edges", J::array())) {
+                if (edge.value("id", -1) != match_id)
+                    continue;
+                if (edge.contains("adjacent_surfaces") && edge["adjacent_surfaces"].is_array()) {
+                    if (!adj_hint.empty())
+                        adj_hint += "; ";
+                    adj_hint += "edge " + std::to_string(match_id) +
+                                " adjacent_surfaces=" + edge["adjacent_surfaces"].dump();
+                    if (first_surface_id < 0 && !edge["adjacent_surfaces"].empty() &&
+                        edge["adjacent_surfaces"][0].is_number_integer())
+                        first_surface_id = edge["adjacent_surfaces"][0].get<int>();
+                }
+                break;
+            }
+        }
+        if (!adj_hint.empty()) {
+            outcome.error += "; " + adj_hint;
+            if (first_surface_id >= 0)
+                outcome.error += "; disambiguate with on_face:{kind:'surface',id:" +
+                                 std::to_string(first_surface_id) + "} or ambiguity:'nearest'";
+        }
+    }
     if (selector.contains("on_face")) {
         outcome.diagnostic["on_face"] = selector.at("on_face");
         outcome.error += "; restricted to edges adjacent to current surface " +

@@ -230,6 +230,7 @@ inline void inspect(ProSolid model, bool assembly, const MillimeterScale &scale,
         scan_part(model, to_mm, bounds);
     }
     inspection["bounding_box_source"] = "solid_face_tessellation";
+    const bool measured = !bounds.reason && bounds.facets > 0;
     inspection["bounding_box_status"] = {
         {"state", bounds.reason   ? "unavailable"
                   : bounds.facets ? "measured"
@@ -237,6 +238,10 @@ inline void inspect(ProSolid model, bool assembly, const MillimeterScale &scale,
         {"reason", bounds.reason ? nlohmann::json(bounds.reason) : nlohmann::json(nullptr)},
         {"query_code", bounds.code ? nlohmann::json(bounds.code) : nlohmann::json(nullptr)},
         {"target_chord_height_mm", target_chord_mm},
+        {"measurement_method", measured ? nlohmann::json("tessellated") : nlohmann::json(nullptr)},
+        {"method_error_bound_mm",
+         measured ? nlohmann::json(target_chord_mm) : nlohmann::json(nullptr)},
+        {"error_bound_direction", measured ? nlohmann::json("inward") : nlohmann::json(nullptr)},
     };
     if (!bounds.reason && bounds.facets)
         inspection["bounding_box_mm"] = {

@@ -261,6 +261,8 @@ OPERATION_KEYS = (
     "body_id",
     "suggested_targets",
     "auto_included_dependencies",
+    "envelope_mm",
+    "u_extension_from_flip_thickness_mm",
 )
 
 #: Selectable per-operation blocks; identity, status, message and failure

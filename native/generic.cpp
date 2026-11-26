@@ -1900,6 +1900,13 @@ static ProSelection resolve(const J &r) {
         if (kind == "datum_plane" && fabs(offset) < 1e-9 && matches.size() > 1)
             matches = {*std::min_element(matches.begin(), matches.end())};
         if (matches.size() != 1) {
+            if (kind == "plane" && candidates.empty()) {
+                throw std::runtime_error(
+                    "Plane reference {kind:'plane', normal, offset} only matches solid faces, "
+                    "and this model has 0 solid surfaces yet (has_solid=false). On an empty "
+                    "part or sheetmetal model, use {kind:'datum_plane', axis:'x'|'y'|'z', "
+                    "offset:N} or {kind:'datum_plane', id:N} from inspect");
+            }
             // BUG-116: report how many faces matched instead of only "not one",
             // and name the form that survives a populated model.
             std::string planes;
@@ -8134,11 +8141,55 @@ static void execute_operation_body(const J &op) {
         if (kind == "round") {
             const J &delta = mat["material_delta_mm3"];
             result["volume_delta_mm3"] = delta;
+            std::string round_kind = "unknown";
             if (delta.is_number()) {
                 const double dv = delta.get<double>();
-                result["round_kind"] = dv < -1e-6 ? "convex" : (dv > 1e-6 ? "concave" : "neutral");
-            } else {
-                result["round_kind"] = "unknown";
+                round_kind = dv < -1e-6 ? "convex" : (dv > 1e-6 ? "concave" : "neutral");
+            }
+            result["round_kind"] = round_kind;
+            const std::string expected_kind =
+                op.contains("expected_round_kind") && op["expected_round_kind"].is_string()
+                    ? op["expected_round_kind"].get<std::string>()
+                    : "";
+            const std::string expected_sign =
+                op.contains("expected_material_delta_sign") &&
+                        op["expected_material_delta_sign"].is_string()
+                    ? op["expected_material_delta_sign"].get<std::string>()
+                    : "";
+            bool mismatch = false;
+            if (!expected_kind.empty() && round_kind != expected_kind)
+                mismatch = true;
+            if (!expected_sign.empty()) {
+                if (!delta.is_number())
+                    mismatch = true;
+                else if (expected_sign == "negative" && !(delta.get<double>() < -1e-6))
+                    mismatch = true;
+                else if (expected_sign == "positive" && !(delta.get<double>() > 1e-6))
+                    mismatch = true;
+            }
+            if (mismatch) {
+                J diag = {{"round_kind", round_kind}, {"material_delta_mm3", delta}};
+                J edge_diags = diagnose_round_edges(op.at("references"), inspect_mm_scale);
+                if (!edge_diags.empty())
+                    diag["edge_diagnostics"] = edge_diags;
+                stage_operation_result({{"round_kind", round_kind},
+                                        {"material_delta_mm3", delta},
+                                        {"volume_delta_mm3", delta},
+                                        {"round_failure", diag}});
+                std::string msg = "round expectation failed: measured round_kind=" + round_kind +
+                                  ", material_delta_mm3=" + delta.dump();
+                if (!expected_kind.empty())
+                    msg += ", expected_round_kind=" + expected_kind;
+                if (!expected_sign.empty())
+                    msg += ", expected_material_delta_sign=" + expected_sign;
+                if (!edge_diags.empty()) {
+                    const J &e0 = edge_diags[0];
+                    if (e0.contains("dihedral_angle_deg"))
+                        msg += " (edge " + std::to_string(e0.value("edge_id", -1)) +
+                               " dihedral_deg=" +
+                               std::to_string(e0["dihedral_angle_deg"].get<double>()) + ")";
+                }
+                throw std::runtime_error(msg);
             }
         }
     }

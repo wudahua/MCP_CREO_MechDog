@@ -367,7 +367,7 @@ class UpdateCacheTests(unittest.IsolatedAsyncioTestCase):
             # 105 = 104 that carry creo_surface_trim (live P3),
             # creo_project_curve (live S04) and creo_surface_offset (live S07, 2026-11-05).
             # 110 adds creo_get_mass_properties_batch (FEAT-073/T10).
-            self.assertEqual(len(tools), 111)
+            self.assertEqual(len(tools), 112)
             self.assertTrue(tool.annotations.read_only_hint)
             self.assertTrue(tool.annotations.open_world_hint)
             self.assertFalse(tool.annotations.destructive_hint)

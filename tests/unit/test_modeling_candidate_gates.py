@@ -64,7 +64,7 @@ class ModelingCandidateGateTests(unittest.TestCase):
         # 110 adds creo_get_mass_properties_batch (FEAT-073/T10) to the 109
         # published tools; 109 added creo_cancel_job (BUG-131) and
         # creo_redefine_solidify_body (FEAT-070).
-        self.assertEqual(len(names), 111)
+        self.assertEqual(len(names), 112)
         for op in candidate_operations():
             self.assertNotIn("creo_" + op["op"], names)
 
