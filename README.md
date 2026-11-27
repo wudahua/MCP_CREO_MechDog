@@ -1,8 +1,8 @@
-# MCP_CREO_MechDog 0.48.0
+# MCP_CREO_MechDog 0.48.1
 
-![version](https://img.shields.io/badge/version-0.48.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
+![version](https://img.shields.io/badge/version-0.48.1-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.48.0**（MINOR，公开工具 112）。交付 0.47.0 / 0.47.1 两份外部反馈的三项修复与收口：`creo_refresh_model(..., write_back_snapshot=True)` 无版本破坏只读回填历史模型快照与 `model_summary` 过期字段提示（[BUG-196](docs/work-items/BUG-196.md)），`bounding_box_status` 网格并集口径 `basis` 与真实 `query_code`、`compact_job` 巡检摘要、`creo_round`/`creo_chamfer` 参数示例与 `session_health` 连接/保存双健康子块（[BUG-197](docs/work-items/BUG-197.md)），以及 `v0.47.0`/`v0.47.1` 发布后实证回填与 `tools/check_release_records.py --post-release` 门禁（[DEV-105](docs/work-items/DEV-105.md)）；同步合入 [DEV-103](docs/work-items/DEV-103.md) 校验冷数据归档剥离（18.40 MB 转存归档 Release）。 [版本说明](docs/release-notes/RELEASE_NOTES_0.48.0.md) · [下载页](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.48.0)
+当前正式版 **0.48.1**（PATCH，公开工具 112）。复核 0.47.0 反馈原件并补修分拆 `inspection_ref` 零件快照的 `surfaces[].area_mm2` 过期检出与装配体 `merged_counts` 误报（[BUG-196](docs/work-items/BUG-196.md)），同步合入并收口三批台账与全量活跃文档迁移断链治理（[DEV-106](docs/work-items/DEV-106.md)：归档 `DEV-052`/`DEV-065`/`BUG-175`/`DEV-079`、清零 `开发中` 存量并修复 115 份活跃非冻结文档 364 处迁移断链）。 [版本说明](docs/release-notes/RELEASE_NOTES_0.48.1.md) · [下载页](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.48.1)
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 

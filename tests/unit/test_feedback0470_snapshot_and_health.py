@@ -297,6 +297,207 @@ class LegacySnapshotBackfillTest(unittest.TestCase):
                     "part_sha256_mismatch_or_missing",
                 )
 
+    def test_split_legacy_part_detects_missing_surface_areas_and_clears_after_write_back(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            models_dir = root / "models"
+            jobs_dir = root / "jobs"
+            tpl_dir = root / "creo" / "Common Files" / "templates"
+            models_dir.mkdir()
+            jobs_dir.mkdir()
+            tpl_dir.mkdir(parents=True)
+            (tpl_dir / "mmns_part_solid_abs.prt").write_bytes(b"TPL")
+
+            model_id = "b" * 32
+            part_dir = models_dir / model_id / "output"
+            part_dir.mkdir(parents=True)
+            part_path = part_dir / "p01_piston.prt.6"
+            part_path.write_bytes(b"CREO-PART-0390")
+            part_sha = _sha256_file(part_path)
+
+            m_dir = models_dir / model_id
+            legacy_split = {
+                "model_id": model_id,
+                "model_name": "p01_piston",
+                "model_type": "part",
+                "status": "ready",
+                "revision": 6,
+                "updated_at": "2026-11-23T15:29:07Z",
+                "last_job": "job_0390",
+                "part_file": str(part_path),
+                "part_sha256": part_sha,
+                "inspection": {
+                    "inspection_available": True,
+                    "has_solid": True,
+                    "counts": {"solids": 1, "surfaces": 2, "edges": 4},
+                    "surfaces": [
+                        {"id": 1, "type": "plane", "normal": [0, 0, 1]},
+                        {"id": 2, "type": "cylinder", "radius": 10.0},
+                    ],
+                    "edges": [{"id": 1}, {"id": 2}, {"id": 3}, {"id": 4}],
+                },
+            }
+            with mock.patch.object(bridge, "ROOT", root):
+                model_registry.write_model(m_dir, legacy_split)
+                stored_split = model_registry.read_control(m_dir)
+                self.assertNotIn("inspection", stored_split)
+                self.assertFalse(stored_split["inspection_summary"]["surface_areas_available"])
+
+                # 1) Split record written without per-surface area_mm2 or total/bbox:
+                # surface_areas_available=False flags surfaces[].area_mm2 even when
+                # inspection is split to a sidecar.
+                snap_split = model_queries.model_summary(stored_split)["snapshot"]
+                self.assertIn("surfaces[].area_mm2", snap_split.get("stale_fields", []))
+                self.assertIn("total_surface_area_mm2", snap_split.get("stale_fields", []))
+                self.assertIn("bounding_box_mm", snap_split.get("stale_fields", []))
+
+                # 2) Pre-0.41.0 split record on disk (lacking merged_counts and
+                # surface_areas_available in stored inspection_summary):
+                pre_0481 = {
+                    **stored_split,
+                    "inspection_summary": {
+                        k: v
+                        for k, v in stored_split["inspection_summary"].items()
+                        if k not in ("surface_areas_available", "merged_counts")
+                    },
+                }
+                snap_pre = model_queries.model_summary(pre_0481)["snapshot"]
+                self.assertIn("surfaces[].area_mm2", snap_pre.get("stale_fields", []))
+                self.assertIn("merged_counts", snap_pre.get("stale_fields", []))
+
+                # 3) Refresh with write_back_snapshot=True fills per-surface area_mm2 and clears
+                # stale_fields while preserving revision/part_sha256/updated_at.
+                fresh_inspection = {
+                    "inspection_available": True,
+                    "has_solid": True,
+                    "counts": {"solids": 1, "surfaces": 2, "edges": 4},
+                    "total_surface_area_mm2": 58171.597,
+                    "bounding_box_mm": {"min": [0, 0, 0], "max": [85, 95, 85]},
+                    "bounding_box_source": "solid_surface_mesh",
+                    "bounding_box_status": {
+                        "state": "measured",
+                        "basis": "tessellated_solid_union",
+                        "query_code": 0,
+                    },
+                    "surfaces": [
+                        {"id": 1, "type": "plane", "area_mm2": 1000.0},
+                        {"id": 2, "type": "cylinder", "area_mm2": 57171.597},
+                    ],
+                    "edges": [{"id": 1}, {"id": 2}, {"id": 3}, {"id": 4}],
+                }
+                with (
+                    mock.patch.object(generic_bridge, "MODELS", models_dir),
+                    mock.patch.object(bridge, "JOBS", jobs_dir),
+                    mock.patch.object(
+                        bridge, "config", return_value={"creo_root": str(root / "creo")}
+                    ),
+                    mock.patch.object(
+                        bridge,
+                        "spawn_detached_runner",
+                        return_value=(mock.MagicMock(pid=99999), False),
+                    ),
+                    mock.patch.object(bridge, "toolkit_lock", return_value=nullcontext()),
+                    mock.patch.object(
+                        bridge, "build_native", return_value=Path("creo_executor.exe")
+                    ),
+                ):
+                    submitted = generic_bridge.submit(
+                        [],
+                        model_id=model_id,
+                        readonly=True,
+                        write_back_snapshot=True,
+                    )
+                    job_id = submitted["job_id"]
+                    manifest = bridge.read_json(bridge.job_path(job_id) / "job.json")
+
+                    def fake_worker(_exe, directory, _request, _manifest, _log):
+                        (Path(directory) / "native_result.json").write_text(
+                            json.dumps(
+                                {
+                                    "ok": True,
+                                    "success": True,
+                                    "part_file": str(part_path),
+                                    "sha256": part_sha,
+                                    "inspection": fresh_inspection,
+                                    "operations": [],
+                                }
+                            ),
+                            encoding="utf-8",
+                        )
+                        return 0
+
+                    with mock.patch.object(
+                        generic_bridge, "_run_worker_with_watchdog", side_effect=fake_worker
+                    ):
+                        generic_bridge.run_generic_job(job_id, manifest)
+
+                updated = model_registry.read_control(m_dir)
+                self.assertEqual(updated["revision"], 6)
+                self.assertEqual(updated["part_sha256"], part_sha)
+                self.assertEqual(updated["updated_at"], "2026-11-23T15:29:07Z")
+                self.assertTrue(updated["inspection_summary"]["surface_areas_available"])
+                updated_summary = model_queries.model_summary(updated)
+                self.assertNotIn("stale_fields", updated_summary["snapshot"])
+                surfaces_page = model_queries.inspect_page(
+                    updated, detail="full", section="surfaces"
+                )
+                self.assertEqual(
+                    [s["area_mm2"] for s in surfaces_page["data"]["surfaces"]],
+                    [1000.0, 57171.597],
+                )
+
+    def test_assembly_snapshot_stale_fields_never_requires_merged_counts(self):
+        refreshed_asm = {
+            "model_id": "c" * 32,
+            "model_name": "engine_asm",
+            "model_type": "assembly",
+            "status": "ready",
+            "revision": 4,
+            "part_file": "D:/tmp/engine_asm.asm.4",
+            "part_sha256": "c" * 64,
+            "snapshot_source": "refresh_verified",
+            "inspection_summary": {
+                "inspection_available": True,
+                "model_type": "assembly",
+                "has_solid": True,
+                "counts": {
+                    "features": 29,
+                    "surfaces": 0,
+                    "edges": 0,
+                    "quilts": 0,
+                    "bodies": 0,
+                    "components": 29,
+                },
+                "total_surface_area_mm2": 905372.068,
+                "bounding_box_mm": {
+                    "min": [-638.173, 68.707, -299.449],
+                    "max": [-49.173, 459.902, 93.077],
+                },
+                "bounding_box_source": "solid_surface_mesh",
+                "bounding_box_status": {
+                    "state": "measured",
+                    "basis": "tessellated_solid_union",
+                    "query_code": 0,
+                },
+            },
+            "inspection_ref": {"file": "D:/tmp/ins.json", "sha256": "d" * 64, "bytes": 100},
+        }
+        self.assertNotIn("stale_fields", model_queries.model_summary(refreshed_asm)["snapshot"])
+
+        legacy_asm = {
+            **refreshed_asm,
+            "inspection_summary": {
+                "inspection_available": True,
+                "model_type": "assembly",
+                "has_solid": True,
+                "counts": {"features": 29, "surfaces": 0, "edges": 0, "components": 29},
+            },
+        }
+        self.assertEqual(
+            model_queries.model_summary(legacy_asm)["snapshot"].get("stale_fields"),
+            ["total_surface_area_mm2", "bounding_box_mm"],
+        )
+
 
 class NativeFeedbackContractsTest(unittest.TestCase):
     """BUG-197: compact inspection_summary, docs examples, C++ bbox basis/query_code, health split."""

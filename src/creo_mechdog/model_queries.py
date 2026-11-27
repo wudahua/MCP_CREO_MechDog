@@ -299,6 +299,7 @@ def inspection_summary(inspection: Any) -> dict[str, Any]:
                 "legacy_regeneration_outline_mm",
                 "inspection_source",
                 "inspection_available",
+                "surface_areas_available",
                 "verified_feature_counts",
             )
             if key in state
@@ -307,6 +308,10 @@ def inspection_summary(inspection: Any) -> dict[str, Any]:
         "body_counts": body_counts(state.get("body_counts")),
         "inspection_available": bool(state) and state.get("inspection_available", True),
     }
+    if isinstance(state.get("surfaces"), list) and state["surfaces"]:
+        summary["surface_areas_available"] = all(
+            isinstance(s, dict) and s.get("area_mm2") is not None for s in state["surfaces"]
+        )
     merged = _merged_topology_counts(state)
     if merged is not None:
         summary["merged_counts"] = merged
@@ -356,15 +361,19 @@ def model_summary(model: dict[str, Any]) -> dict[str, Any]:
     insp_summary = result["inspection"]
     if saved and insp_summary.get("inspection_available"):
         counts = insp_summary.get("counts") or {}
+        is_assembly = (
+            model.get("model_type") == "assembly" or insp_summary.get("model_type") == "assembly"
+        )
         has_surface_or_solid = bool(insp_summary.get("has_solid")) or (
             isinstance(counts.get("surfaces"), int) and counts["surfaces"] > 0
         )
         if has_surface_or_solid:
-            stale_fields = [
-                key
-                for key in ("total_surface_area_mm2", "bounding_box_mm", "merged_counts")
-                if insp_summary.get(key) is None
-            ]
+            required_keys = (
+                ("total_surface_area_mm2", "bounding_box_mm")
+                if is_assembly
+                else ("total_surface_area_mm2", "bounding_box_mm", "merged_counts")
+            )
+            stale_fields = [key for key in required_keys if insp_summary.get(key) is None]
             if (
                 insp_summary.get("bounding_box_source") == "legacy_regeneration_outline"
                 and "bounding_box_mm" not in stale_fields
@@ -378,6 +387,15 @@ def model_summary(model: dict[str, Any]) -> dict[str, Any]:
                 and any(isinstance(s, dict) and s.get("area_mm2") is None for s in raw_surfaces)
             ):
                 stale_fields.append("surfaces[].area_mm2")
+            elif not is_assembly and raw_surfaces is None:
+                surface_areas_avail = insp_summary.get("surface_areas_available")
+                if surface_areas_avail is False or (
+                    "surface_areas_available" not in insp_summary
+                    and isinstance(counts.get("surfaces"), int)
+                    and counts["surfaces"] > 0
+                    and insp_summary.get("total_surface_area_mm2") is None
+                ):
+                    stale_fields.append("surfaces[].area_mm2")
             if stale_fields:
                 snapshot_meta["stale_fields"] = stale_fields
                 snapshot_meta["refresh_hint"] = (

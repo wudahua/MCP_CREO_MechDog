@@ -15,7 +15,9 @@
 
 ## 版本约定
 
-当前版本为 0.48.0（2026-11-27 MINOR，交付 [BUG-196](../work-items/BUG-196.md) 只读快照回写与过期字段提示、[BUG-197](../work-items/BUG-197.md) 包围盒口径/compact 摘要/示例/健康拆分与 [DEV-105](../work-items/DEV-105.md) 发布后回填门禁，同步合入 [DEV-103](../work-items/DEV-103.md) 校验冷数据归档剥离，公开工具 112）。 [版本说明](../release-notes/RELEASE_NOTES_0.48.0.md) · [发布记录](../validation/RELEASE-0.48.0.md)
+当前版本为 0.48.1（2026-11-27 PATCH，补修 [BUG-196](../work-items/BUG-196.md) 分拆 `inspection_ref` 零件快照 `surfaces[].area_mm2` 过期检出与装配体 `merged_counts` 误报，并合入交付 [DEV-106](../work-items/DEV-106.md) 三批台账整理与 115 份活跃非冻结文档 364 处迁移断链修复，公开工具 112）。 [版本说明](../release-notes/RELEASE_NOTES_0.48.1.md) · [发布记录](../validation/RELEASE-0.48.1.md)
+
+此前的 0.48.0（2026-11-27 MINOR，交付 [BUG-196](../work-items/BUG-196.md) 只读快照回写与过期字段提示、[BUG-197](../work-items/BUG-197.md) 包围盒口径/compact 摘要/示例/健康拆分与 [DEV-105](../work-items/DEV-105.md) 发布后回填门禁，同步合入 [DEV-103](../work-items/DEV-103.md) 校验冷数据归档剥离，公开工具 112）。 [版本说明](../release-notes/RELEASE_NOTES_0.48.0.md) · [发布记录](../validation/RELEASE-0.48.0.md)
 
 此前的 0.46.1（2026-11-26 PATCH，交付 [BUG-193](../work-items/BUG-193.md) 的提交前零锁 callback 预检，公开工具 111）。 [版本说明](../release-notes/RELEASE_NOTES_0.46.1.md) · [发布记录](../validation/RELEASE-0.46.1.md)
 
