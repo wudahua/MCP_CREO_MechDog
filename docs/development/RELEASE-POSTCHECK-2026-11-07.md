@@ -8,6 +8,21 @@
 - 四件附件为 `MCP_CREO_MechDog-0.48.0-source.zip`、`MCP_CREO_MechDog-0.48.0-source.zip.sha256`、`MCP_CREO_MechDog-0.48.0-seed-library.zip` 和 `MCP_CREO_MechDog-0.48.0-seed-library.zip.sha256`。种子包 SHA256 为 `c30953f986123190393862e211a5d6660c69b19c2369cc6855adb03b56c4ed31`。两份同名 sidecar 分别记录对应 ZIP 的摘要。
 - 远端校验发布后执行，当前未验证。 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.48.0)
 
+### v0.48.0 发布后核对
+
+- 正式 Release `460070243` 发布于 2026-11-27 01:44:51 UTC（非 draft、非 prerelease），附注标签 `v0.48.0`（`40719f9c875ec7500056a7d4bf95a36483689402`）指向发布主干提交 `b9d11b85ccfcba1247e37deb43ce887b954a6d50`。 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.48.0)
+- 干净主干提交 `b9d11b85ccfcba1247e37deb43ce887b954a6d50` 在 Windows x64 / Python 3.12.10 运行 `tools/test_unit.py` 共 **4,563** 项，0 失败、0 错误、6 跳过（`run_id=e90345f483b84ceab099fd07d628b978`，受测源码指纹 `b0879765358e014acda0ac7e52cac2aa5ce025bc6cdf0990513a21d977c255c5`）；`tools/check_release_records.py --version 0.48.0 --source-zip` 与 `tools/dev_check.py --skip-unit`、`tools/test_mcp.py --offline` / `--legacy-entry` 全部通过（`tool_count=112`，Ruff 0 lint / 0 unformatted）。
+- `PYTHONUTF8=1 tools/check_release_assets.py --tag v0.48.0` 退出码 0（`v0.48.0: four assets downloaded and verified; both sidecars match; release body self-proof verified`）：
+
+| 远端附件 | 字节 | 核对实算 SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.48.0-source.zip` | 11,371,120 | `ac7df142a792fa332a4c1d41f76d9f09cedd80cdae474c4ae664cf5ac88d316c` |
+| `MCP_CREO_MechDog-0.48.0-source.zip.sha256` | 101 | 与对应 ZIP 摘要一致 |
+| `MCP_CREO_MechDog-0.48.0-seed-library.zip` | 493,442 | `c30953f986123190393862e211a5d6660c69b19c2369cc6855adb03b56c4ed31` |
+| `MCP_CREO_MechDog-0.48.0-seed-library.zip.sha256` | 107 | 与对应 ZIP 摘要一致 |
+
+- 未测范围：Creo 9 / Creo 12.4 实机、外部 WorkBuddy 黑盒复测及 0.39.0 原历史模型实机复验。
+
 ## v0.47.1（2026-11-26，打包时点）
 
 - 交付 [BUG-187](../work-items/BUG-187.md)（主基准面偏移默认法线对齐 `frames.XY/XZ/YZ`、`datum_plane` 新增 `plane_frame` 回执、字典草图反向法线输出 `frame_warning` 及 `frames_note` 文档）与 [DEV-104](../work-items/DEV-104.md)（开发入口统一与四批台账复核）；Windows x64 / Python 3.12.10 / Creo 10.0.0.0（release 42）三组实机对照与保存重载全通过。 [版本说明](../release-notes/RELEASE_NOTES_0.47.1.md) · [验证与发布记录](../validation/RELEASE-0.47.1.md)
