@@ -22,7 +22,7 @@ MCP stdio 通过 `python -m creo_mechdog` 或根 `server.py` 启动，经 `creo_
 
 开发环境为 Windows x64 / Python 3.12+。语言与单元检查不需要 Creo SDK。建模需 Creo 9/10/12、匹配 SDK、许可和 MSVC x64；当前本机原生验收环境为 Creo 12.4.0.0。Creo 9 编译探测已有修复，本机无 SDK，实机编译/运行未验；其他环境范围见[兼容矩阵](COMPATIBILITY.md)。不要求全项目 Creo 10 独立复测或双版本发布门槛，也不把本机成功外推至其他环境。
 
-本机开发联调使用 `MCP_CREO_MechDog_dev`，目标目录见根级 AGENTS.md。启动、重启、建模与异常恢复的授权范围见[本机实机常设授权](../AGENTS.md#配置许可与本机实机常设授权)。BUG-001 的历史现场见[恢复记录](validation/BUG-001-recovery-2026-10-17.md)。
+本机开发联调入口（`MCP_CREO_MechDog` / `MCP_CREO_MechDog_dev`）以当前 Git 主检出 `D:\my\MCP_CREO_MechDog` 为准，目标目录与运行期加载路径核查方法见根级 [AGENTS.md](../AGENTS.md#构建测试与开发命令)。启动、重启、建模与异常恢复的授权范围见[本机实机常设授权](../AGENTS.md#配置许可与本机实机常设授权)。BUG-001 的历史现场见[恢复记录](validation/BUG-001-recovery-2026-10-17.md)。
 
 ## 命令与检查
 

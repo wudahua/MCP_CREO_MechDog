@@ -35,7 +35,7 @@
 - `.\.venv\Scripts\python.exe tools\test_mcp.py`：真实 stdio 契约与会话检查（追加 `--offline` 做离线门禁，`--legacy-entry` 测根 `server.py`，`--protocol-only` 仅测协议）。
 - `.\.venv\Scripts\python.exe tools\dev_check.py`：检查新增语言问题与全部单元测试并生成 `build/development_check.json`（`--strict --skip-unit` 暴露全量存量问题）。
 
-服务标识统一为 `MCP_CREO_MechDog`；本机开发联调只启用 `MCP_CREO_MechDog_dev` 并指向 `E:\Projects\MCP_CREO_MechDog`（禁用旧 C 盘副本和 test 项）。
+服务标识统一为 `MCP_CREO_MechDog`；当前本机 Git 主检出目录为 `D:\my\MCP_CREO_MechDog`（原 `E:\Projects\MCP_CREO_MechDog` 路径已不存在）。本机开发联调若使用独立调试项 `MCP_CREO_MechDog_dev`（或直接配置 `MCP_CREO_MechDog`），应指向 `D:\my\MCP_CREO_MechDog` 并禁用旧 C 盘副本和 test 项；不得擅自改动其他 agent 正在使用的客户端配置或会话。核查当前服务实际加载目录与入口的只读方法：1) 查看客户端 MCP 配置的 `command`/`args`/`cwd`（如 `C:\Users\Administrator\.workbuddy\mcp.json`、`C:\Users\Administrator\.codex\config.toml`）；2) 用 `Get-CimInstance Win32_Process` 查看运行中 Python MCP 进程命令行；3) 调用 MCP 工具 `creo_capabilities(detail="full", section="runtime")` 或 `creo_server_info` 核对 `code_root`、`server_entry`、`python_executable` 与 `source_changed_since_startup`。
 
 ## 代码风格、单位与测试约定
 
