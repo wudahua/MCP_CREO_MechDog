@@ -12,7 +12,7 @@
 
 本次增加可选 expected_value/expected_symbol/expected_owner，保留 id/value 旧接口；同一尺寸操作先全部核验再写入，旧值比较容差 max(1e-8,abs(expected_value)*1e-8)，查询失败不能假装可编辑。
 
-任务号 A02，负责人unassigned；[子计划](../superpowers/plans/2026-11-03-alphai-a-foundation-plan.md)，统一协调[DEV-067](DEV-067.md)。
+任务号 A02，负责人unassigned；[子计划](../archive/superpowers/plans/2026-11-03-alphai-a-foundation-plan.md)，统一协调[DEV-067](DEV-067.md)。
 
 ## 验收标准与环境
 
@@ -35,7 +35,7 @@
 
 2804d5a/7b3d90e已有守卫代码、17项专项与构建/dev_check记录；本次未重跑或连接Creo。接续R01，先基于0.12.0整合再取当前几何/revision/回滚/保存重载证据，原尺寸分类余项不一并关闭。
 
-详见[核验记录](../development/DEV067-POST0120-AUDIT-2026-11-04.md)和[后续计划](../superpowers/plans/2026-11-04-alphai-post0120-integration-plan.md)。本次只改记录/计划，未修改该任务产品代码或进行新实机。
+详见[核验记录](../archive/development/DEV067-POST0120-AUDIT-2026-11-04.md)和[后续计划](../archive/superpowers/plans/2026-11-04-alphai-post0120-integration-plan.md)。本次只改记录/计划，未修改该任务产品代码或进行新实机。
 
 ## 2026-11-06 rebase 到 0.15.1 与离线门禁
 
@@ -51,7 +51,7 @@
 
 受测源码身份：提交 `3d0c31c`、`dirty=false`、`checked_source_sha256=dbca883f…b908`。
 
-**未重跑实机**：2026-11-03 的 19 例实机记录（[A02 验收摘要](../development/ALPHAI-A02-ACCEPTANCE.md)，基线 `7b3d90e`）保留为历史证据，不当作 rebase 后源码的实机结论；rebase 只做了离线重建与回归。Creo 9/10、装配/骨架/族表驱动尺寸、同一计划内 `set_parameters` 与 pin 的先后语义、WorkBuddy 黑盒仍未验证。合并与发版另行排期，不随本轮进行。
+**未重跑实机**：2026-11-03 的 19 例实机记录（[A02 验收摘要](../archive/development/ALPHAI-A02-ACCEPTANCE.md)，基线 `7b3d90e`）保留为历史证据，不当作 rebase 后源码的实机结论；rebase 只做了离线重建与回归。Creo 9/10、装配/骨架/族表驱动尺寸、同一计划内 `set_parameters` 与 pin 的先后语义、WorkBuddy 黑盒仍未验证。合并与发版另行排期，不随本轮进行。
 
 ## 2026-11-07 rebase 后实机回归（本机 Creo 12.4.0.0）
 

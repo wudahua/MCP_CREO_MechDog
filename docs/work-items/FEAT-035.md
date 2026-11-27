@@ -27,7 +27,7 @@
 
 ## DEV-051 T12 离线阶段（2026-10-29）
 
-已在独立工具和计划的共享 `HoleOp` 中加入互斥的 `counterbore{diameter,depth}` 与 `countersink{diameter,angle}`。Creo 12.4 匹配 SDK 的 `ProHole.h` 将这些元素列于 custom hole；原生路径只创建一个 `PRO_FEAT_HOLE`，省略新字段时仍走旧 straight hole 树。离线构建、契约测试、解析几何算式已完成；元素树实际创建、原生尺寸编辑、几何、保存重载、回滚尚未连接 Creo 验收。详见 [T12 验收卡](../development/DEV051-T12-ACCEPTANCE.md)。本条保持开放，状态为实现待原生验收。
+已在独立工具和计划的共享 `HoleOp` 中加入互斥的 `counterbore{diameter,depth}` 与 `countersink{diameter,angle}`。Creo 12.4 匹配 SDK 的 `ProHole.h` 将这些元素列于 custom hole；原生路径只创建一个 `PRO_FEAT_HOLE`，省略新字段时仍走旧 straight hole 树。离线构建、契约测试、解析几何算式已完成；元素树实际创建、原生尺寸编辑、几何、保存重载、回滚尚未连接 Creo 验收。详见 [T12 验收卡](../archive/development/DEV051-T12-ACCEPTANCE.md)。本条保持开放，状态为实现待原生验收。
 
 ## 2026-10-29 实机：沉孔平座与 90° 沉头（CREO 12.4.0.0）
 
@@ -41,7 +41,7 @@
 
 ## 2026-10-30 离线余项：盲孔/方向/编辑/失败回滚/保存重载（DEV-051 T12）
 
-在既定孔型契约内补齐余项的离线实现与待验驱动：`depth` 盲孔（overall 语义）、方向沿放置面法向（含侧面法向孔与 `flip` 向外钻的守卫失败+回滚+恢复）、真实 dimension ID 的尺寸值编辑（径/沉孔深）、逐例保存重载与参数/几何一致性。每例带独立 oracle（平底去料解析式、面数增量、尺寸回读、圆柱面轴与 bbox），并以 `matched_variant` 区分 118° 钻尖/座面起量备选算式（命中备选不通过）。入口拒绝边界（互斥/尺寸关系/角度）保持不变。修改 `tests/unit/test_native_countersink.py`（9 用例）与 `tools/test_native_countersink.py`（默认 live 跑 6 例余项，三例已通过项仅 `--include-passed-cases` 重跑）；未改 schema、native 与 capabilities。离线：单测 1490 OK、`bridge.py build` 通过、报告 `build/native_countersink/20261030T102226_76e75830/report.json`（SHA256 `ae785e69…fda5500`）。6 例全部未实机；详见 [T12 验收卡](../development/DEV051-T12-ACCEPTANCE.md)「2026-10-30 离线余项」。本条保持开放（实机待验）。
+在既定孔型契约内补齐余项的离线实现与待验驱动：`depth` 盲孔（overall 语义）、方向沿放置面法向（含侧面法向孔与 `flip` 向外钻的守卫失败+回滚+恢复）、真实 dimension ID 的尺寸值编辑（径/沉孔深）、逐例保存重载与参数/几何一致性。每例带独立 oracle（平底去料解析式、面数增量、尺寸回读、圆柱面轴与 bbox），并以 `matched_variant` 区分 118° 钻尖/座面起量备选算式（命中备选不通过）。入口拒绝边界（互斥/尺寸关系/角度）保持不变。修改 `tests/unit/test_native_countersink.py`（9 用例）与 `tools/test_native_countersink.py`（默认 live 跑 6 例余项，三例已通过项仅 `--include-passed-cases` 重跑）；未改 schema、native 与 capabilities。离线：单测 1490 OK、`bridge.py build` 通过、报告 `build/native_countersink/20261030T102226_76e75830/report.json`（SHA256 `ae785e69…fda5500`）。6 例全部未实机；详见 [T12 验收卡](../archive/development/DEV051-T12-ACCEPTANCE.md)「2026-10-30 离线余项」。本条保持开放（实机待验）。
 
 ## 2026-10-31：N10 第二轮实机复测（编排方串行）
 
@@ -81,7 +81,7 @@
 
 沿用本 ID 的“螺纹/标准孔”余项，不重做已交付沉孔/沉头/tip 口径。拟增加受安装孔表约束的 `standard={series,size,thread_depth}`，原生核验系列/规格/底孔与保存的螺纹元数据；不是实体螺旋牙型。旧 `diameter` 仅在新标准分支可省略，其余行为兼容。
 
-负责人 unassigned；接口、文件、针对性回归、实机矩阵见 [A03 子计划](../superpowers/plans/2026-11-03-alphai-a-foundation-plan.md)，协调 [DEV-067](DEV-067.md)。本次未实现、未测试/连 Creo；本卡原状态、已交付版本和其他开放范围保持，后续仅按新证据回填本子项。
+负责人 unassigned；接口、文件、针对性回归、实机矩阵见 [A03 子计划](../archive/superpowers/plans/2026-11-03-alphai-a-foundation-plan.md)，协调 [DEV-067](DEV-067.md)。本次未实现、未测试/连 Creo；本卡原状态、已交付版本和其他开放范围保持，后续仅按新证据回填本子项。
 
 ## 2026-11-03 A03 标准螺纹孔离线冻结（未开放，原生未验证）
 
@@ -130,7 +130,7 @@
 
 ## 2026-11-03 A03 步骤3：开放入口并完成实机验收矩阵
 
-在步骤2 的单例基础上开放 caller 入口并按 P00 契约收口回执，用 `tools/test_adoption_standard_holes.py --live --confirm-session-usable` 一次跑完 20 例（离线 7 例 + 实机 13 例），全部通过。逐例明细、几何 oracle 与未测范围见 [A03 验收摘要](../development/ALPHAI-A03-ACCEPTANCE.md)；证据 `build/acceptance_standard_holes.json`，SHA256 `c1abf15ce44d2897868e9284b9d06fe71c1136cc3785f7efcb6b7e39a1036d9f`（最终格式化源码重建后重跑）。
+在步骤2 的单例基础上开放 caller 入口并按 P00 契约收口回执，用 `tools/test_adoption_standard_holes.py --live --confirm-session-usable` 一次跑完 20 例（离线 7 例 + 实机 13 例），全部通过。逐例明细、几何 oracle 与未测范围见 [A03 验收摘要](../archive/development/ALPHAI-A03-ACCEPTANCE.md)；证据 `build/acceptance_standard_holes.json`，SHA256 `c1abf15ce44d2897868e9284b9d06fe71c1136cc3785f7efcb6b7e39a1036d9f`（最终格式化源码重建后重跑）。
 
 - **开放**：删除 `hole_standards.require_native_support()` 冻结门；`creo_hole` 新增 `standard` 形参且 `diameter` 在标准分支可省略（`placement/reference1/reference2` 前置，MCP 按名传参不受影响）。
 - **回执按契约拆分**：`thread_metadata{series,size,thread_depth_mm,table_id,table_sha256}` + `thread_metadata_verified`（只由创建后特征树回读决定）+ 附加诊断 `thread_readback`；普通孔回执不变。

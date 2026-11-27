@@ -8,7 +8,7 @@
 
 目标版本：0.6.0（0.5.0 反馈第二批）
 
-来源与关联：[装配编辑流程改进建议 P1-1](../validation/feedback-0.5.0-2026-10-22/2026-10-22_CREO10_v0.5.0_装配编辑流程改进建议.md)（外部 Creo 10 / 0.5.0 实操 asm_mx → asm_edit_demo；P1-2 多组件单作业归 FEAT-008 现有 `creo_execute_plan` 示例与验收，不在本卡）；[0.5.0 反馈整合计划](../development/0.5.0-FEEDBACK-PLAN-2026-10-22.md) 第二批；关联 [FEAT-008](FEAT-008.md)、[DEV-046](DEV-046.md)。
+来源与关联：[装配编辑流程改进建议 P1-1](../validation/feedback-0.5.0-2026-10-22/2026-10-22_CREO10_v0.5.0_装配编辑流程改进建议.md)（外部 Creo 10 / 0.5.0 实操 asm_mx → asm_edit_demo；P1-2 多组件单作业归 FEAT-008 现有 `creo_execute_plan` 示例与验收，不在本卡）；[0.5.0 反馈整合计划](../archive/development/0.5.0-FEEDBACK-PLAN-2026-10-22.md) 第二批；关联 [FEAT-008](FEAT-008.md)、[DEV-046](DEV-046.md)。
 
 ## 问题或目标
 
@@ -84,7 +84,7 @@ Toolkit，不改版本或发布。
 `test_busy_inspect_rejects_without_any_job_artifact` 并强化 apply 忙碌回归；
 合并树上 35 项重点单测、原生 helper（11+12 项）、SDK 编译与全量 dev_check
 （647 项）通过。完整证据见
-[BATCH2-STAGE1-REVIEW-2026-10-25.md](../development/BATCH2-STAGE1-REVIEW-2026-10-25.md)。
+[BATCH2-STAGE1-REVIEW-2026-10-25.md](../archive/development/BATCH2-STAGE1-REVIEW-2026-10-25.md)。
 
 ### 2026-10-25 第二批第二阶段：锁顺序修复结果
 
@@ -98,7 +98,7 @@ Toolkit，不改版本或发布。
 新 apply 未进入 `_select`（side_effect 断言）、identity、native，且零作业/
 intent/evidence/model 接受状态；忙时回放仍绑定身份并返回同一父作业。既有
 全部 FEAT-048 单测不回退；全量 dev_check 666 项通过（证据见
-[BATCH2-STAGE2-IMPLEMENTATION-2026-10-25.md](../development/BATCH2-STAGE2-IMPLEMENTATION-2026-10-25.md)）。
+[BATCH2-STAGE2-IMPLEMENTATION-2026-10-25.md](../archive/development/BATCH2-STAGE2-IMPLEMENTATION-2026-10-25.md)）。
 
 配套：批量收养实机驱动补 provenance（fresh/existing_resident）与拒绝原因
 断言、唯一报告目录；guard-root 开发者实机入口
@@ -138,7 +138,7 @@ md050 原生 worker 存活（checkpoint `native_pid` 身份与 `creo_worker.exe`
 收养驱动 provenance 断言随原生实际值修正为 `fresh_retrieval`（工作树
 既有未提交修正，本轮一并提交）；收养行为本体未改。范围与验收见
 [FEAT-008](FEAT-008.md) 第四阶段登记与
-[BATCH2-STAGE4-REVIEW-CLOSEOUT-2026-10-25.md](../development/BATCH2-STAGE4-REVIEW-CLOSEOUT-2026-10-25.md)。
+[BATCH2-STAGE4-REVIEW-CLOSEOUT-2026-10-25.md](../archive/development/BATCH2-STAGE4-REVIEW-CLOSEOUT-2026-10-25.md)。
 实机仍待统一安排。
 
 ### 2026-10-26 0.6.0 发布候选收口
@@ -153,7 +153,7 @@ md050 原生 worker 存活（checkpoint `native_pid` 身份与 `creo_worker.exe`
 
 两批真实 MCP 实机通过（源码 aac3c84，与最终 production 相同；关键值经人工
 核对 raw 报告；文件 SHA256 见
-[BATCH2-LIVE-ACCEPTANCE-2026-10-26.md](../development/BATCH2-LIVE-ACCEPTANCE-2026-10-26.md)）：
+[BATCH2-LIVE-ACCEPTANCE-2026-10-26.md](../archive/development/BATCH2-LIVE-ACCEPTANCE-2026-10-26.md)）：
 
 - 批次一（`file_adoption_integration_20261025T153627Z_4dd8fca3`）：父作业
   `536d15c0312f460780637a743fbfa03c`，2 成功（现驻留健康 `existing_resident`、
@@ -179,4 +179,4 @@ md050 原生 worker 存活（checkpoint `native_pid` 身份与 `creo_worker.exe`
 
 R1 §5 P1-1“按路径/批量收养未变”是0.5.2历史状态。本卡能力已随0.6.0交付并有既有本机12.4证据，不重记缺口；T01将adopt_file和prepare/inspect→apply写入摘要，T13受影响回归。旧报告没有复测新工具，不据此声称外部Creo10已验收本卡，仍保持健康毫米无外部依赖等边界。
 
-共享接口遵循 [DEV-047 基线](DEV-047.md#interface-baseline)。本段仅补来源与已确认的本次子项；T00 未实现业务、未新增实机证据，不据此关闭父卡其他范围。
+共享接口遵循 [DEV-047 基线](../archive/work-items/DEV-047.md#interface-baseline)。本段仅补来源与已确认的本次子项；T00 未实现业务、未新增实机证据，不据此关闭父卡其他范围。

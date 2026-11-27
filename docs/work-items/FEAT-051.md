@@ -20,7 +20,7 @@
 
 日期：2026-10-30（Asia/Shanghai）。类型：功能。优先级：P2。状态：已交付（0.10.0；契约冻结 + 离线实现 + 2026-10-31 run2 七夹具实机通过）。目标版本：0.10.0/0.31.0。
 
-来源与关联：外部反馈 [0.8.5 细节特征报告](../validation/feedback-0.8.x-2026-10-30/20261030_CREO_v0.8.5_细节特征无体积回报_拔模方向只能靠体积反查.md) 全篇。关联 [DEV-052](DEV-052.md) 的 N04 任务；与 [FEAT-035](FEAT-035.md)（沉孔/沉头参数与几何）、[FEAT-034](FEAT-034.md)（T02 严格判定口径）、[BACKLOG](../BACKLOG.md) 的 BUG-018 行（逐操作结果契约）、[FEAT-014](FEAT-014.md)（钣金方向语义）相关但不同条目。
+来源与关联：外部反馈 [0.8.5 细节特征报告](../validation/feedback-0.8.x-2026-10-30/20261030_CREO_v0.8.5_细节特征无体积回报_拔模方向只能靠体积反查.md) 全篇。关联 [DEV-052](DEV-052.md) 的 N04 任务；与 [FEAT-035](FEAT-035.md)（沉孔/沉头参数与几何）、[FEAT-034](../archive/work-items/FEAT-034.md)（T02 严格判定口径）、[BACKLOG](../BACKLOG.md) 的 BUG-018 行（逐操作结果契约）、[FEAT-014](FEAT-014.md)（钣金方向语义）相关但不同条目。
 
 分类依据：新结果契约的范围与字段尚未冻结；按模板「输入、规则或预期仍不清楚」填「待规划」。**不填「已实现」或「已修复」**——外部报告只观察到「没有回报」，本仓库未复现，也未定义契约。
 
@@ -212,7 +212,7 @@ flip→方向映射只离线定义判定规则，未观测。实机命令（本�
 
 ## 2026-10-30～31 N04 实机复测追加
 
-分支 codex/dev051-feedback070，基线 7288f2f，runid 20261030T234952。首例创建后驱动读取 result.revision 抛 KeyError；材料变化、draft_geometry、应用集数、回滚与重载矩阵均未验。 完整 job_id/model_id/revision、原始错误、命令、报告路径与 SHA256 见 [七段实机总报告](../development/POST090-LIVE-SEVEN-SEGMENTS-2026-10-31.md)；原始 JSON 留在 build/post090_live_20261030T234952/，未入库。未重放已受理作业，会话保持运行。
+分支 codex/dev051-feedback070，基线 7288f2f，runid 20261030T234952。首例创建后驱动读取 result.revision 抛 KeyError；材料变化、draft_geometry、应用集数、回滚与重载矩阵均未验。 完整 job_id/model_id/revision、原始错误、命令、报告路径与 SHA256 见 [七段实机总报告](../archive/development/POST090-LIVE-SEVEN-SEGMENTS-2026-10-31.md)；原始 JSON 留在 build/post090_live_20261030T234952/，未入库。未重放已受理作业，会话保持运行。
 
 ## 2026-10-31 N04 live runner 缺陷修复（离线，未实机）
 

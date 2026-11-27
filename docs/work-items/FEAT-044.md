@@ -2,13 +2,13 @@
 
 日期：2026-10-20 登记。类型：功能。优先级：P1。状态：验收中。目标版本：0.4.2（用户 2026-10-20 指定 PATCH，含新增工具，按约定本应为 MINOR，作为例外；已交付）。
 
-来源：[v0.4.1 / Creo 10 反馈](../validation/FEEDBACK-0.4.1-CREO10-2026-10-20.md)（P0）及关联 v0.4.0 报告。属新增能力需求，非回归修复。实施安排见[处理计划](../development/CREO10-0.4.1-FEEDBACK-PLAN.md)。
+来源：[v0.4.1 / Creo 10 反馈](../validation/FEEDBACK-0.4.1-CREO10-2026-10-20.md)（P0）及关联 v0.4.0 报告。属新增能力需求，非回归修复。实施安排见[处理计划](../archive/development/CREO10-0.4.1-FEEDBACK-PLAN.md)。
 
 ## 当前进度（2026-10-21）
 
 0.4.2磁盘打开及WorkBuddy黑盒16/16已交付，0.4.4补钣金件、显式.asm.N与窗口目视验收；0.4.5新增opened_session_model单句柄观察，开发者实机通过，见[实施证据](../validation/BUG076-FEEDBACK042-2026-10-21.md)。下方早期“钣金/数字版本/WorkBuddy待执行”仅属当时状态。
 
-仍需asm_mx.asm.16原环境复验、显示失败/unknown/真实并发，以及新增打开结果字段的WorkBuddy复核；不以已发布替代这些验收。
+2026-10-21 的外部 Creo 10 报告已补验 `asm_mx.asm.16`：清场后一次打开并显示，8 个组件依赖加载，SHA256 双审计一致。显示失败、unknown、真实并发及新增打开结果字段的 WorkBuddy 专项复核仍保留。[0.4.6 原件映射 §3.2](../validation/feedback-0.4.6-2026-10-21/manifest.json)
 
 ## 目标与范围
 
@@ -58,11 +58,11 @@
 - 离线：432 项单元（新增 21）、dev_check、SDK 构建通过。
 - 实机 12 场景全过：完整/缺件装配、显式与最高数字版本、同名冲突、非空会话装配拒绝、中文空格路径、幂等重放、非法输入、身份前后一致。
 - **关键发现**：`ProMdlFiletypeLoad` 对缺件装配不报错（组件静默缺失）；已补组件完整性核对（`ProSolidFeatVisit`+`ProAsmcompMdlGet`），缺件时 `RETRIEVE_INCOMPLETE` 明确失败并报告残留与 unknown 缺件计数。
-- 剩余：`asm_mx.asm.16` 原环境复验、显示失败注入、unknown/并发、钣金件打开、`.asm` 数字版本选择、WorkBuddy 公开黑盒复验待执行（[提示词](../WORKBUDDY_0.5.0_OPEN_FILE.md)）。
+- 剩余：`asm_mx.asm.16` 原环境复验、显示失败注入、unknown/并发、钣金件打开、`.asm` 数字版本选择、WorkBuddy 公开黑盒复验待执行（[提示词](../archive/stage-notes/WORKBUDDY_0.5.0_OPEN_FILE.md)）。
 
 ## 2026-10-21 补验收：钣金件、显式 .asm.N 与窗口目视
 
-按[完善计划](../development/CREO10-0.4.1-FEEDBACK-IMPROVEMENT-PLAN-2026-10-20.md)第 3 节补齐（stdio 直连驱动 `build/dev044_openfile.py`，wbopen_* 白名单素材）：
+按[完善计划](../archive/development/CREO10-0.4.1-FEEDBACK-IMPROVEMENT-PLAN-2026-10-20.md)第 3 节补齐（stdio 直连驱动 `build/dev044_openfile.py`，wbopen_* 白名单素材）：
 
 - **钣金件打开**：受管钣金 `wbopen_sm01.prt.5` → succeeded、model_id=null、adopted=false、model_type=sheetmetal、displayed=true。
 - **显式 `.asm.N`**：`wbopen_asmv.asm.4`=2 组件、`.asm.6`=3 组件，均 succeeded/displayed=true/origin_matches_selected_file=true，打开前后副本 SHA 不变。
@@ -71,7 +71,7 @@
 
 ### 2026-10-21 loaded_session_models 摘要
 
-按[0.4.3 反馈完善计划](../development/0.4.3-feedback-improvement-plan-2026-10-21.md)实施（分支 `codex/dev-043-ledger-simplification`，[实施记录](../validation/FEEDBACK-0.4.3-IMPLEMENTATION-2026-10-21.md)）：`creo_open_file` 成功结果新增 `open_file.loaded_session_models`（会话模型数、本次装配打开的组件实例数及统计口径、有界 20 条页、has_more 与 `creo_list_session_models` 详情入口），显示成功后一次全量枚举生成；`SESSION_NAME_CONFLICT` 消息补充装配依赖加载来源提示。既有测试通过；剩余实机装配打开观察与原环境验收。
+按[0.4.3 反馈完善计划](../archive/development/0.4.3-feedback-improvement-plan-2026-10-21.md)实施（分支 `codex/dev-043-ledger-simplification`，[实施记录](../validation/FEEDBACK-0.4.3-IMPLEMENTATION-2026-10-21.md)）：`creo_open_file` 成功结果新增 `open_file.loaded_session_models`（会话模型数、本次装配打开的组件实例数及统计口径、有界 20 条页、has_more 与 `creo_list_session_models` 详情入口），显示成功后一次全量枚举生成；`SESSION_NAME_CONFLICT` 消息补充装配依赖加载来源提示。既有测试通过；剩余实机装配打开观察与原环境验收。
 
 ## 2026-10-23 外部 Creo 9 证据补录（第八轮，2026-10-25 归档登记）
 

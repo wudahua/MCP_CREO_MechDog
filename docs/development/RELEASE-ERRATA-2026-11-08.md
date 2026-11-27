@@ -21,7 +21,7 @@
 
 ## 待补
 
-0.18.3/4精确tag远端四附件、sidecar/API摘要、本地主干关系、body原文与时间来源仍需联网核验。Creo9/10真实SDK全量构建、缺头SDK的公开MCP拒绝、正常SDK surface_loft的几何/保存重载和WorkBuddy重启后黑盒验收仍未在本轮执行，接手见[DEV-075-HANDOFF](DEV-075-HANDOFF.md)。
+0.18.3/4精确tag远端四附件、sidecar/API摘要、本地主干关系、body原文与时间来源仍需联网核验。Creo9/10真实SDK全量构建、缺头SDK的公开MCP拒绝、正常SDK surface_loft的几何/保存重载和WorkBuddy重启后黑盒验收仍未在本轮执行，接手见[DEV-075-HANDOFF](../archive/development/DEV-075-HANDOFF.md)。
 
 ## v0.19.0 发布记录占位收口
 

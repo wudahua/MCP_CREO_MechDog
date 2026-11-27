@@ -10,11 +10,11 @@
 
 仅对受管标准骨架和本批原生矩形壁，显式映射长宽、保留其他关系、拒绝冲突/循环/歧义；共同日志、依赖闭包和 expected_revisions 在同一锁内核对。
 
-明确边界及拟接口见[设计依据](../superpowers/specs/2026-11-03-alphai-capability-adoption-design.md)。本卡固定身份不能被历史反馈中的同号误写引用替代。
+明确边界及拟接口见[设计依据](../archive/superpowers/specs/2026-11-03-alphai-capability-adoption-design.md)。本卡固定身份不能被历史反馈中的同号误写引用替代。
 
 ## 派工与验收
 
-- 任务号：B02；负责人：unassigned；[子计划](../superpowers/plans/2026-11-03-alphai-b-skeleton-plan.md)；[主计划](../superpowers/plans/2026-11-03-alphai-capability-adoption-plan.md)。
+- 任务号：B02；负责人：unassigned；[子计划](../archive/superpowers/plans/2026-11-03-alphai-b-skeleton-plan.md)；[主计划](../archive/superpowers/plans/2026-11-03-alphai-capability-adoption-plan.md)。
 - 判据：前置 FEAT-059/058 通过；源尺寸 100×60→120×80→110×70，壁体积 6000→9600→7700 mm³，真实随动及重载后再改均通过；关系身份/单位和多模型恢复有证据。
 - 开发环境：Windows x64 / Python 3.12+；原生适用时 Creo 12.4.0.0 / 匹配 SDK/许可，先满足 BUG-001 条件并由会话负责人串行安排。Creo 9/10 未测不能外推。
 - 对应专项 unittest、默认离线驱动、构建、实机命令与错误/恢复矩阵见子计划；所有 live 驱动默认离线。WorkBuddy 如安排则只做公开 MCP 黑盒，不替代内部验证。

@@ -12,7 +12,7 @@
 
 本次只扩展逐字段有来源和时间的会话上下文：默认本地证据聚合、显式 live 走同一只读通道，旧ready不当作实时；不实现自动选最新PID、自动重连、重启或恢复解锁。
 
-任务号 D01，负责人unassigned；[子计划](../superpowers/plans/2026-11-03-alphai-d-workflow-plan.md)，统一协调[DEV-067](DEV-067.md)。
+任务号 D01，负责人unassigned；[子计划](../archive/superpowers/plans/2026-11-03-alphai-d-workflow-plan.md)，统一协调[DEV-067](DEV-067.md)。
 
 ## 验收标准与环境
 
@@ -26,7 +26,7 @@
 
 ## 2026-11-04 R05：连接阶段-38观察增量
 
-0.12.0发布首轮d580ff17…在connect阶段-38/no_effect，未执行建模，后轮67/67通过。当前只能确认阶段与后轮成功，根因仍未定，不能据重跑推断与版本无关。按[后续计划R05](../superpowers/plans/2026-11-04-alphai-post0120-integration-plan.md)收集身份/时间/原始错误，不自动重试/故障注入；BUG-001关闭决定和unknown保护保持。本次未连接Creo，原条目整体仍待规划。
+0.12.0发布首轮d580ff17…在connect阶段-38/no_effect，未执行建模，后轮67/67通过。当前只能确认阶段与后轮成功，根因仍未定，不能据重跑推断与版本无关。按[后续计划R05](../archive/superpowers/plans/2026-11-04-alphai-post0120-integration-plan.md)收集身份/时间/原始错误，不自动重试/故障注入；BUG-001关闭决定和unknown保护保持。本次未连接Creo，原条目整体仍待规划。
 
 ## 2026-11-06 R06 离线实现：会话进度、health 与 busy 的可解释性
 

@@ -6,7 +6,7 @@
 
 外部报告用 `verify_arm7_region_v0260.py` 对真实 Arm7-S7 验证：frame 通过 `validate_yz_sketch_frame`，region 0/1/2 分别解析 4/4/6 段，两两不同，自匹配唯一。这证明契约层可用，但 `ExtrudeOp` 仍只接受整个 sketch，原生也没有区域选区元素，因此 T6c 的 `depth=3` 区域切除建不出来。
 
-推进路线按 [0.26.0 完善计划](../superpowers/plans/2026-11-16-feedback-0260-followup.md)：
+推进路线按 [0.26.0 完善计划](../archive/superpowers/plans/2026-11-16-feedback-0260-followup.md)：
 
 1. 输入适配层从目标 `SketchOp` 的实体端点构造闭环，用现有 `match_region` 唯一匹配后，把该闭环实体原样复制成派生草图，再引用它做拉伸切除；
 2. 派生草图保留父草图 label 与签名摘要，不修改原草图，不拼接近似曲线；
@@ -25,7 +25,7 @@
 
 本批：0.26.0 交付子项（部分交付）交付 `region_selection` 契约与三套原始签名测试；原生选区创建/输出侧未证，未接 `ExtrudeOp`，能力保持不开放。2026-11-16 追加：`ProSurfReg.h` 的 “Surface Region” 实为 `PRO_FEAT_SPLIT_SURF`（草图/链分割曲面），不是拉伸截面里的区域复选，G1 仍不开放。
 
-来源：[0.25.0 Arm7反馈原件](../validation/feedback-0.25.0-2026-11-16/arm7.md)，关联 DEV-090 T6c、T7；范围见[计划G1/G2](../superpowers/plans/2026-11-16-feedback-0250.md#g1g2按稳定签名选区切除p1p2feat-069)。
+来源：[0.25.0 Arm7反馈原件](../validation/feedback-0.25.0-2026-11-16/arm7.md)，关联 DEV-090 T6c、T7；范围见[计划G1/G2](../archive/superpowers/plans/2026-11-16-feedback-0250.md#g1g2按稳定签名选区切除p1p2feat-069)。
 
 新反馈补齐三套B-REGION端点签名和B-CUT depth=3/region_count=3；旧“作者未收到签名”前置已变化。完整TXT/Arm7-S7实体仍未附；端点集合不含完整弧形/样条。当前ExtrudeOp和native extrude没有按签名选区路径，官方创建路线及输出侧仍待核实。
 

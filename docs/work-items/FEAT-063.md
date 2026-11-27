@@ -10,11 +10,11 @@
 
 仓库自带脱敏箱体/机架模板、参数范围/单位/版本摘要到现有 execute_plan 的纯转换；只读不连接 Toolkit、不提交作业，不接受任意路径/脚本或任意表达式。
 
-明确边界及拟接口见[设计依据](../superpowers/specs/2026-11-03-alphai-capability-adoption-design.md)。本卡固定身份不能被历史反馈中的同号误写引用替代。
+明确边界及拟接口见[设计依据](../archive/superpowers/specs/2026-11-03-alphai-capability-adoption-design.md)。本卡固定身份不能被历史反馈中的同号误写引用替代。
 
 ## 派工与验收
 
-- 任务号：D02；负责人：unassigned；[子计划](../superpowers/plans/2026-11-03-alphai-d-workflow-plan.md)；[主计划](../superpowers/plans/2026-11-03-alphai-capability-adoption-plan.md)。
+- 任务号：D02；负责人：unassigned；[子计划](../archive/superpowers/plans/2026-11-03-alphai-d-workflow-plan.md)；[主计划](../archive/superpowers/plans/2026-11-03-alphai-capability-adoption-plan.md)。
 - 判据：同输入确定性输出；非法参数/模板/能力缺失明确拒绝或 blocked；生成计划通过现有 schema，附独立几何判据；没有实机执行证据只交付规划器，不宣称模板建模已通过。
 - 开发环境：Windows x64 / Python 3.12+；原生适用时 Creo 12.4.0.0 / 匹配 SDK/许可，先满足 BUG-001 条件并由会话负责人串行安排。Creo 9/10 未测不能外推。
 - 对应专项 unittest、默认离线驱动、构建、实机命令与错误/恢复矩阵见子计划；所有 live 驱动默认离线。WorkBuddy 如安排则只做公开 MCP 黑盒，不替代内部验证。
@@ -33,7 +33,7 @@
 基线 main@90dbd6c33e9f732d1a5bd969bcf19d30b4b3a62c（已发布 0.12.0）。
 验收范围：专项 unittest、离线 driver 两组解析体积与拒绝/阻断、Ruff、整仓离线 dev_check。
 环境：Windows x64、独立工作树 .venv。详细结果见
-[D02 本阶段验收记录](../development/ALPHAI-D02-ACCEPTANCE.md)。
+[D02 本阶段验收记录](../archive/development/ALPHAI-D02-ACCEPTANCE.md)。
 后续由集成人登记公共工具/源码身份、资源分发和部署清单，并取得 Creo 保存重载证据。
 上文 2026-11-03 记录保留历史含义，不把解析预期外推为实机通过。
 
@@ -44,5 +44,5 @@
 实现与固定 JSON 进入运行时源码身份，分发回归覆盖独立源码副本中的资源定位和默认规划。
 离线 driver 独占创建报告，补充时间/版本/平台/Git 与源码身份。
 软件范围完成；目标版本仍未排期，未发布、未连接 Creo，原生模板和保存重载未验。
-当前验收命令、结果和未测范围见 [11-06 增量记录](../development/ALPHAI-D02-ACCEPTANCE.md#2026-11-06-公共接入增量)。
+当前验收命令、结果和未测范围见 [11-06 增量记录](../archive/development/ALPHAI-D02-ACCEPTANCE.md#2026-11-06-公共接入增量)。
 此前日期段是历史阶段记录；不影响 DEV-069 工作树、服务或环境。

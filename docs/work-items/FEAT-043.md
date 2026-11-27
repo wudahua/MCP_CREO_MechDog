@@ -28,7 +28,7 @@
 
 ### 2026-10-21 快照年龄与会话变化记录
 
-按[0.4.3 反馈完善计划](../development/0.4.3-feedback-improvement-plan-2026-10-21.md)实施（分支 `codex/dev-043-ledger-simplification`，[实施记录](../validation/FEEDBACK-0.4.3-IMPLEMENTATION-2026-10-21.md)）：`creo_list_session_models` 响应新增 `snapshot_age_seconds`、`refresh_guidance` 与 `service_session_changes`（自快照创建起、有界、跨进程 `session_activity.json`）；`creo_open_file`/收养 apply/confirm/恢复各动作/擦除成功后记录服务引起的会话内容变化，GUI 手工变化明确标注未实时复核。省略 cursor 实时重采、携 cursor 冻结快照语义不变；既有测试 44 项通过。剩余实机复核与 WorkBuddy。
+按[0.4.3 反馈完善计划](../archive/development/0.4.3-feedback-improvement-plan-2026-10-21.md)实施（分支 `codex/dev-043-ledger-simplification`，[实施记录](../validation/FEEDBACK-0.4.3-IMPLEMENTATION-2026-10-21.md)）：`creo_list_session_models` 响应新增 `snapshot_age_seconds`、`refresh_guidance` 与 `service_session_changes`（自快照创建起、有界、跨进程 `session_activity.json`）；`creo_open_file`/收养 apply/confirm/恢复各动作/擦除成功后记录服务引起的会话内容变化，GUI 手工变化明确标注未实时复核。省略 cursor 实时重采、携 cursor 冻结快照语义不变；既有测试 44 项通过。剩余实机复核与 WorkBuddy。
 
 ### 2026-10-21 opened_session_model 行为核对（FEAT-043/044）
 

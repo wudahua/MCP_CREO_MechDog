@@ -46,7 +46,7 @@
 
 本轮新增钣金件巡检中的有界 `wall_contour_check`：原生每边最多一次 `ProSmtedgeContourGet`，单次巡检最多 256 边，保留真实 `wall_contour_query_code`；公开巡检按当前 model revision 将每条已查询边投影为 `wall_contour_status=eligible|ineligible|unknown`。`0` 为壁面轮廓候选，`-8` 为不在绿/白壁面轮廓，其余/异常查询码为 unknown；未查询边不伪造状态。以当前巡检几何、壁面/端点选择边，不复用历史 edge id，也不提供无条件 `flange_available`。`eligible` 不表示最终可创建，邻接端仍由 `failure_reason=adjacent_bend_ends` 与 `flange_failure_evidence` 独立解释，并在创建前拒绝。
 
-本轮的接口字段、标准 YZ 首壁例子与描述可独立分批交付：文档/例子属 PATCH；新增 `wall_contract` 帧回显及候选边公开结构属 MINOR。四壁、corner relief/miter 与材料端释放几何仍不支持或未证实；`end_trim_mm` 三轮实测为 `trim_ignored`，不得宣称可用作角部让位。P09 离线调查与后续受限诊断条件见 [交接记录](../development/FEAT014-CORNER-INVESTIGATION-2026-10-31.md)。
+本轮的接口字段、标准 YZ 首壁例子与描述可独立分批交付：文档/例子属 PATCH；新增 `wall_contract` 帧回显及候选边公开结构属 MINOR。四壁、corner relief/miter 与材料端释放几何仍不支持或未证实；`end_trim_mm` 三轮实测为 `trim_ignored`，不得宣称可用作角部让位。P09 离线调查与后续受限诊断条件见 [交接记录](../archive/development/FEAT014-CORNER-INVESTIGATION-2026-10-31.md)。
 
 P14 待验：构建后以当前源码运行三组首壁帧对照，按几何选自由端首折边并测 `flip` 双向 Z 向增长；逐案试 `unbend`/`bend_back`/`flat_pattern` 的 `fixed_surface`；核候选边壁面边、rim/side 边、邻接端和查询失败的真实码/三态/当前 revision，确认巡检不建 flange、不改变模型；邻接端仍创建前拒绝且 revision 不变。每案保留 job/model、原码、几何、保存重载及回滚。未跑 `bridge.py build` 或 `--live`，本段不构成原生建模验收。
 
@@ -87,7 +87,7 @@ T05 可交付可复现/未复现结论与根因证据，但只有四壁原生特
 
 ## 2026-10-29：T11 实机被第一壁阻断（未创建任何折边）
 
-按 [T11 验收卡](../development/DEV051-T11-ACCEPTANCE.md)，在手动打开的 Creo 12.4.0.0 上跑两轮四壁（§relief§ 省略 与 §rectangular/both/1x1§）：
+按 [T11 验收卡](../archive/development/DEV051-T11-ACCEPTANCE.md)，在手动打开的 Creo 12.4.0.0 上跑两轮四壁（§relief§ 省略 与 §rectangular/both/1x1§）：
 
 - 第 1 轮底板作业 §796092e2085b49a7903787406c9d8879§（模型 §c34f02bd6046425caa45dc50f2762a52§，t11_relief_none_de867f）在 op index 1 就失败：§toolkit_code=-1§、§failed_stage=execute_sheetmetal_wall§，消息 “the section has 2 drawing entities (1 straight lines)”；与 BUG-032 的 T03 实机阻断同一根因（准入把草图 §PRO_2D_COORD_SYS§ 计成第二条曲线）。
 - 第 2 轮未提交：同一阻断点，不重复占用通道。
@@ -110,7 +110,7 @@ T05 可交付可复现/未复现结论与根因证据，但只有四壁原生特
 
 ## 2026-10-29 第三轮实机：第一道折边 `-1` 根因（已定）与无折弯（未定）
 
-按 [T11 验收卡](../development/DEV051-T11-ACCEPTANCE.md) 与 [T05 验收卡](../development/DEV051-T05-ACCEPTANCE.md) 的实机记录：
+按 [T11 验收卡](../archive/development/DEV051-T11-ACCEPTANCE.md) 与 [T05 验收卡](../archive/development/DEV051-T05-ACCEPTANCE.md) 的实机记录：
 
 - **`-1` 根因已定**：折边失败路径取回本实现写入的树与 Creo 用 `PRO_FEAT_CR_INCOMPLETE_FEAT` 补全的树，两者在 `PRO_FEAT_WALL`、`PRO_E_SMT_WALL_TYPE=17`、`PRO_E_SMT_FLANGE_TYPE=1`、`DEPTH_TYPE=4/4`（TO_END）、`WALL_HEIGHT_TYPE=0`（NONE）、`SHARPS_TO_BENDS`、`SEC_FLIP`、`THICKNESS_FLIP` 上逐项一致；Creo 的 `ProErrorlist` 为空。真正原因是承载对象：`ProSmtedgeContourGet(edge 125)=-8`（`PRO_TK_BAD_CONTEXT`，边不在 green/white 壁面），因为验收基体 `sheetmetal_wall(depth=1, thickness=232)` 实际是 **232 mm 厚的钣金件**（green/white 相距 232 mm、185×232 大面全是 `SIDE`）。R=2.54 折弯 232 mm 厚板不可能。
 - **已改**：① 夹具基体改 `plane="XZ"` + `sheetmetal_wall(depth=232, thickness=1)`（真正的 1 mm 板，体积/bbox 不变）；② 折边入口用 `ProSmtedgeContourGet` 拒绝不在壁面上的边，消息带 `-8` 原始码与可行做法（不再以裸 `-1` 失败）；③ 截面腿按"中心线=对齐线、坐标系=贴附点"量取角度（原 `(90-angle)` 让 90° 请求得到与中心线共线的零折弯腿）；④ 失败路径保留元素树与面类型取证。
@@ -122,7 +122,7 @@ T05 可交付可复现/未复现结论与根因证据，但只有四壁原生特
 
 ## 2026-10-29 第四轮：截面按库存形状重建，实机被会话消失阻塞
 
-- **实机未执行**：交接前提的"新会话"不存在。2026-10-29 19:51:03 Windows 事件日志记录 `xtop.exe` `AppHangB1` 并已关闭；19:53/20:06 两次 `tasklist` 均无 `parametric.exe`/`xtop.exe`；`creo_session_status` 为 `connected=false`、`toolkit_code=-4`、`creo_process_snapshot.processes=[]`。按规则不启动/不重启 Creo、不重提、不清锁，全部实机步骤暂停（现场见 [T11 验收卡](../development/DEV051-T11-ACCEPTANCE.md) §4.1）。
+- **实机未执行**：交接前提的"新会话"不存在。2026-10-29 19:51:03 Windows 事件日志记录 `xtop.exe` `AppHangB1` 并已关闭；19:53/20:06 两次 `tasklist` 均无 `parametric.exe`/`xtop.exe`；`creo_session_status` 为 `connected=false`、`toolkit_code=-4`、`creo_process_snapshot.processes=[]`。按规则不启动/不重启 Creo、不重提、不清锁，全部实机步骤暂停（现场见 [T11 验收卡](../archive/development/DEV051-T11-ACCEPTANCE.md) §4.1）。
 - **离线结论（新增）**：本机 `Common Files\text\smt\flange_shapes` 9 个库存截面全部是"1 条 line + 1 个 coord_sys + 1 个尺寸、无 centerline"；弯弧只出现在 hem 类，`i_wall` 的尺寸是腿长 `5.00` + 角度 `90.00`，即"90° 直腿 = 直壁/平铺延伸"。
 - **方向约定（离线，接上一轮现象）**：上一轮 `LINE_wall 0,0 → 0,80`（草图 +y）实机得到 bbox 只增 X、Z 不变 ⇒ 草图 +y = 父壁平面内、草图 +x = 父壁法向；90° 折边必须把腿放在草图 +x。
 - **已改**：`generic_sheetmetal_flange` 的截面改为单条线 `(0,0) → (h·sinA, h·cosA)` + `height` 长度尺寸、去掉 centerline，其余元素树不动；`bridge.py build` 已重建执行器，`clang-format` 通过。
@@ -177,7 +177,7 @@ T05 可交付可复现/未复现结论与根因证据，但只有四壁原生特
 
 ## 2026-10-30：T11 释放有效场景离线阶段（实现与回归完成，实机未验）
 
-分支 `codex/dev051-feedback070`，基线 `760aa9b`（T03 板厚同步）。离线定位、实现、回归与构建；未连接 Creo。详见 [T11 验收卡](../development/DEV051-T11-ACCEPTANCE.md) 2026-10-30 节。
+分支 `codex/dev051-feedback070`，基线 `760aa9b`（T03 板厚同步）。离线定位、实现、回归与构建；未连接 Creo。详见 [T11 验收卡](../archive/development/DEV051-T11-ACCEPTANCE.md) 2026-10-30 节。
 
 - **定位**：第六轮的 0.000000 差全部来自自由端，不能区分"释放未实现"与"自由端无缺口"。SDK 核对确认元素树转写正确；关键未观察点是 Creo 会把未写的释放元素填成默认（探针树 `flange_expected.xml` 为 `TYPE=5 PARAM`、数值全 0），"写入值是否留在创建出的特征里"此前从未读过。
 - **实现**：创建+再生成功后回读创建特征树的释放段（`ProFeatureElemtreeExtract` + 按元素路径取值），与请求逐项核对，不一致即失败并回滚；一致则把 `relief_element_echo` 记入别名并写日志 `SHEETMETAL_FLANGE_RELIEF_ELEMS`。`LENGTH_TYPE/LENGTH/ANGLE` 只记录不断言（默认值是实机待答问题）。写路径未变，默认 none 不变，schema 不变。
@@ -186,7 +186,7 @@ T05 可交付可复现/未复现结论与根因证据，但只有四壁原生特
 
 ## 2026-10-30：T05 离线续做——第三壁对照设计冻结与 `end_trim_mm` 契约贯通（实机未验）
 
-分支 `codex/dev051-feedback070`，HEAD `641edb3`。接续第六轮"`f_ny` status=6、空几何、回滚"的观察，离线补完对照实验；未连接 Creo。详见 [T05 验收卡](../development/DEV051-T05-ACCEPTANCE.md) 2026-10-30 节。
+分支 `codex/dev051-feedback070`，HEAD `641edb3`。接续第六轮"`f_ny` status=6、空几何、回滚"的观察，离线补完对照实验；未连接 Creo。详见 [T05 验收卡](../archive/development/DEV051-T05-ACCEPTANCE.md) 2026-10-30 节。
 
 - **对照设计冻结**：full_length（复现第六轮）/ trimmed_20（第三壁两端各缩 20 mm）/ order_ny_first（0 材料角）/ order_ny_second（1 角）四组，每 fresh 模型逐道一 job、每道重选边；判定表规定角部干涉仅在全长失败 + 低角位成功 + 修剪壁成功且 setback 语义被自由壁探针确认三者齐备时升为 supported。**角部干涉仍是候选，未定因。**
 - **`end_trim_mm` 贯通**：`sheetmetal_flange` 可选正数字段，两侧深度 `TO_END`→`BLIND`+offset（`advanced.cpp`），schema/server 同步；缺省时元素树逐字节不变（静态守卫断言）。语义（链端 setback 还是壁长）离线不可定，由自由首壁探针按实测体积分类，仅 setback 确认后才允许修剪第三壁提交。
@@ -195,7 +195,7 @@ T05 可交付可复现/未复现结论与根因证据，但只有四壁原生特
 
 ## 2026-10-30：N05 离线阶段——正式探针入口、trim 量测与原生失败取证（实机未验）
 
-分支 `codex/dev051-feedback070`，基线 `b10b9f7`。0.9.0 后接续（DEV-052 N05，详见 [T05 验收卡](../development/DEV051-T05-ACCEPTANCE.md) 同日 N05 节）：
+分支 `codex/dev051-feedback070`，基线 `b10b9f7`。0.9.0 后接续（DEV-052 N05，详见 [T05 验收卡](../archive/development/DEV051-T05-ACCEPTANCE.md) 同日 N05 节）：
 
 - **正式 live 探针入口**取代 box 驱动原来的"双开关仍拒绝"：三组探针（`ny_first` / `px_then_ny` / `px_nx_then_ny`）固化 10/30 一次性实机对照，加 trim 量测（无 trim vs `end_trim_mm=20` 各一 fresh 自由首壁，按实测增量分类语义）。判定锁：未知测量不判通过、失败墙永不记为成功、`four_walls_complete` 恒 False。
 - **原生失败取证**（`native/advanced.cpp`，失败路径专用）：依附边长度/两端点/相邻面与边、regenerate 后特征 status 与 geometry 计数（status 6 = unregenerated 即第六轮形态）、元素树与回滚证据有界保存，未知留 null；字段语义已写入 T05 卡供 N06 消费。未写任何 corner 规则、未实现 corner relief。
@@ -265,7 +265,7 @@ T05 可交付可复现/未复现结论与根因证据，但只有四壁原生特
 - **本卡已交付的可用诊断**（不重复开发）：`wall_contour_status=eligible|ineligible|unknown` + `wall_contour_query_code`（每边一次查询、256 边预算、按 revision 标注，`native/generic.cpp:419-431` / `src/creo_mechdog/sheetmetal.py:177-260`）、`wall_contract.wall_face_ids`、`parameter_hint`（`thickness >= depth` 时触发，`native/advanced.cpp:624-683`）。`eligible` 不解除 `adjacent_bend_ends` 创建前拒绝。
 - **口径矛盾（新增待核对项）**：`advanced.cpp:1396-1412` 的折边失败文案推荐“YZ 平面单线 + depth=板长 + thickness=板厚”，而该反馈正是用此配方失败。文案与 `examples/sheetmetal_base_yz.json` 的指引必须与本卡实测一致，否则会继续误导。
 - **分工**：**“为何只有 X=±92.5 短边进入壁面轮廓”的归属定因、人工 UI 对照与配方/准入口径归 [BUG-103](BUG-103.md)**；本卡继续负责四壁/corner relief/材料端释放几何能力，`four_walls_complete` 在第三、四壁真实建成并全链路通过前保持 false。
-- A 层矩阵（A1 `ny_first`、A2 `order_ny_second`、A3 trim 读数组、A4 自由端 relief 扩展）与 B 层受限诊断门槛沿用 [交接记录](../development/FEAT014-CORNER-INVESTIGATION-2026-10-31.md)，本轮未执行、未连接 Creo。
+- A 层矩阵（A1 `ny_first`、A2 `order_ny_second`、A3 trim 读数组、A4 自由端 relief 扩展）与 B 层受限诊断门槛沿用 [交接记录](../archive/development/FEAT014-CORNER-INVESTIGATION-2026-10-31.md)，本轮未执行、未连接 Creo。
 
 ## 2026-11-06 四壁/角部对比实机重跑——邻接拒绝仍按设计生效，四壁保持不支持
 
@@ -284,7 +284,7 @@ T05 可交付可复现/未复现结论与根因证据，但只有四壁原生特
 
 ## 2026-11-06 第二段：miter cuts 路线实现与实机
 
-路线选择：`ProSmtFlangeWall.h` 的 `PRO_E_SMT_MTR_CUTS` 与折边同特征创建，宽度/偏移用 BLIND 直接数值（GAP 实测被重置为 PARAM，见下）；不用需要三条角部引用的独立 `ProSmtCornerRelief` 特征。调研与取舍见 [2026-11-06 计划](../superpowers/plans/2026-11-06-feat-014-miter-cuts-route.md)。
+路线选择：`ProSmtFlangeWall.h` 的 `PRO_E_SMT_MTR_CUTS` 与折边同特征创建，宽度/偏移用 BLIND 直接数值（GAP 实测被重置为 PARAM，见下）；不用需要三条角部引用的独立 `ProSmtCornerRelief` 特征。调研与取舍见 [2026-11-06 计划](../archive/superpowers/plans/2026-11-06-feat-014-miter-cuts-route.md)。
 
 改动：
 

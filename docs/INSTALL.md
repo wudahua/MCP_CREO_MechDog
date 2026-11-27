@@ -226,7 +226,7 @@ Test-Path "C:\Program Files (x86)\Windows Kits\10\Lib\10.0.26100.0\um\x64\kernel
 
 停止 MCP 客户端中的服务并等待正在运行的建模任务结束。保留项目内 `config.json`、`models/`、`jobs/`，用 0.21 的公开源码更新代码及文档，重新运行安装脚本，再重启客户端服务。模型类型未记录的旧模型按零件处理；原有底板接口仍保留。
 
-0.21 是预发布候选版；放样仍未完成，不能作为支持所有 Creo 操作的稳定版。完整边界见 [COVERAGE_0.21.md](COVERAGE_0.21.md)。
+0.21 是预发布候选版；放样仍未完成，不能作为支持所有 Creo 操作的稳定版。完整边界见 [COVERAGE_0.21.md](archive/stage-notes/COVERAGE_0.21.md)。
 
 
 ## 升级到 0.3.0

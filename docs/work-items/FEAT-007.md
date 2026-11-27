@@ -8,7 +8,7 @@
 
 目标版本：0.15.0（已发布）
 
-来源与关联：[台账](../BACKLOG.md) FEAT-007 行；[履带反馈](../validation/TRACK-FEEDBACK-2026-10-16.md)；[0.13.0 反馈修复计划](../superpowers/plans/2026-11-06-0.13.0-feedback-repair-plan.md) R12。关联 FEAT-006、FEAT-023、FEAT-033、BUG-053、BUG-109。
+来源与关联：[台账](../BACKLOG.md) FEAT-007 行；[履带反馈](../validation/TRACK-FEEDBACK-2026-10-16.md)；[0.13.0 反馈修复计划](../archive/superpowers/plans/2026-11-06-0.13.0-feedback-repair-plan.md) R12。关联 FEAT-006、FEAT-023、FEAT-033、BUG-053、BUG-109。
 
 ## 问题或目标
 

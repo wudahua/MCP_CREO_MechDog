@@ -274,7 +274,7 @@
 
 ## 0.11.7（2026-11-03 已发布）：`keep_original` 副本定因与能力边界
 
-分支 `codex/BUG-111-r13-followup`，PATCH 交付；公开工具仍 95（未新增工具）。离线全量 2268 项单测 0 失败/0 错误、`dev_check` `success=true`，本机 Creo 12.4.0.0 实机 C0—C6 对照。版本说明见 [release-notes/RELEASE_NOTES_0.11.7](release-notes/RELEASE_NOTES_0.11.7.md)，发布记录见 [RELEASE-0.11.7](validation/RELEASE-0.11.7.md)，验收摘要见 [R13-FOLLOWUP-ACCEPTANCE-2026-11-03](development/R13-FOLLOWUP-ACCEPTANCE-2026-11-03.md)。
+分支 `codex/BUG-111-r13-followup`，PATCH 交付；公开工具仍 95（未新增工具）。离线全量 2268 项单测 0 失败/0 错误、`dev_check` `success=true`，本机 Creo 12.4.0.0 实机 C0—C6 对照。版本说明见 [release-notes/RELEASE_NOTES_0.11.7](release-notes/RELEASE_NOTES_0.11.7.md)，发布记录见 [RELEASE-0.11.7](validation/RELEASE-0.11.7.md)，验收摘要见 [R13-FOLLOWUP-ACCEPTANCE-2026-11-03](archive/development/R13-FOLLOWUP-ACCEPTANCE-2026-11-03.md)。
 
 - **`keep_original` 副本失败已定因（BUG-111）**：本机 Creo 12.4.0.0 实机七个独立底板（C0—C6）显示，4 个独立模型（C2/C3/C5 与 C6 批 B）在"体已含 45/90/135/180 副本后追加 −135"这一步同型失败于 `operation_index=4`，整批干净回滚（after==before、revision 不变）、后续合法编辑正常；把 −135 放在首位的 C4 五个副本**全部成功**；拆成 4+3 两批的 C6 仍在批 B 首个 op 失败。结论：**失败不跟随副本数量或位置，而跟随"既有副本集合 × 该角度"**——`keep_original` 复制的是**整个当前体**（副本累积在同一 body 内，特征数 +1/副本），追加副本与既有凸块重合／交叠时触发再生失败；全程单 body 反证引用解析问题。**本版不做行为修复**，只交付诊断与能力边界。
 - **"单批 ≤4 个副本、下一批重新引用当前 body"变通建议作废**（C6 证明拆批无效）：对外口径改为"副本集放在同一计划里提交；需要固定原件的副本时另建模型"。0.11.6 段的历史提示已标注被本段取代。
@@ -299,7 +299,7 @@ FEAT-052 随 0.11.0 发布，公开工具 94→95；本机 Windows x64 / Creo 12
 - **能力边界**：仅 MCP 受管单层装配；独立零件、面级、嵌套装配与外部装配不在此版；来源缺失或冲突时要求显式族表，不猜测分组。
 - **未验范围**：WorkBuddy 黑盒未执行；busy/并发通道交错未做实机；Creo 9 本机无 SDK、实机编译与建模运行时仍未验收；Creo 10 独立复测不作为门槛，本机通过不外推其他环境。
 
-详见 [FEAT-052 工作卡](work-items/FEAT-052.md)与[功能计划](superpowers/plans/2026-10-31-assembly-recolor-plan.md)。
+详见 [FEAT-052 工作卡](work-items/FEAT-052.md)与[功能计划](archive/superpowers/plans/2026-10-31-assembly-recolor-plan.md)。
 ## 2026-10-31：DEV-053 P08 首壁帧契约与候选边发现（离线交付，实机待排期）
 
 - **帧契约已文档化**：`depth` 沿有符号草图法向单侧生长（`direction=positive`→+法向、`negative`→−法向），`thickness` 是以草图线为中心、面内垂直于线的板厚。标准水平底板配方冻结为 `examples/sheetmetal_base_yz.json`（YZ+offset92.5、线 (−116,0.5)→(116,0.5)、depth=185、thickness=1、`direction=negative` → X±92.5/Y±116/Z[0,1]、V=42920、COG(0,0,0.5)）。`sheetmetal_wall` 的 `wall_contract` 新增实测帧回显（`frame.sketch_normal/depth_direction/thickness_direction/material_side`）、`wall_face_ids`（绿/白壁面）与非阻断 `parameter_hint`；`PRO_TK_BAD_CONTEXT (-8)` 报错改为携带草图平面/方向修正提示与官方例子。**新增公开回显字段与巡检 `wall_contour_check` 候选边结构归属 MINOR**（BUG-032/FEAT-014 卡注明）；帧说明与例子文档可按 PATCH 交付。
@@ -331,7 +331,7 @@ BUG-082 修复批在 Windows 11 x64 / Python 3.12.14 / Creo 12.4.0.0 / 匹配 SD
 
 | 环境 | 支持定位 | 证据与范围 | 本轮状态 |
 | --- | --- | --- | --- |
-| Windows x64 / Creo 10.0.0.0 / Python 3.12 / VS 2022 | 历史实测环境；功能按已有范围声明，后续按反馈跟进 | [0.2.5 逐项记录](PROGRESS_025.md)、[增量证据](validation_increment_025.json)、`capabilities.py` 中的限制；历史其他套件各自保留日期 | DEV-001 仅验证开发检查与单元，未重跑原生套件；不作为当前验收门槛 |
+| Windows x64 / Creo 10.0.0.0 / Python 3.12 / VS 2022 | 历史实测环境；功能按已有范围声明，后续按反馈跟进 | [0.2.5 逐项记录](archive/stage-notes/PROGRESS_025.md)、[增量证据](validation_increment_025.json)、`capabilities.py` 中的限制；历史其他套件各自保留日期 | DEV-001 仅验证开发检查与单元，未重跑原生套件；不作为当前验收门槛 |
 | Windows x64 / Creo 12.4.0.0 / 匹配 SDK | 已验证可用，功能按已测范围声明 | [BUG-002 验证](validation/BUG-002.md)：登记并发轮询下新建、参数修改、保存重载、失败回滚和 stale revision；[FEAT-019 WorkBuddy 报告](validation/FEAT-019-WorkBuddy-report.md)：自动启动、Toolkit 就绪、草图/拉伸、尺寸驱动、倒角、保存重载与导出 | 上述专项实测通过；发布时另一次冷启动复测失败，保留 BUG-005；两截面种子等其他分支仍由 BUG-004、DEV-005、DEV-006 核实 |
 | Windows x64 / Creo 12 其他维护版本 / 匹配 SDK | 需目标机验证 | 当前成功记录限定 12.4.0.0，其他维护版本没有独立实机证据 | 未逐版验收 |
 | Windows x64 / Creo 9.0.0.0 / 匹配 Toolkit 9 | 已纳入支持/要求范围，编译探测已支持 | [BUG-033](archive/work-items/BUG-033.md) 的常量存在/缺失夹具已通过，修复与安装闭环见 [DEV-028](archive/work-items/DEV-028.md)；第三方 [Creo 9 SDK 编译反馈](validation/2026-10-15_CREO_0.3.0_旧版ToolkitSDK原生编译失败.md) 与 [0.3.2 报告](validation/FEEDBACK-0.3.2.md) 保留原环境结论 | 本机无 Creo 9 SDK；0.3.5 外部环境编译与安装已通过（见 2026-10-18 补录），其中 1 个单元测试失败登记 [BUG-057](work-items/BUG-057.md)；建模运行时仍未验收，不外推为已通过 |
@@ -435,7 +435,7 @@ FEAT-042无盘prepare/apply、FEAT-043会话枚举及BUG-071预检收尾已实�
 
 ## 2026-10-29：钣金件实体增料支持边界（BUG-046）
 
-本机 Windows x64 / Creo 12.4.0.0 实机隔离（T04，见 [验收卡](development/DEV051-T04-ACCEPTANCE.md) 第五轮）定案：
+本机 Windows x64 / Creo 12.4.0.0 实机隔离（T04，见 [验收卡](archive/development/DEV051-T04-ACCEPTANCE.md) 第五轮）定案：
 
 - **不支持**：`extrude` `mode="add"`（实体增料）并入既有钣金体。重叠位置与非重叠位置都返回 `ProFeatureWithoptionsCreate=-1`，元素错误为空，作业回滚成立（revision/体积不变）。同一截面在普通件上 add 成功、在钣金件上 cut 成功（−100 mm³），因此失败与重叠、截面、位置无关。
 - **可用**：钣金件上的 `cut`；`surface`/`thin` 拉伸；`new_body=true`（产出**独立实体**，整块 +500 mm³，不与钣金体合并，不等于钣金增料）。

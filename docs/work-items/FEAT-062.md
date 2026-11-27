@@ -10,11 +10,11 @@
 
 首版独立无依赖 part/sheetmetal；rename 保留 model_id/revision+1，derive 新 model_id/revision=1 且源件字节不变；统一会话/磁盘/登记名称冲突检查和检查点恢复。
 
-明确边界及拟接口见[设计依据](../superpowers/specs/2026-11-03-alphai-capability-adoption-design.md)。本卡固定身份不能被历史反馈中的同号误写引用替代。
+明确边界及拟接口见[设计依据](../archive/superpowers/specs/2026-11-03-alphai-capability-adoption-design.md)。本卡固定身份不能被历史反馈中的同号误写引用替代。
 
 ## 派工与验收
 
-- 任务号：C04；负责人：unassigned；[子计划](../superpowers/plans/2026-11-03-alphai-c-editing-plan.md)；[主计划](../superpowers/plans/2026-11-03-alphai-capability-adoption-plan.md)。
+- 任务号：C04；负责人：unassigned；[子计划](../archive/superpowers/plans/2026-11-03-alphai-c-editing-plan.md)；[主计划](../archive/superpowers/plans/2026-11-03-alphai-capability-adoption-plan.md)。
 - 判据：改名后继续编辑/重载；派生改尺寸几何正确且原 revision/hash 不变；冲突/依赖/非法名称拒绝；保存或登记失败不得发布半成品，恢复需读回或保持 unknown。
 - 开发环境：Windows x64 / Python 3.12+；原生适用时 Creo 12.4.0.0 / 匹配 SDK/许可，先满足 BUG-001 条件并由会话负责人串行安排。Creo 9/10 未测不能外推。
 - 对应专项 unittest、默认离线驱动、构建、实机命令与错误/恢复矩阵见子计划；所有 live 驱动默认离线。WorkBuddy 如安排则只做公开 MCP 黑盒，不替代内部验证。

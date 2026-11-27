@@ -44,7 +44,7 @@
 - 集成修复：`native/preview.h` 有两处 Q15 合并截断——`bind_model_window()` 函数头丢失、返回块后残留重复的 `datum_display` 片段。修复后 `.venv\\Scripts\\python.exe bridge.py build` 通过（首次 build 报 C2143/C2059/C3861，修复后无错误）。
 - 执行：`tools/test_datum_plane_through_points.py --live --confirm-session-usable` 第一个用例 `main_plane`。
 - 结果：三个 `datum_points` 与 `datum_plane`（id=47，normal 0,0,1）创建完成；`native.log` 停在 `ProFeatureElemtreeExtract` / `ProElemtreeElementGet`，作业 `b620c5a6c9d54d28a2815cb5083bfa6e` 持续 `running` 6 分钟，驱动按 360 s 预算停止轮询且未重提。worker CPU 冻结，`parametric` hidden+hung、`xtop` 正常。
-- 处置：按 BUG-001/BUG-091 规则停止新提交，保留现场（未结束 Creo、未清 unknown、未重提作业），登记 [BUG-098](../../work-items/BUG-098.md)。0.11.1 未发布；Q06 L2、Q07 P1–P3、Q02/Q03/Q13 实机均未执行。
+- 处置：按 BUG-001/BUG-091 规则停止新提交，保留现场（未结束 Creo、未清 unknown、未重提作业），登记 [BUG-098](BUG-098.md)。0.11.1 未发布；Q06 L2、Q07 P1–P3、Q02/Q03/Q13 实机均未执行。
 - 新增离线驱动：`tools/test_tilted_sketch_3pt.py`（smoke_3pt 原案经 FEAT-053 契约转换）与 `tests/unit/test_tilted_sketch_3pt.py`，离线 4 项单测通过；后续已执行 live，见下。
 
 ### 第二轮实机（BUG-098 修复后）

@@ -1,11 +1,11 @@
 # FEAT-054：P12 扭叶片分级续推（四带偏差路线待裁定）
 
-日期：2026-11-02。类型：功能/路线裁定。优先级：P2。状态：待规划。目标版本：未排期。关联 [DEV-053](DEV-053.md)、[FEAT-010](FEAT-010.md)、[FEAT-055](FEAT-055.md)、[BUG-108](BUG-108.md)（同族位移观测）、[DEV-064](DEV-064.md)（R12 归档）。
+日期：2026-11-02。类型：功能/路线裁定。优先级：P2。状态：待规划。目标版本：未排期。关联 [DEV-053](DEV-053.md)、[FEAT-010](FEAT-010.md)、[FEAT-055](FEAT-055.md)、[BUG-108](BUG-108.md)（同族位移观测）、[DEV-064](../archive/work-items/DEV-064.md)（R12 归档）。
 
 ## 来源
 
 - 台账登记：`docs/BACKLOG.md`（2026-11-02 发布后缺口）。
-- 验收口径：[P12 验收](../development/P12-BLADE-ACCEPTANCE.md)。
+- 验收口径：[P12 验收](../archive/development/P12-BLADE-ACCEPTANCE.md)。
 - 外部反馈：[0.11.1 F01 核心问题 1、4](../validation/feedback-0.11.1-2026-11-02/MAPPING.md)（0.11.1 Creo 10 实测）。
 
 ## 目标

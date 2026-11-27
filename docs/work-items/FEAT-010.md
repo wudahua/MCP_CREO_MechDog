@@ -1,8 +1,8 @@
 # FEAT-010：坐标草图的驱动尺寸与基础约束、任意平面 coordinates
 
-日期：2026-10-31（工作卡补建）。类型：功能。优先级：P2。状态：进行中（T04 任意平面 coordinates 子项离线完成，实机未验收）。目标版本：0.7.0（后续按发布规则核号）。
+日期：2026-10-31（工作卡补建）。类型：功能。优先级：P2。状态：部分交付，剩余待规划（0.11.1 显式容差与 0.17.3 Right ±Z 子项已交付；倾斜面、原 53mm 保真、编辑重载与投影驱动未排期）。目标版本：0.7.0（后续按发布规则核号）。
 
-来源：[0.3.5 能力边界反馈](../validation/FEEDBACK-0.3.5-CAPABILITY-2026-10-18.md) §4.1；[0.5.2 反馈映射](../validation/feedback-0.5.2-2026-10-26/MAPPING.md#r3-04)；[0.10.0 晚间包 01 验收报告](../validation/feedback-0.10.0-2026-11-01/originals/01_验收报告_0.10.0.md) §A/§D 与 03/04 的 L1/L2；[逐章映射](../validation/feedback-0.10.0-2026-11-01/MAPPING.md)。关联 [BUG-049](BUG-049.md)、[BUG-087](BUG-087.md)、[BUG-095](BUG-095.md)、[BUG-097](BUG-097.md)、[FEAT-008](FEAT-008.md)、[FEAT-053](FEAT-053.md)、[共享基线](DEV-047.md#interface-baseline)。
+来源：[0.3.5 能力边界反馈](../validation/FEEDBACK-0.3.5-CAPABILITY-2026-10-18.md) §4.1；[0.5.2 反馈映射](../validation/feedback-0.5.2-2026-10-26/MAPPING.md#r3-04)；[0.10.0 晚间包 01 验收报告](../validation/feedback-0.10.0-2026-11-01/originals/01_验收报告_0.10.0.md) §A/§D 与 03/04 的 L1/L2；[逐章映射](../validation/feedback-0.10.0-2026-11-01/MAPPING.md)。关联 [BUG-049](BUG-049.md)、[BUG-087](../archive/work-items/BUG-087.md)、[BUG-095](BUG-095.md)、[BUG-097](../archive/work-items/BUG-097.md)、[FEAT-008](FEAT-008.md)、[FEAT-053](FEAT-053.md)、[共享基线](../archive/work-items/DEV-047.md#interface-baseline)。
 
 ## 问题或目标
 
@@ -22,7 +22,7 @@
 - 任意有效平面的 coordinates 创建与就地编辑、回读保真；不退 autodim、不静默降级、不放宽既有阈值。
 - 输入闭合质量与求解后偏差**分别报告**，不互相替代。
 - 中心线按无限线方向/偏移核验，不按可滑动端点误判；斜中心线不生成端点尺寸。
-- 不覆盖以下项：斜面草图的 UV 映射与特征完成失败归 [BUG-097](BUG-097.md)；三点定面归 [FEAT-053](FEAT-053.md)；坐标草图 origin 拒绝诊断归 [BUG-095](BUG-095.md)；端点诊断口径归 [BUG-049](BUG-049.md)；同法向参照面导致 `ProSectionSolve` 返回 −1 归 [BUG-087](BUG-087.md)（已修复，保持不回归）。
+- 不覆盖以下项：斜面草图的 UV 映射与特征完成失败归 [BUG-097](../archive/work-items/BUG-097.md)；三点定面归 [FEAT-053](FEAT-053.md)；坐标草图 origin 拒绝诊断归 [BUG-095](BUG-095.md)；端点诊断口径归 [BUG-049](BUG-049.md)；同法向参照面导致 `ProSectionSolve` 返回 −1 归 [BUG-087](../archive/work-items/BUG-087.md)（已修复，保持不回归）。
 
 ## 验收标准
 
@@ -38,7 +38,7 @@
 
 ## 实现与证据
 
-**2026-10-26 T04 离线交付**（分支 `codex/dev053-post0100`）：字典平面 coordinates 准入与原生路由解除主平面/section 轴对齐限制（输入 u/v 按主导 section 轴命名）；编辑路径不再因非主平面拒绝或强制 autodim；中心线统一按无限线方向/偏移核验且斜中心线不生成端点尺寸。证据见 [T04 验收记录](../development/DEV047-T04-ACCEPTANCE-2026-10-26.md)。
+**2026-10-26 T04 离线交付**（分支 `codex/dev053-post0100`）：字典平面 coordinates 准入与原生路由解除主平面/section 轴对齐限制（输入 u/v 按主导 section 轴命名）；编辑路径不再因非主平面拒绝或强制 autodim；中心线统一按无限线方向/偏移核验且斜中心线不生成端点尺寸。证据见 [T04 验收记录](../archive/development/DEV047-T04-ACCEPTANCE-2026-10-26.md)。
 
 **2026-10-31 工作卡补建**：按晚间包补充输入闭合与求解保真的区分、偏差显式化要求与原案缺件状态。本卡自身**尚无本仓库的实机验收**：倾斜面/正反 U/编辑/保存重载实机证据仍待；晚间包的 0.001662 mm 偏差、−0.90 % 面积失真与 `136486.4` 参考值均属**外部来源**（Windows 11 x64 / Creo 10.0.0.0 / 0.10.0 或外部直改源码），不作为本机已验收结论。支撑尺寸与约束组合范围继续保留。
 
@@ -50,7 +50,7 @@
 
 在本 ID 增加受管矩形草图的显式轴对称、指定模型直边投影和四边边距驱动子项；以已保存草图为对象，不控制用户正在编辑的 UI 会话。新约束不得放宽 coordinates 与自定义约束互斥、求解后保真和引用唯一性。
 
-负责人 unassigned；拟 schema、实际编辑入口去重、文件、针对性回归及重载后真实随动矩阵见 [C03 子计划](../superpowers/plans/2026-11-03-alphai-c-editing-plan.md)，协调 [DEV-067](DEV-067.md)。本次只规划，未实施/测试/连 Creo；不关闭原 ID 的求解漂移、spline 或其他任意约束组合未测范围。
+负责人 unassigned；拟 schema、实际编辑入口去重、文件、针对性回归及重载后真实随动矩阵见 [C03 子计划](../archive/superpowers/plans/2026-11-03-alphai-c-editing-plan.md)，协调 [DEV-067](DEV-067.md)。本次只规划，未实施/测试/连 Creo；不关闭原 ID 的求解漂移、spline 或其他任意约束组合未测范围。
 
 ## 2026-11-07 离线接续（未发布）
 

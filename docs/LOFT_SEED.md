@@ -48,4 +48,4 @@
 .\.venv\Scripts\python.exe -X utf8 tools\test_loft_seed.py --seed-file 'C:\my_library\smooth_seed.prt.1' --feature-id 60 --interpolation smooth
 ```
 
-路径和 ID 必须替换。超时或未知结果先检查原任务，不重复提交。种子复用不增加或删除截面；数量与模式必须匹配。`creo_loft` 与计划操作 `loft` 已支持直接创建和已有受管零件追加，限 XY 截面按实际 Z 递增、默认实体增材，见 [直接混合](DIRECT_BLEND_0.2.5.md)。非平行、切除/曲面以及相切/曲率控制仍未开放。
+路径和 ID 必须替换。超时或未知结果先检查原任务，不重复提交。种子复用不增加或删除截面；数量与模式必须匹配。`creo_loft` 与计划操作 `loft` 已支持直接创建和已有受管零件追加，限 XY 截面按实际 Z 递增、默认实体增材，见 [直接混合](archive/stage-notes/DIRECT_BLEND_0.2.5.md)。非平行、切除/曲面以及相切/曲率控制仍未开放。

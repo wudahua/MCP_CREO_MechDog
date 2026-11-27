@@ -18,11 +18,11 @@
 
 先核 SDK/做独立原生探针，再新增显式矩形首壁创建/改型；保留 feature 身份，核厚度、有符号包络、体积与恢复；首版拒绝下游依赖；旧 sheetmetal_wall 默认路线保持。
 
-明确边界及拟接口见[设计依据](../superpowers/specs/2026-11-03-alphai-capability-adoption-design.md)。本卡固定身份不能被历史反馈中的同号误写引用替代。
+明确边界及拟接口见[设计依据](../archive/superpowers/specs/2026-11-03-alphai-capability-adoption-design.md)。本卡固定身份不能被历史反馈中的同号误写引用替代。
 
 ## 派工与验收
 
-- 任务号：A04；负责人：unassigned；[子计划](../superpowers/plans/2026-11-03-alphai-a-foundation-plan.md)；[主计划](../superpowers/plans/2026-11-03-alphai-capability-adoption-plan.md)。
+- 任务号：A04；负责人：unassigned；[子计划](../archive/superpowers/plans/2026-11-03-alphai-a-foundation-plan.md)；[主计划](../archive/superpowers/plans/2026-11-03-alphai-capability-adoption-plan.md)。
 - 判据：100×60×1→120×80×1 的体积 6000→9600 mm³、feature_id/厚度保持、方向与长宽真实读回、保存重载 true、拒绝和回滚后继续编辑；不可行探针不得开放写工具。
 - 开发环境：Windows x64 / Python 3.12+；原生适用时 Creo 12.4.0.0 / 匹配 SDK/许可，先满足 BUG-001 条件并由会话负责人串行安排。Creo 9/10 未测不能外推。
 - 对应专项 unittest、默认离线驱动、构建、实机命令与错误/恢复矩阵见子计划；所有 live 驱动默认离线。WorkBuddy 如安排则只做公开 MCP 黑盒，不替代内部验证。
@@ -140,7 +140,7 @@
 
 main@90dbd6c、v0.12.0@758e87e与两份附件SHA256已独立核验，发布工作树原始实机67/67通过；受测源码与附件无实质差异。A04退出完整开发派工。非矩形/多环、四壁/第二折边、显式支撑面origin、Creo9/10、WorkBuddy范围保留；离线报告实际31条与旧摘要20条差异按后续记录更正，不改已发布标签/附件。完整发布卡记录在main工作树E:\Projects\codex-A04。
 
-详见[核验记录](../development/DEV067-POST0120-AUDIT-2026-11-04.md)和[后续计划](../superpowers/plans/2026-11-04-alphai-post0120-integration-plan.md)。本次只改记录/计划，未修改该任务产品代码或进行新实机。
+详见[核验记录](../archive/development/DEV067-POST0120-AUDIT-2026-11-04.md)和[后续计划](../archive/superpowers/plans/2026-11-04-alphai-post0120-integration-plan.md)。本次只改记录/计划，未修改该任务产品代码或进行新实机。
 
 ## 2026-11-06 板厚 validation 回执（离线）
 

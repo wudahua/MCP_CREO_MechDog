@@ -47,7 +47,7 @@ Python 和原生最终入口在副作用前校验有限实数、正交性和行�
 
 公开创建/更新、execute_plan schema/序列化及原生共同 helper 已实现；校验在
 加载/复制或移除约束前完成。33 项重点回归、生产 helper 11 组姿态与非法输入、
-SDK 离线构建和最终 dev_check（567 项单测）通过；[完整证据](../development/FEAT012-MATRIX-OFFLINE-2026-10-24.md)
+SDK 离线构建和最终 dev_check（567 项单测）通过；[完整证据](../archive/development/FEAT012-MATRIX-OFFLINE-2026-10-24.md)
 记录源码/dirty、指纹、环境、命令及日志。实际 Creo/revision/保存重载/WorkBuddy
 仍未验证，矩阵子项待实机验收，整卡不关闭。
 
@@ -66,7 +66,7 @@ SDK 离线构建和最终 dev_check（567 项单测）通过；[完整证据](..
 matrix 实机驱动补真实普通失败后的回滚断言。实机验收仍待统一安排。
 
 第二阶段结果（2026-10-25，离线）：配套已实现并随批次证据交付
-（[BATCH2-STAGE2-IMPLEMENTATION-2026-10-25.md](../development/BATCH2-STAGE2-IMPLEMENTATION-2026-10-25.md)）；
+（[BATCH2-STAGE2-IMPLEMENTATION-2026-10-25.md](../archive/development/BATCH2-STAGE2-IMPLEMENTATION-2026-10-25.md)）；
 矩阵行为本体未改。`tools/test_assembly_matrix.py` 新增真实普通失败（未知
 组件引用）作业的回滚断言：作业 failed、装配 revision 与组件快照不变、
 `component_changes.status=rolled_back`；另断言 `type_name` 与数字码并存。
@@ -108,7 +108,7 @@ Release 与附件由控制者执行。
 - 未实机：WorkBuddy 黑盒、并发/unknown 自然分支/断连注入、其他 Creo 版本；
   FEAT-012 显式源件更新与嵌套子装配未开放，第三批 FEAT-049/050 未动。
   完整证据与文件 SHA256 见
-  [BATCH2-LIVE-ACCEPTANCE-2026-10-26.md](../development/BATCH2-LIVE-ACCEPTANCE-2026-10-26.md)。
+  [BATCH2-LIVE-ACCEPTANCE-2026-10-26.md](../archive/development/BATCH2-LIVE-ACCEPTANCE-2026-10-26.md)。
 
 
 ## 2026-10-26 v0.5.2 反馈来源与本次子项（T00）
@@ -117,7 +117,7 @@ Release 与附件由控制者执行。
 
 R1 §5 P1-4（矩阵直入/Euler输出）是0.5.2旧请求；矩阵子项已随0.6.0交付，R3 §1.2/§7显式位姿重建正例不等于新矩阵接口或约束保真验收。T12/T13核对既有矩阵/已知点回归；Euler附加输出建议未承诺新增，显式源件更新与嵌套继续在父卡开放范围。
 
-共享接口遵循 [DEV-047 基线](DEV-047.md#interface-baseline)。本段仅补来源与已确认的本次子项；T00 未实现业务、未新增实机证据，不据此关闭父卡其他范围。
+共享接口遵循 [DEV-047 基线](../archive/work-items/DEV-047.md#interface-baseline)。本段仅补来源与已确认的本次子项；T00 未实现业务、未新增实机证据，不据此关闭父卡其他范围。
 
 ## 2026-11-06 装配/放置失败上下文（Q02/R05，离线实现，未实机）
 
@@ -138,7 +138,7 @@ R1 §5 P1-4（矩阵直入/Euler输出）是0.5.2旧请求；矩阵子项已随0
 
 [两件反馈A §4.1/§4.3](../validation/feedback-0.14.0-2026-11-06/MAPPING.md)给出精确输入I032：`[[0,0.307383,-0.951586],[0,0.951586,0.307383],[1,0,0]]`，最大正交残差/det误差均约2.2408500011117383e-7；外部Creo10/0.14.0的017c62e4前缀作业报ProAsmcompAssemble=-2。严格正交30°矩阵`[[0.8660254037844387,0.5,0],[-0.5,0.8660254037844387,0],[0,0,1]]`的bfc3551e前缀作业成功。
 
-当前main/0.16.0的schema与native/assembly_pose.h两层仍是1e-6，均接受I032。已有schema公式、位姿/失败诊断不能替代准入缺口处理；[统一计划R05](../superpowers/plans/2026-11-06-0.13.0-feedback-repair-plan.md)升P1并补两层精确回归、兼容设计、扰动边界与真实保存重载。1e-9只是候选，不是已证Creo阈值；-2唯一根因未定，不自动修复/转置输入，不增加部分提交。
+当前main/0.16.0的schema与native/assembly_pose.h两层仍是1e-6，均接受I032。已有schema公式、位姿/失败诊断不能替代准入缺口处理；[统一计划R05](../archive/superpowers/plans/2026-11-06-0.13.0-feedback-repair-plan.md)升P1并补两层精确回归、兼容设计、扰动边界与真实保存重载。1e-9只是候选，不是已证Creo阈值；-2唯一根因未定，不自动修复/转置输入，不增加部分提交。
 
 本轮仅数学复算与静态审阅，未执行产品单元、native构建或Creo实机；外部载荷只有job前缀，不能补造完整UUID。当前公开1e-6契约在执行修复前仍保持，若收紧需先同步设计/版本/错误指引。
 

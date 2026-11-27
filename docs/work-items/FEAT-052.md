@@ -2,7 +2,7 @@
 
 日期：2026-11-01（Asia/Shanghai）。类型：功能。优先级：P2。状态：已交付（0.11.0；本机实机 28/28，保留未测范围）。目标版本：0.11.0。
 
-来源与关联：[装配按零件族上色功能计划](../superpowers/plans/2026-10-31-assembly-recolor-plan.md) 全文（建议包 `creo_recolor_assembly_proposal` 作为技术参考及外部测试资料保存，其测试回执不替代本项目验收）。关联 [FEAT-012](FEAT-012.md)（装配矩阵与位姿）、[FEAT-023](FEAT-023.md)（组件身份与 `source_model_id` 投影）、[FEAT-031](FEAT-031.md)（装配导出）、[FEAT-045](FEAT-045.md)（装配只读检查）、[DEV-002](DEV-002.md)（Python 包迁移）。
+来源与关联：[装配按零件族上色功能计划](../archive/superpowers/plans/2026-10-31-assembly-recolor-plan.md) 全文（建议包 `creo_recolor_assembly_proposal` 作为技术参考及外部测试资料保存，其测试回执不替代本项目验收）。关联 [FEAT-012](FEAT-012.md)（装配矩阵与位姿）、[FEAT-023](FEAT-023.md)（组件身份与 `source_model_id` 投影）、[FEAT-031](FEAT-031.md)（装配导出）、[FEAT-045](FEAT-045.md)（装配只读检查）、[DEV-002](DEV-002.md)（Python 包迁移）。
 
 当前状态：已随 0.11.0 正式发布，详见 [版本说明](../release-notes/RELEASE_NOTES_0.11.0.md)与[发布记录](../validation/RELEASE-0.11.0.md)。WorkBuddy、真实 busy/并发及 Creo 9/10 未验；以下分类依据是登记时的历史状态。
 
@@ -54,7 +54,7 @@ creo_recolor_assembly(
 - 独立零件上色、面级上色、嵌套装配、外部装配——不在此版，另行扩展。
 - 按遍历顺序或随机副本名称**猜测**分组：来源缺失或冲突时要求显式族表，不静默降级。
 - 不承诺颜色以外的外观属性（透明度、反射等在首版固定为 `0`，随 RGB 联动的高光颜色除外）。
-- 不新增并发或调度原语：Toolkit 通道忙时立即拒绝，不排队、不自动重试（边界见 [BUG-009](BUG-009.md)）。
+- 不新增并发或调度原语：Toolkit 通道忙时立即拒绝，不排队、不自动重试（边界见 [BUG-009](../archive/work-items/BUG-009.md)）。
 - 本阶段为离线开发，不连接、不操作 Creo，不启动 MCP 服务。
 
 ## 验收标准
@@ -149,6 +149,6 @@ creo_recolor_assembly(
 
 来源：[0.11.0 反馈 F01](../validation/feedback-0.11.0-2026-11-01/MAPPING.md)（核心问题 1、次要问题 1）。
 
-- **升级摩擦**：0.10.x 检查点组件快照无 `appearance`，`creo_recolor_assembly` 只报“先 save 一次”；本批新增显式 `refresh_baseline`（[BUG-104](BUG-104.md)），在准入阶段以实读外观填基线并把 `baseline_source` 回显，dry-run 回执给 `next_action`。
+- **升级摩擦**：0.10.x 检查点组件快照无 `appearance`，`creo_recolor_assembly` 只报“先 save 一次”；本批新增显式 `refresh_baseline`（[BUG-104](../archive/work-items/BUG-104.md)），在准入阶段以实读外观填基线并把 `baseline_source` 回显，dry-run 回执给 `next_action`。
 - **取色**：自动分族的 palette 键原为 `source_model_id` UUID；本批新增唯一零件名键与 `random:true` 一键随机上色（[FEAT-056](FEAT-056.md)），计划操作仍只接受显式调色板。
 - 公开工具仍 95，无新增工具；两项目标版本候选 0.11.3 PATCH，实机未执行。
