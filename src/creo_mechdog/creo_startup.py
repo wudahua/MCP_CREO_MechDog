@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes
 import errno
 import hashlib
+import itertools
 import logging
 import msvcrt
 import os
@@ -56,6 +57,8 @@ FAILURE_CODES = {
     "lock_error": "coordination_lock_access",
     "timeout": "startup_timeout",
 }
+_RETRY_ID_LOCK = threading.Lock()
+_RETRY_ID_COUNTER = itertools.count(1)
 
 
 def _session_not_found(native: dict | None) -> bool:
@@ -546,6 +549,8 @@ class CreoStartup:
         self._phase_deadline: float | None = None
         self._requested_at = bridge.now()
         self._retry_id = self._new_retry_id()
+        self._prior_shared_retry_id: str | None = None
+        self._prior_shared_updated_at: str | None = None
         self._expired = False
         # BUG-139: operator override and a recent independent connected probe can
         # keep admission open when the coordinator snapshot is not ready.
@@ -575,8 +580,30 @@ class CreoStartup:
     @staticmethod
     def _new_retry_id() -> str:
         """Stable identity for one explicit startup/retry attempt."""
-        material = f"{os.getpid()}:{time.monotonic_ns()}:{bridge.now()}"
+        with _RETRY_ID_LOCK:
+            seq = next(_RETRY_ID_COUNTER)
+        material = f"{os.getpid()}:{seq}:{time.perf_counter_ns()}:{bridge.now()}"
         return hashlib.sha256(material.encode()).hexdigest()[:12]
+
+    def _shared_satisfies_attempt(self, shared: dict) -> bool:
+        """Return True only when a terminal shared snapshot was produced for or after this attempt."""
+        if shared.get("state") in ACTIVE:
+            return False
+        updated_at = shared.get("updated_at", "")
+        if updated_at < self._requested_at:
+            return False
+        if (
+            self._prior_shared_retry_id is not None
+            and shared.get("retry_id") == self._prior_shared_retry_id
+        ):
+            return False
+        if (
+            self._prior_shared_retry_id is None
+            and self._prior_shared_updated_at is not None
+            and updated_at == self._prior_shared_updated_at
+        ):
+            return False
+        return True
 
     def _publish(self, state: str, message: str, *, shared: bool = True, **fields) -> dict:
         with self._mutex:
@@ -811,8 +838,10 @@ class CreoStartup:
             else:
                 session_choice.clear_override()
         with self._mutex:
+            prior_snapshot: dict | None = None
+            directory = self._directory or self._directory_override
+            state_path = directory / "state.json" if directory else None
             if retry:
-                directory = self._directory or self._directory_override
                 if directory is None:
                     try:
                         directory = self._target_directory(Settings.load())
@@ -825,6 +854,7 @@ class CreoStartup:
                         if state_path
                         else self._state
                     )
+                    prior_snapshot = prior
                     self._retry_for_attempt = prior.get("launch_attempt", 0)
                 except StartupStateError:
                     # Start a bounded, non-launching recheck instead of throwing
@@ -836,6 +866,20 @@ class CreoStartup:
                 # previous reservation. Keep the request instead of dropping it.
                 self._retry_requested |= retry
                 return self.status()
+            if prior_snapshot is None:
+                if state_path:
+                    try:
+                        prior_snapshot = read_startup_state(state_path, bridge.read_json)
+                    except (StartupStateError, ValueError, OSError):
+                        prior_snapshot = self._state
+                else:
+                    prior_snapshot = self._state
+            self._prior_shared_retry_id = (
+                prior_snapshot.get("retry_id") if isinstance(prior_snapshot, dict) else None
+            )
+            self._prior_shared_updated_at = (
+                prior_snapshot.get("updated_at") if isinstance(prior_snapshot, dict) else None
+            )
             self._retry_requested = retry
             self._expired = False
             self._attempt_started = time.monotonic()
@@ -1107,10 +1151,7 @@ class CreoStartup:
                                 self._recheck_untrusted_state(settings, exc)
                                 return
                             shared = read_startup_state(state_path, bridge.read_json)
-                        if (
-                            shared.get("state") not in ACTIVE
-                            and shared.get("updated_at", "") >= self._requested_at
-                        ):
+                        if self._shared_satisfies_attempt(shared):
                             with self._mutex:
                                 self._state = {**shared, "coordinated": True}
                             return
@@ -1142,9 +1183,8 @@ class CreoStartup:
                         with self._mutex:
                             # A pre-retry ready snapshot cannot satisfy a new check.
                             # Otherwise polling can see ready, then regress to building.
-                            if (
-                                shared.get("state") in ACTIVE
-                                or shared.get("updated_at", "") >= self._requested_at
+                            if shared.get("state") in ACTIVE or self._shared_satisfies_attempt(
+                                shared
                             ):
                                 self._state = {**shared, "coordinated": True}
                             else:
@@ -1154,10 +1194,7 @@ class CreoStartup:
                                     message="Waiting for the shared coordinator; previous ready has not verified this retry",
                                     coordinated=True,
                                 )
-                        if (
-                            shared.get("state") not in ACTIVE
-                            and shared.get("updated_at", "") >= self._requested_at
-                        ):
+                        if self._shared_satisfies_attempt(shared):
                             return
                     if time.monotonic() >= deadline:
                         self._publish(

@@ -178,15 +178,96 @@ class StartupRetry(unittest.TestCase):
         self.fixture.probe.return_value = startup_tests.READY
         controller = self.controller()
         controller.start(retry=True)
-        controller._thread.join(2)
+        first_thread = controller._thread
+        first_thread.join(2)
+        self.assertFalse(first_thread.is_alive())
         first = controller.status()
         self.assertEqual(first["retry_id"], controller.status()["retry_id"])
-        controller.start(retry=True)
+        accepted = controller.start(retry=True)
+        self.assertIsNot(controller._thread, first_thread)
+        self.assertNotEqual(first["retry_id"], accepted["retry_id"])
         controller._thread.join(2)
+        self.assertFalse(controller._thread.is_alive())
         second = controller.status()
         self.assertNotEqual(first["retry_id"], second["retry_id"])
         self.assertEqual(self.fixture.probe.call_count, 2)
         self.fixture.launch.assert_not_called()
+
+    def test_new_retry_gets_new_id_even_within_same_clock_tick(self):
+        self.fixture.inventory.return_value = self.fixture.existing()
+        self.fixture.probe.return_value = startup_tests.READY
+        controller = self.controller()
+        with (
+            patch.object(bridge, "now", return_value="2026-11-27T12:00:00+00:00"),
+            patch.object(creo_startup.time, "monotonic_ns", return_value=123456789),
+            patch.object(creo_startup.time, "perf_counter_ns", return_value=987654321),
+        ):
+            controller.start(retry=True)
+            first_thread = controller._thread
+            first_thread.join(2)
+            self.assertFalse(first_thread.is_alive())
+            first = controller.status()
+            self.assertEqual(first["retry_id"], controller.status()["retry_id"])
+            accepted = controller.start(retry=True)
+            self.assertIsNot(controller._thread, first_thread)
+            self.assertNotEqual(first["retry_id"], accepted["retry_id"])
+            controller._thread.join(2)
+            self.assertFalse(controller._thread.is_alive())
+            second = controller.status()
+        self.assertNotEqual(first["retry_id"], second["retry_id"])
+        self.assertEqual(second["retry_id"], accepted["retry_id"])
+        self.assertEqual(self.fixture.probe.call_count, 2)
+        self.fixture.launch.assert_not_called()
+
+    def test_cross_process_coordination_adopts_different_retry_id_in_same_tick(self):
+        state_path = self.fixture.coordinator / "state.json"
+        frozen = "2026-11-27T12:00:00+00:00"
+        bridge.write_json(
+            state_path,
+            {
+                "state": "timeout",
+                "launch_reserved": False,
+                "launch_attempt": 0,
+                "retry_id": "prior0000001",
+                "updated_at": frozen,
+            },
+        )
+        self.fixture.inventory.return_value = self.fixture.existing()
+        controller = self.controller()
+
+        original_read = bridge.read_json
+        calls = 0
+
+        def read_with_concurrent_finish(path):
+            nonlocal calls
+            calls += 1
+            if calls == 2 and path == state_path:
+                bridge.write_json(
+                    state_path,
+                    {
+                        "state": "ready",
+                        "connected": True,
+                        "launch_reserved": False,
+                        "launch_attempt": 0,
+                        "retry_id": "other0000002",
+                        "updated_at": frozen,
+                        "verified_at": frozen,
+                    },
+                )
+            return original_read(path)
+
+        with (
+            patch.object(bridge, "now", return_value=frozen),
+            patch.object(bridge, "read_json", side_effect=read_with_concurrent_finish),
+        ):
+            controller.start(retry=True)
+            controller._thread.join(2)
+            self.assertFalse(controller._thread.is_alive())
+            status = controller.status()
+        self.assertTrue(status["coordinated"])
+        self.assertEqual(status["state"], "ready")
+        self.assertEqual(status["retry_id"], "other0000002")
+        self.fixture.probe.assert_not_called()
 
     def test_busy_probe_during_retry_does_not_open_a_second_channel(self):
         self.fixture.inventory.return_value = self.fixture.existing()
