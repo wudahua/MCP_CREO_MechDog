@@ -6,7 +6,7 @@
 
 并发读操作触发 busy 符合 BUG-009。评估一次准入内有界串行、逐实例结果、单项失败与时间预算，保留现有独立请求 busy 语义。先用 mock 验证数量上限、单项失败和混合有效/无效输入，再用 Creo 实机和 WorkBuddy 验收。依赖 FEAT-057 公共口径。
 
-来源：[本批反馈计划](../development/0.35.0-FEEDBACK-PLAN-2026-11-21.md)。
+来源：[本批反馈计划](../archive/development/0.35.0-FEEDBACK-PLAN-2026-11-21.md)。
 
 ## 目标与范围
 

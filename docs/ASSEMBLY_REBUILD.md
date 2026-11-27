@@ -196,7 +196,7 @@ creo_plan_assembly_rebuild(snapshot_id, component_mapping, reference_mapping)
   worker、不清保护、不重连、不重提。
   不要把“子进程退出前作业必终态”当作已验证保证——这正是本入口要确认的。
 - 每个驱动输出带时间戳的唯一报告目录。WorkBuddy 只通过公开 MCP 黑盒验收，
-  场景见 [WORKBUDDY_FEAT008_PIPELINE.md](WORKBUDDY_FEAT008_PIPELINE.md)。
+  场景见 [WORKBUDDY_FEAT008_PIPELINE.md](archive/stage-notes/WORKBUDDY_FEAT008_PIPELINE.md)。
 
 ## 开发者实机验收状态（2026-10-26）
 
@@ -205,7 +205,7 @@ creo_plan_assembly_rebuild(snapshot_id, component_mapping, reference_mapping)
 失败成功回滚）、4 次真实改变位姿 rev 36→40；收养两批 2+1 成功、3+2 拒绝、
 0 unknown；最终管线 10 父作业全成功（快照刷新新唯一 label，12384→12984、
 装配 rev 3→4）。raw 报告关键值与文件 SHA256 见
-[development/BATCH2-LIVE-ACCEPTANCE-2026-10-26.md](development/BATCH2-LIVE-ACCEPTANCE-2026-10-26.md)。
+[development/BATCH2-LIVE-ACCEPTANCE-2026-10-26.md](archive/development/BATCH2-LIVE-ACCEPTANCE-2026-10-26.md)。
 WorkBuddy 黑盒经用户 2026-10-26 决定取消本批（未执行、不记通过）；上述配套随
 0.6.0 交付，见[发布记录](validation/RELEASE-0.6.0.md)；并发、unknown 自然分支、
 其他 Creo 版本未实机。

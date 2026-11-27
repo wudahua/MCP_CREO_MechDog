@@ -4,9 +4,9 @@
 
 分类：**部分交付 0.32.0**（同圆多弧段文案与判据已实机验收；倒角邻面与多约束组合仍待验收）。类型：功能 / 引用契约接通。优先级：P1。目标版本：0.32.0（子项已交付）。
 
-本批：0.26.0 交付子项（部分交付）加单点有限直边、圆边 center/radius/axis（+圆弧角度点）、装配选择器准入与解析后平面/圆柱校验。实机：单点直边圆角 id 137、R10 圆边在 4 段圆弧中唯一定位 id 55 并圆角、coincident+concentric 销 z=10.0，均保存重载；见 [实机验收](../development/LIVE-ACCEPTANCE-0250-2026-11-16.md)。倒角邻面与 61 条完整集未验。2026-11-16 追加：6 条边锚点中 4 条圆角可准入（Arm2 n4 R3、Arm3 n3 R3、Arm6 n3 R40、Lateral n7 R90）；`Hom n7/n8` 8 mm @ 70° 缺 `angle_reference` 仍拒绝。见 [A2/A0 数据准入](../development/A2-A0-ADMISSION-2026-11-16.md)。
+本批：0.26.0 交付子项（部分交付）加单点有限直边、圆边 center/radius/axis（+圆弧角度点）、装配选择器准入与解析后平面/圆柱校验。实机：单点直边圆角 id 137、R10 圆边在 4 段圆弧中唯一定位 id 55 并圆角、coincident+concentric 销 z=10.0，均保存重载；见 [实机验收](../archive/development/LIVE-ACCEPTANCE-0250-2026-11-16.md)。倒角邻面与 61 条完整集未验。2026-11-16 追加：6 条边锚点中 4 条圆角可准入（Arm2 n4 R3、Arm3 n3 R3、Arm6 n3 R40、Lateral n7 R90）；`Hom n7/n8` 8 mm @ 70° 缺 `angle_reference` 仍拒绝。见 [A2/A0 数据准入](../archive/development/A2-A0-ADMISSION-2026-11-16.md)。
 
-来源：[0.25.0装配反馈原件](../validation/feedback-0.25.0-2026-11-16/assembly.md)，关联 DEV-090 T1/T5、BUG-036、FEAT-049；范围见[分批计划A0/A1](../superpowers/plans/2026-11-16-feedback-0250.md)。
+来源：[0.25.0装配反馈原件](../validation/feedback-0.25.0-2026-11-16/assembly.md)，关联 DEV-090 T1/T5、BUG-036、FEAT-049；范围见[分批计划A0/A1](../archive/superpowers/plans/2026-11-16-feedback-0250.md)。
 
 当前已有原生装配resolve与几何选择器；coincident/concentric在Python关系白名单拒绝geometry_selector。报告的假面ID失败只证明到达原生路径，不证明真实配合成功。先接平面/圆柱面唯一解析，之后有依据地扩点/草图点/特征面引用。
 

@@ -2,7 +2,7 @@
 
 日期：2026-10-20 登记。类型：功能。优先级：P2。状态：验收中（只读检查已随 0.5.0 交付并通过本机/外部主线；四类受限场景与 WorkBuddy 按卡保留）。目标版本：0.5.0。
 
-来源：[v0.4.1 / Creo 10 反馈](../validation/FEEDBACK-0.4.1-CREO10-2026-10-20.md) P1-2 及 v0.4.0 报告 §3.4 建议 2。实施边界见[处理计划](../development/CREO10-0.4.1-FEEDBACK-PLAN.md)第 5 节。
+来源：[v0.4.1 / Creo 10 反馈](../validation/FEEDBACK-0.4.1-CREO10-2026-10-20.md) P1-2 及 v0.4.0 报告 §3.4 建议 2。实施边界见[处理计划](../archive/development/CREO10-0.4.1-FEEDBACK-PLAN.md)第 5 节。
 
 ## 目标与现状
 
@@ -75,7 +75,7 @@ walk 状态/判定/节点写入逻辑提取至共享 `native/assembly_walk.h`（
 
 R1 §4.1外部Creo10补8组件/变换/约束快照可用而support_status仍planned的证据。基线已将assembly_checks改supported_limited并写限制，不重复登记未交付；R1 §5 P1-3请求的是FEAT-049约束回放，不是本卡只读巡检缺失。R2静态单位确认不能充当本工具实机。T01补余下摘要一致性，原受限四场景与父卡其他范围保留。
 
-共享接口遵循 [DEV-047 基线](DEV-047.md#interface-baseline)。本段仅补来源与已确认的本次子项；T00 未实现业务、未新增实机证据，不据此关闭父卡其他范围。
+共享接口遵循 [DEV-047 基线](../archive/work-items/DEV-047.md#interface-baseline)。本段仅补来源与已确认的本次子项；T00 未实现业务、未新增实机证据，不据此关闭父卡其他范围。
 
 ## 2026-11-19 DEV-092/T3：实例几何与逐面面积测量语义查证（离线，未实现）
 

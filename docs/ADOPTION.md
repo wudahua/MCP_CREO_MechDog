@@ -56,4 +56,4 @@ inspect 拒绝时除文本 `reason` 外携带稳定 `reason_code`（`unsupported
 
 未确认模型不能普通建模或通过accept_saved/live绕过确认。需要放弃时使用 `creo_reconcile_model` 的inspect→`abandon_new`，保留文件和审计。派发后结果不确定则保持保护，先查询原job，不重交建模计划、不修改登记或清锁。单一Toolkit通道busy立即拒绝，受理后只轮询。
 
-本轮实测范围见[第二阶段记录](work-items/FEAT-042.md)；Creo13外部环境未验收。开发者检查与[WorkBuddy黑盒场景](WORKBUDDY_ADOPTION.md)分别留证。
+本轮实测范围见[第二阶段记录](work-items/FEAT-042.md)；Creo13外部环境未验收。开发者检查与[WorkBuddy黑盒场景](archive/stage-notes/WORKBUDDY_ADOPTION.md)分别留证。

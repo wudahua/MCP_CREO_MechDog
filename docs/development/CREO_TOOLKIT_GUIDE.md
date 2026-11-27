@@ -145,7 +145,7 @@ rg -n 'ProFeatureWithoptionsCreate|ProArrayFree|ProSelectionFree' native/geometr
 | 记录 | 能复用什么；不能据此推出什么 |
 | --- | --- |
 | [G5-NATIVE-CONTRACT](G5-NATIVE-CONTRACT.md) | 按 SDK 符号核对树形与资料缺口的方法；其中“未验证”内容保留该身份，不变成默认实现 |
-| [FEAT-065](../work-items/FEAT-065.md)、[2026-11-11 交接 B2/B3](FEAT-065-HANDOFF-2026-11-11.md) | `Probbl.h`、`ProCrvcollection.h` 到放样输入/边界条件的查证线索，以及当时 Creo 12.4 的实测。文档只列出 `TAN_COND_FREE` 不等于其他边界值可凭名称或数值猜测；交接中的旧限制先核对当前卡与兼容矩阵 |
+| [FEAT-065](../work-items/FEAT-065.md)、[2026-11-11 交接 B2/B3](../archive/development/FEAT-065-HANDOFF-2026-11-11.md) | `Probbl.h`、`ProCrvcollection.h` 到放样输入/边界条件的查证线索，以及当时 Creo 12.4 的实测。文档只列出 `TAN_COND_FREE` 不等于其他边界值可凭名称或数值猜测；交接中的旧限制先核对当前卡与兼容矩阵 |
 | [REFERENCE-TREES](REFERENCE-TREES.md) | 2026-11-05 自建特征读回的树，以及当时的缺口；属于历史观察，不是对所有特征/版本的普遍结论 |
 | [DEV-082](../work-items/DEV-082.md) | `Probbl.h` 存在性门控曾不足，需核对 `ProElemId.h` 中实际依赖的符号；当前源码是核实具体门控的入口 |
 | [BUG-120](../work-items/BUG-120.md) | 外部 Creo 10 的元素树抽取失败与诊断范围；不能以本机声明存在替代目标环境运行证据 |

@@ -58,4 +58,4 @@ report.json 使用独占创建；已有同名报告时拒绝，保留原证据�
 MCP 工具已注册；开发分支工具总数 101，原生操作数量不变。实现和固定 JSON 已纳入 server
 源码身份；递归源码分发白名单已包含二者。回归从独立源码副本导入并运行默认规划，
 证明资源定位独立于原工作树；尚未进行全新环境安装或原生模板验收。
-见 [验收记录](development/ALPHAI-D02-ACCEPTANCE.md)。
+见 [验收记录](archive/development/ALPHAI-D02-ACCEPTANCE.md)。

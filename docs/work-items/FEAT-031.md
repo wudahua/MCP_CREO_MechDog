@@ -30,7 +30,7 @@
 
 ## DEV-051 T13 离线阶段（2026-10-29）
 
-新增显式 `native_bundle` 只读导出格式：在本次 job 的独立目录从所属模型 `output` 内的原生版本快照收集已知装配引用，写相对路径、SHA256 和缺失状态 manifest。原有五种导出格式和默认 `step` 不变。离线夹具与匹配 SDK 构建通过；真实装配新目录打开、引用解析、嵌套遍历完整性、源件实际哈希、revision 与重载尚未连接 Creo 验收。详见 [T13 验收卡](../development/DEV051-T13-ACCEPTANCE.md)。状态保持实现待原生验收。
+新增显式 `native_bundle` 只读导出格式：在本次 job 的独立目录从所属模型 `output` 内的原生版本快照收集已知装配引用，写相对路径、SHA256 和缺失状态 manifest。原有五种导出格式和默认 `step` 不变。离线夹具与匹配 SDK 构建通过；真实装配新目录打开、引用解析、嵌套遍历完整性、源件实际哈希、revision 与重载尚未连接 Creo 验收。详见 [T13 验收卡](../archive/development/DEV051-T13-ACCEPTANCE.md)。状态保持实现待原生验收。
 
 ## 2026-10-29 实机：两件装配打包失败（组件身份无法解析）
 
@@ -46,8 +46,8 @@
 
 定因（带行号）：磁盘名来自 `native/advanced.cpp` `insert_component` 自己生成的复制名 `c_<job16>_<n>`（`ProMdlnameCopy` → `ProMdlnameBackup` 逐字落盘）；巡检名来自另一条独立读取 `ProMdlNameGet`（自 Creo 3 废弃）+ 未初始化 `ProName`，两者不同源。该废弃调用即本仓库 BUG-070（`native/worker.cpp`）已定因并修过的同一缺陷，`assembly_inspection`/`constraint_reference` 未跟上。全量取样 1483 个 `model_name` 无一正常，形状恒为 `U+25A9` + 名字形字符串；其内部成因离线无法证实，记**未定因**，未据此实现任何字符串映射。
 
-最小修复：复制名在生成时登记进持久化别名记录（`snapshot_name`），打包按 `feature_id` 取回该字符串逐字符精确定位自有源件；名称读取改用 `ProMdlMdlnameGet` + 清零缓冲；补异常身份/重复 occurrence/缺件/只读源/未知嵌套闭包回归，完整性不足一律 `complete=false`；驱动改为残包立即记失败且不回导。离线 9/9、全量 1482/1482 通过，`bridge.py build` 通过。实机回导待验（新目录打开、组件/位姿/体积/哈希、源 revision 不变、不得擦用户模型）。详见 [T13 验收卡](../development/DEV051-T13-ACCEPTANCE.md)。状态保持离线实现完成、实机未验。
+最小修复：复制名在生成时登记进持久化别名记录（`snapshot_name`），打包按 `feature_id` 取回该字符串逐字符精确定位自有源件；名称读取改用 `ProMdlMdlnameGet` + 清零缓冲；补异常身份/重复 occurrence/缺件/只读源/未知嵌套闭包回归，完整性不足一律 `complete=false`；驱动改为残包立即记失败且不回导。离线 9/9、全量 1482/1482 通过，`bridge.py build` 通过。实机回导待验（新目录打开、组件/位姿/体积/哈希、源 revision 不变、不得擦用户模型）。详见 [T13 验收卡](../archive/development/DEV051-T13-ACCEPTANCE.md)。状态保持离线实现完成、实机未验。
 
 ## 2026-10-31 当前状态补记
 
-[T13 实机卡末节](../development/DEV051-T13-ACCEPTANCE.md)记录两段式实机：导出 bundle `complete=true`、3 文件、两组件位姿与隔离会话新目录回导通过。上文“未重跑”属于 2026-10-30 离线阶段时点；同会话受管模型不可擦且装配检索要求空会话。嵌套闭包、外部/缺失引用实机仍开放，不能外推跨机完整支持。
+[T13 实机卡末节](../archive/development/DEV051-T13-ACCEPTANCE.md)记录两段式实机：导出 bundle `complete=true`、3 文件、两组件位姿与隔离会话新目录回导通过。上文“未重跑”属于 2026-10-30 离线阶段时点；同会话受管模型不可擦且装配检索要求空会话。嵌套闭包、外部/缺失引用实机仍开放，不能外推跨机完整支持。

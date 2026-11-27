@@ -8,7 +8,7 @@
 
 目标版本：后续 MINOR（0.5.0 反馈第三批）
 
-来源与关联：[装配编辑流程改进建议 P2-1](../validation/feedback-0.5.0-2026-10-22/2026-10-22_CREO10_v0.5.0_装配编辑流程改进建议.md)（外部 Creo 10 / 0.5.0 实操，类比 SolidPilot `compare_assemblies`）；[0.5.0 反馈整合计划](../development/0.5.0-FEEDBACK-PLAN-2026-10-22.md) 第三批；关联 [FEAT-045](FEAT-045.md)、[FEAT-049](FEAT-049.md)、[DEV-046](DEV-046.md)。
+来源与关联：[装配编辑流程改进建议 P2-1](../validation/feedback-0.5.0-2026-10-22/2026-10-22_CREO10_v0.5.0_装配编辑流程改进建议.md)（外部 Creo 10 / 0.5.0 实操，类比 SolidPilot `compare_assemblies`）；[0.5.0 反馈整合计划](../archive/development/0.5.0-FEEDBACK-PLAN-2026-10-22.md) 第三批；关联 [FEAT-045](FEAT-045.md)、[FEAT-049](FEAT-049.md)、[DEV-046](DEV-046.md)。
 
 ## 问题或目标
 

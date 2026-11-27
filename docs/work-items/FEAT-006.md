@@ -4,7 +4,7 @@
 
 ## 2026-10-23：收养拒绝的有界逐特征诊断（0.5.0 反馈计划第一批 P1-5）实施
 
-[0.5.0 反馈计划](../development/0.5.0-FEEDBACK-PLAN-2026-10-22.md)第一批"补收养拒绝的有界逐特征诊断"已在开发分支 `codex/feat006-adoption-health-details`（自 main d508444 切出）实施，未合入 main：
+[0.5.0 反馈计划](../archive/development/0.5.0-FEEDBACK-PLAN-2026-10-22.md)第一批"补收养拒绝的有界逐特征诊断"已在开发分支 `codex/feat006-adoption-health-details`（自 main d508444 切出）实施，未合入 main：
 
 - 原生侧（`native/generic.cpp`）：`adopt_native` 的 live 摘要新增内联 `health_details`——对每个失败/抑制/不完整特征输出 `id`、`name`、`type_name`、`status_code`（`ProFeatureStatusGet` 原始整码，SDK 头文件 `ProFeature.h` 枚举核对为 -1～6）、可读 `status` 标签与 `incomplete` 标记；只列前 20 条，附 `unhealthy_total` 真实总数、`returned`、`truncated`。apply/prepare 防线拒绝消息同步携带总数与已列条数（前缀 `unhealthy_features:` 不变）。健康准入规则本身未改。
 - Python 侧（`src/creo_mechdog/adoption.py`）：`_refusal_details` 校验并把 `health_details` 暴露为 `refusal_details.unhealthy_features`，`health_breakdown` 改为逐特征口径；数据缺失或畸形（旧执行器）回退原合并口径文本，另设 50 条防御性截断上限。`ADOPTION.md` 契约段已同步。
@@ -83,10 +83,10 @@ task/2 整合树实机（Creo 12.4）：未受管种子副本（毫米、无依�
 
 R1 §5 P1-5是旧“未变”跟踪且未复测MX_DOWN，不能推翻本卡0.5.2已交付诊断；R2 §6仅静态确认unhealthy_features，明确未实机验证。R3 §4.2/§4.3的多环错误误导归本卡诊断子项+BUG-049/T06，只输出可确认环/实体/原始错误，不能从-1断因；T02操作结果亦保留诊断。本卡2026-10-24所写三个旧现场已收口，与BUG-078/总计划口径冲突，交集成负责人核对，不在T00改写历史。
 
-共享接口遵循 [DEV-047 基线](DEV-047.md#interface-baseline)。本段仅补来源与已确认的本次子项；T00 未实现业务、未新增实机证据，不据此关闭父卡其他范围。
+共享接口遵循 [DEV-047 基线](../archive/work-items/DEV-047.md#interface-baseline)。本段仅补来源与已确认的本次子项；T00 未实现业务、未新增实机证据，不据此关闭父卡其他范围。
 
 ## 2026-10-26 T06 多环诊断子项（离线）
 
 T06 为多闭环草图补充可定位诊断：草图结果新增 `profile`（输入解析的闭环/开链数、实体数、解析面积、嵌套深度及相交/自交/相切/零面积/近容差/开链/分叉分类计数）与 `native_section`（求解后 section 的真实闭环、实体、开端点和分叉点计数，含查询/释放码），compact 投影保留两者。准入仅拒绝由输入证明非法的同计划实心拉伸/回转；近容差只在显式 coordinates（原生 epsilon 1e-9 mm）下致命，避免以统一阈值替代原生判断。拉伸/回转创建失败信息改为引用实际 section 计数：仅当 `open_ends>0` 说明非闭合，否则明确“原因未确定”，保留 `ProFeatureWithoptionsCreate` 原码与元素错误。
 
-本次不新增诊断工具或根因猜测，不改变既有 `failed_stage`/`failed_toolkit_call` 语义；实机触发、真实失败码与保存/回滚证据由 T13 收口。详见 [T06 记录](../development/DEV047-T06-ACCEPTANCE-2026-10-26.md)，提交 `38c1606`、`7182ef0`、`565b5bc`。
+本次不新增诊断工具或根因猜测，不改变既有 `failed_stage`/`failed_toolkit_call` 语义；实机触发、真实失败码与保存/回滚证据由 T13 收口。详见 [T06 记录](../archive/development/DEV047-T06-ACCEPTANCE-2026-10-26.md)，提交 `38c1606`、`7182ef0`、`565b5bc`。

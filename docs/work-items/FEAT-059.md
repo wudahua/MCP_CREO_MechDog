@@ -10,11 +10,11 @@
 
 最小标准骨架原生探针，父装配/骨架显式身份和依赖、许可/模板核对、共同修改日志及失败保护；先冻结共享 model_transaction 契约，不允许独立零件冒充骨架。
 
-明确边界及拟接口见[设计依据](../superpowers/specs/2026-11-03-alphai-capability-adoption-design.md)。本卡固定身份不能被历史反馈中的同号误写引用替代。
+明确边界及拟接口见[设计依据](../archive/superpowers/specs/2026-11-03-alphai-capability-adoption-design.md)。本卡固定身份不能被历史反馈中的同号误写引用替代。
 
 ## 派工与验收
 
-- 任务号：B01；负责人：unassigned；[子计划](../superpowers/plans/2026-11-03-alphai-b-skeleton-plan.md)；[主计划](../superpowers/plans/2026-11-03-alphai-capability-adoption-plan.md)。
+- 任务号：B01；负责人：unassigned；[子计划](../archive/superpowers/plans/2026-11-03-alphai-b-skeleton-plan.md)；[主计划](../archive/superpowers/plans/2026-11-03-alphai-capability-adoption-plan.md)。
 - 判据：API 确认为标准骨架，保存重载与父子绑定正确；父装配 revision +1、新骨架 revision=1；重复/同名/错父拒绝；部分保存/登记失败保持全体可恢复或 unknown，不能虚报回滚。
 - 开发环境：Windows x64 / Python 3.12+；原生适用时 Creo 12.4.0.0 / 匹配 SDK/许可，先满足 BUG-001 条件并由会话负责人串行安排。Creo 9/10 未测不能外推。
 - 对应专项 unittest、默认离线驱动、构建、实机命令与错误/恢复矩阵见子计划；所有 live 驱动默认离线。WorkBuddy 如安排则只做公开 MCP 黑盒，不替代内部验证。
@@ -27,4 +27,4 @@
 
 B01已有model_transaction.py与9项离线测试/契约；尚无标准骨架原生探针、创建入口或父子绑定。接续R04审核真实持锁/登记/恢复接入，再按安排验证原生骨架；B02的A04前置已满足，真实骨架绑定前置仍未满足。
 
-详见[核验记录](../development/DEV067-POST0120-AUDIT-2026-11-04.md)和[后续计划](../superpowers/plans/2026-11-04-alphai-post0120-integration-plan.md)。本次只改记录/计划，未修改该任务产品代码或进行新实机。
+详见[核验记录](../archive/development/DEV067-POST0120-AUDIT-2026-11-04.md)和[后续计划](../archive/superpowers/plans/2026-11-04-alphai-post0120-integration-plan.md)。本次只改记录/计划，未修改该任务产品代码或进行新实机。

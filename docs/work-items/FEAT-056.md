@@ -14,7 +14,7 @@
 
 以下为原时点记录，当前以本摘要及 [BACKLOG](../BACKLOG.md) 为准。
 
-日期：2026-11-02。类型：功能。优先级：P2。状态：已交付（随 0.11.3 发布，实机待验）。目标版本：0.11.3（已发布，公开工具仍 95）。关联 [FEAT-052](FEAT-052.md)（装配按零件族上色）、[BUG-104](BUG-104.md)（补基线）、[DEV-062](DEV-062.md)。
+日期：2026-11-02。类型：功能。优先级：P2。状态：已交付（随 0.11.3 发布，实机待验）。目标版本：0.11.3（已发布，公开工具仍 95）。关联 [FEAT-052](FEAT-052.md)（装配按零件族上色）、[BUG-104](../archive/work-items/BUG-104.md)（补基线）、[DEV-062](../archive/work-items/DEV-062.md)。
 
 ## 来源
 
@@ -60,7 +60,7 @@
 | 修改文件 | `src/creo_mechdog/appearance.py`（`checked_random`、`random_family_palette`、`_hsv_to_rgb`、`resolve_auto_palette`、`resolve_grouping(random=...)` 与 `palette_source`、preview 回显、submit 预解析并回显 manifest）、`src/creo_mechdog/schema.py`（自动分族键接受源 ID 或组件标签）、`server.py`（`random` 参数与描述）、`capabilities.py`、`README.md`、`tests/unit/test_recolor_palette_resolution.py` |
 | 语义 | 自动分族下标签键解析为唯一 `source_model_id`；歧义（同一标签跨多个源族）拒绝并列出族；标签与源 ID 指向同一族重复拒绝；显式族表仍只接受族名键；`random` 与 `palette` 互斥；随机色按族名排序 + 黄金比例色相（固定饱和度/明度），同族集合结果稳定；作业里记录显式调色板，计划操作仍拒绝 `random` |
 | 命令与结果 | 先红灯（10 项）→ 实现 → 绿灯；`unittest tests.unit.test_recolor_palette_resolution tests.unit.test_assembly_appearance` 49 项 OK；全量 2158 项 OK；`dev_check` `success=true` |
-| 构建 | 同 [BUG-104](BUG-104.md)（执行器 `a61fad90…`，随 0.11.3 发布） |
+| 构建 | 同 [BUG-104](../archive/work-items/BUG-104.md)（执行器 `a61fad90…`，随 0.11.3 发布） |
 | 未验证 | 随机上色在实机的写后读回与保存重载、80 组件夹具的族色区分；Creo 9/10、WorkBuddy 黑盒 |
 
 <a id="dev073-latest-evidence"></a>

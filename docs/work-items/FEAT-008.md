@@ -61,7 +61,7 @@ list_models 的 complete=false / next_cursor 为报告方实际分页正例，�
 
 补入逐工具引用支持矩阵：分别核对独立 revolve、计划 revolve 的标签/整数/数字字符串，与 loft.sections 的已声明支持对照。loft 的整数兼容范围归 [BUG-028](BUG-028.md)，不能自动扩展为全部 sketch 参数契约。先明确现有支持，选择准确的字段说明/校验错误，或在身份解析无歧义时提供兼容整数引用；不直接把数字字符串一律解释成标签或 ID。
 
-验收应覆盖合法标签、整数、数字字符串、未知 ID 和不存在标签；文档/schema/错误提示一致。若只支持标签，拒绝须说明使用标签及查询方式；若新增整数支持，须验证实际选中特征、几何、revision、失败回滚与保存重载，覆盖真实 MCP 两入口。状态仍为待规划，本次未改接口或复测；旋转创建 -1 另见 [BUG-067](BUG-067.md)，命名规则另见 [BUG-069](BUG-069.md)。
+验收应覆盖合法标签、整数、数字字符串、未知 ID 和不存在标签；文档/schema/错误提示一致。若只支持标签，拒绝须说明使用标签及查询方式；若新增整数支持，须验证实际选中特征、几何、revision、失败回滚与保存重载，覆盖真实 MCP 两入口。状态仍为待规划，本次未改接口或复测；旋转创建 -1 另见 [BUG-067](../archive/work-items/BUG-067.md)，命名规则另见 [BUG-069](../archive/work-items/BUG-069.md)。
 
 ## 2026-10-19：接管拒绝错误与会话诊断说明
 
@@ -75,7 +75,7 @@ list_models 的 complete=false / next_cursor 为报告方实际分页正例，�
 
 ## 2026-10-25：0.5.0 反馈第二批第二阶段（官方装配重建管线配套）
 
-来源：[0.5.0 反馈整合计划第二批](../development/0.5.0-FEEDBACK-PLAN-2026-10-22.md)与
+来源：[0.5.0 反馈整合计划第二批](../archive/development/0.5.0-FEEDBACK-PLAN-2026-10-22.md)与
 [装配编辑流程改进建议](../validation/feedback-0.5.0-2026-10-22/2026-10-22_CREO10_v0.5.0_装配编辑流程改进建议.md)
 P1-2/P2-3/P3 及 §3。范围（本阶段实现，实机/WorkBuddy 仍待验收）：
 
@@ -110,7 +110,7 @@ Creo 12.4 SDK 离线编译；不连接 Toolkit、不故障注入。底板 holes/
 ### 2026-10-25 第二阶段实现与离线结果
 
 已实现并离线验证（提交见批次证据
-[BATCH2-STAGE2-IMPLEMENTATION-2026-10-25.md](../development/BATCH2-STAGE2-IMPLEMENTATION-2026-10-25.md)）：
+[BATCH2-STAGE2-IMPLEMENTATION-2026-10-25.md](../archive/development/BATCH2-STAGE2-IMPLEMENTATION-2026-10-25.md)）：
 
 - 示例：`examples/assembly_rebuild_pipeline.json`（八步官方管线，含快照再
   生成步骤）、`examples/assembly_multicomponent_plan.json`（单作业三组件），
@@ -194,7 +194,7 @@ compact 投影、remove+reinsert 双身份）；guard 异常路径终态确认�
 修正（`--run` 单行命令、`revision=0` 固定值移除、WorkBuddy 回滚与快照
 场景重写）。676 项单测、全量 dev_check（exit 0）、三个 C++ helper harness、
 Creo 12.4 SDK 编译通过；未放宽 style baseline。完整证据见
-[BATCH2-STAGE3-REVIEW-CLOSEOUT-2026-10-25.md](../development/BATCH2-STAGE3-REVIEW-CLOSEOUT-2026-10-25.md)。
+[BATCH2-STAGE3-REVIEW-CLOSEOUT-2026-10-25.md](../archive/development/BATCH2-STAGE3-REVIEW-CLOSEOUT-2026-10-25.md)。
 实机/WorkBuddy 仍待统一安排，本卡不关闭。
 
 ### 2026-10-25 第四阶段复审收口（残余缺陷最小修复）
@@ -223,7 +223,7 @@ Creo 12.4 SDK 编译通过；未放宽 style baseline。完整证据见
 
 全量 701 项单测、dev_check（exit 0）、四个 C++ helper harness、
 Creo 12.4 SDK 编译通过；未放宽 style baseline。证据见
-[BATCH2-STAGE4-REVIEW-CLOSEOUT-2026-10-25.md](../development/BATCH2-STAGE4-REVIEW-CLOSEOUT-2026-10-25.md)。
+[BATCH2-STAGE4-REVIEW-CLOSEOUT-2026-10-25.md](../archive/development/BATCH2-STAGE4-REVIEW-CLOSEOUT-2026-10-25.md)。
 实机/WorkBuddy 仍待统一安排，本卡不关闭。
 
 ### 2026-10-26 第二批实机收口：快照刷新改用新唯一 label（最小修复）
@@ -267,7 +267,7 @@ assemble_component label='plate_a'（同一已编辑源）]` 再次提交，被�
 
 验证：针对性单测 23 项通过（上述两文件）、示例契约单测通过、Ruff 无新增、
 `tools/test_assembly_pipeline.py --help` 正常；证据与命令见
-[development/BATCH2-PIPELINE-REPLACE-LABEL-2026-10-26.md](../development/BATCH2-PIPELINE-REPLACE-LABEL-2026-10-26.md)。
+[development/BATCH2-PIPELINE-REPLACE-LABEL-2026-10-26.md](../archive/development/BATCH2-PIPELINE-REPLACE-LABEL-2026-10-26.md)。
 
 ### 2026-10-26 开发者实机收口结果（本阶段管线重跑已通过，WorkBuddy 待）
 
@@ -284,7 +284,7 @@ guard `guarded_live_20261025T170905774374` 子 exit 0、settle quiet/released、
 须两独立作业（第二失败不回滚首个删除），生产 alias 预检规则未改。矩阵实机
 （fc86231，38 父作业）与 4 次真实改变位姿、批量收养两批实机、独立全量
 dev_check 748 项一并通过；证据与文件 SHA256 见
-[BATCH2-LIVE-ACCEPTANCE-2026-10-26.md](../development/BATCH2-LIVE-ACCEPTANCE-2026-10-26.md)。
+[BATCH2-LIVE-ACCEPTANCE-2026-10-26.md](../archive/development/BATCH2-LIVE-ACCEPTANCE-2026-10-26.md)。
 
 未测：WorkBuddy 黑盒（经用户 2026-10-26 决定取消本批，未执行、不记通过；
 提示词已备 `build/workbuddy_batch2_20261026/PROMPT-UTF8.txt`）、
@@ -318,11 +318,11 @@ dev_check 748 项一并通过；证据与文件 SHA256 见
 
 R1 §4.1能力摘要、§4.2成熟度、§3.3/§4.3 unchanged、§5五旧请求及§6复测；R2 §2.3—§2.5/§7单位规范与迁移；R3 §6.2标签、§6.4批量、§6.5拔模及§7正例。T01补摘要/版本/标签/单位契约；assembly_checks已在基线修为supported_limited，不重开。T12复用既有execute_plan、0.6.0多组件管线、matrix和draft：既有零件批量追加、一次revision/回滚、真实面上的11°内拔模及圆台解析验收，不新增apply_plan或extrude.draft_angle。底板holes等父卡其他范围保持。
 
-共享接口遵循 [DEV-047 基线](DEV-047.md#interface-baseline)。本段仅补来源与已确认的本次子项；T00 未实现业务、未新增实机证据，不据此关闭父卡其他范围。
+共享接口遵循 [DEV-047 基线](../archive/work-items/DEV-047.md#interface-baseline)。本段仅补来源与已确认的本次子项；T00 未实现业务、未新增实机证据，不据此关闭父卡其他范围。
 
 ## 2026-10-26 T01 实现前登记：能力、版本、标签和单位契约
 
-用户继续指派 [T01](../development/0.5.2-FEEDBACK-TASKS-2026-10-26.md)，依赖 T00 `90421c6` 已快进纳入集成分支，任务分支 `codex/dev047-t01-contracts`。范围依照 DEV-047 已确认基线，不新增工具或版本、不推进其他任务。
+用户继续指派 [T01](../archive/development/0.5.2-FEEDBACK-TASKS-2026-10-26.md)，依赖 T00 `90421c6` 已快进纳入集成分支，任务分支 `codex/dev047-t01-contracts`。范围依照 DEV-047 已确认基线，不新增工具或版本、不推进其他任务。
 
 - 新增包内 `capability_summary.py`，以 capabilities.families 的启用状态、工具名和模式生成支持摘要；server 的原入口保留薄适配。补 prepare、按路径/批量 inspect/apply、会话擦除、登记健康/迁移，纠正文件收养已验收范围的陈旧描述。
 - release_status 从 version.py 的 VERSION 语义版本元数据派生为 stable/pre-release/unknown；complete_creo_coverage 继续独立，远端 update.is_prerelease 和缓存状态不改变本地成熟度。
@@ -334,19 +334,19 @@ R1 §4.1能力摘要、§4.2成熟度、§3.3/§4.3 unchanged、§5五旧请求�
 
 按上述范围已补 `support_status` 的 prepare、文件路径收养、会话擦除和登记维护摘要；条目从 `capabilities.families()` 取得启用状态、工具与动作，公开工具仍为 92 个。`release_status` 由本地 `VERSION` 的语义版本后缀决定，远端更新缓存与完整覆盖声明保持独立。`Label` 原正则和可接受输入保持，模式不匹配时给字段路径、28 字符上限、字符集和 `i001_part1` 示例；类型错误仍保留原类别。README 与开发、编码、发布规范补单位和矩阵迁移口径。本次不实现 T02 的结果字段改造。
 
-[T01 验收记录](../development/DEV047-T01-ACCEPTANCE-2026-10-26.md)：Windows / Python 3.12.14，`tools/dev_check.py` 通过（769 个单元测试）；最后补充的两项边界断言后 T01 定向 10/10、最终风格与源码指纹复核通过。未连接 Toolkit、未构建或执行原生建模、未实机验证非毫米行为；整张 FEAT-008 保持开放，T12 与 T13 继续本批后续验收。
+[T01 验收记录](../archive/development/DEV047-T01-ACCEPTANCE-2026-10-26.md)：Windows / Python 3.12.14，`tools/dev_check.py` 通过（769 个单元测试）；最后补充的两项边界断言后 T01 定向 10/10、最终风格与源码指纹复核通过。未连接 Toolkit、未构建或执行原生建模、未实机验证非毫米行为；整张 FEAT-008 保持开放，T12 与 T13 继续本批后续验收。
 
 ### T12 离线实现与验收
 
-按 T12 任务书新增批处理官方示例 `examples/dev047_t12_batch_append.json`（一次计划 6 特征、expected_revision、单次 revision、整作业回滚与 200 操作上限）与离线校验/门控实机驱动 `tools/test_t12_examples.py`；README 固定单位矩阵验收模板（毫米/英寸/混合/未知四场景分别取证、未知为 null）。示例输入全部经真实 `validate_operations` 校验、无模型/面 ID 硬编码。专项 6 项、全量 964 项、语言检查与 dev_check 通过，见 [T12 验收记录](../development/DEV047-T12-ACCEPTANCE-2026-10-26.md)。实机批处理与单位矩阵证据归 T13；整卡保持开放。
+按 T12 任务书新增批处理官方示例 `examples/dev047_t12_batch_append.json`（一次计划 6 特征、expected_revision、单次 revision、整作业回滚与 200 操作上限）与离线校验/门控实机驱动 `tools/test_t12_examples.py`；README 固定单位矩阵验收模板（毫米/英寸/混合/未知四场景分别取证、未知为 null）。示例输入全部经真实 `validate_operations` 校验、无模型/面 ID 硬编码。专项 6 项、全量 964 项、语言检查与 dev_check 通过，见 [T12 验收记录](../archive/development/DEV047-T12-ACCEPTANCE-2026-10-26.md)。实机批处理与单位矩阵证据归 T13；整卡保持开放。
 
 ### 2026-10-28 DEV-051 T09B：revolve 实际解析轴回显（离线实现）
 
-本卡“revolve 实际选轴回显”范围已按 [0.7.0 派发表](../development/0.7.0-FEEDBACK-TASKS-2026-10-28.md) T09B 离线实现（FEAT-008/BUG-083 关联，回应 0.7.0 反馈 R2 P7）：
+本卡“revolve 实际选轴回显”范围已按 [0.7.0 派发表](../archive/development/0.7.0-FEEDBACK-TASKS-2026-10-28.md) T09B 离线实现（FEAT-008/BUG-083 关联，回应 0.7.0 反馈 R2 P7）：
 
 - `revolve` 操作结果新增 `revolve_axis` 块：`source`（explicit/internal_centerline）、`kind`（datum_axis/surface/section_centerline/unknown，按 `ProAxisSurfaceGet` 实测分类）、`id`、`origin`/`direction`（+`frame`，model 3D 或 sketch_local 2D，均来自实际轴或 section 中心线查询）、`length_unit`、`geometry_known` 与查询码（`query_code` + `resolution` 五个辅助码含 `section_centerline_count`）。未知一律 null+原码，不回填请求值。
 - 多中心线/无中心线以实测计数表达（用了哪根不可判则 `id=null`）；本次不收紧歧义、准入/回退兼容保持（`{kind:"axis",id}`/`datum_axis_feature`、省略=null=内部中心线、非法轴拒绝均不变），未来收紧须显式记录版本影响。
-- 实现：`native/generic.cpp`（`revolve_axis_report`/`classify_axis_provenance`）、`src/creo_mechdog/operation_results.py` 归一化投影（不一致实测字段降级 unknown）；离线证据 `tests/unit/test_revolve_axis_report.py` 16 项 + T02 弧/T07 多环/T08B 巡检回归 + `bridge.py build` 通过。详见[验收记录](../development/DEV051-T09B-ACCEPTANCE.md)。
+- 实现：`native/generic.cpp`（`revolve_axis_report`/`classify_axis_provenance`）、`src/creo_mechdog/operation_results.py` 归一化投影（不一致实测字段降级 unknown）；离线证据 `tests/unit/test_revolve_axis_report.py` 16 项 + T02 弧/T07 多环/T08B 巡检回归 + `bridge.py build` 通过。详见[验收记录](../archive/development/DEV051-T09B-ACCEPTANCE.md)。
 - 实机（解析轴几何/体积/revision/保存重载/回滚、surface 解析轴样例、无中心线失败消息）待统一安排；BUG-083 引用拒绝修复不等于本项完成；工具描述/REFERENCE_SYNTAX 补充由 T01 收口；整卡保持开放，首批底板 holes 等范围不变。
 
 ### 2026-10-29 DEV-051 T09B 实机三例（Creo 12.4.0.0）
@@ -357,7 +357,7 @@ R1 §4.1能力摘要、§4.2成熟度、§3.3/§4.3 unchanged、§5五旧请求�
 - 显式基准轴：`source=explicit`、`kind=datum_axis`、`id=52`、`origin=[10,0,0]`、`direction=[1,0,0]`、`axis_surface_query_code=-4`；体积 785.398163 mm³ 与圆柱 oracle 误差 0，且 id/origin/direction 与 `inspection.datum_axes[0]` 逐位一致（job `00b4646420d7480394c333284e257469`，rev 1）。
 - 无中心线无轴：作业失败（`execute_revolve`、`toolkit_code=-1`），**不输出 `revolve_axis` 块**，体积为空（job `0921884a7f6e44e89741b9c224de7935`，rev 0）。
 
-新发现（未修，待排期）：用户只画 1 条中心线时 `resolution.section_centerline_count=3`，因为计数把草图参考线也计入，导致 `id` 恒为 null；几何方向仍由 `frame=model` 给出。另：`frame` 实测优先 `model`（取回转特征自身轴），`sketch_local` 仅为回退，与卡面文字需对齐。详见[验收卡](../development/DEV051-T09B-ACCEPTANCE.md)实机节。
+新发现（未修，待排期）：用户只画 1 条中心线时 `resolution.section_centerline_count=3`，因为计数把草图参考线也计入，导致 `id` 恒为 null；几何方向仍由 `frame=model` 给出。另：`frame` 实测优先 `model`（取回转特征自身轴），`sketch_local` 仅为回退，与卡面文字需对齐。详见[验收卡](../archive/development/DEV051-T09B-ACCEPTANCE.md)实机节。
 
 ### 2026-10-30 DEV-051 T09B：中心线计数剔除系统投影参考（离线，实机未验）
 
@@ -370,11 +370,11 @@ R1 §4.1能力摘要、§4.2成熟度、§3.3/§4.3 unchanged、§5五旧请求�
 - **仍未测**：投影过滤的实机计数、`ProSectionEntityIsProjection` 在 `ProFeatureSectionCopy` 重读 section 上的实际返回、保存重载、Creo 9/10、WorkBuddy。**真多用户中心线无法经本服务构造**（准入限一条草图中心线），需外部手工草绘模型——该夹具未测。
 - 修复前 10-29 实机三例的通过结论保留其历史时点，不代表修复后状态。
 
-详见[验收卡](../development/DEV051-T09B-ACCEPTANCE.md) 2026-10-30 节。
+详见[验收卡](../archive/development/DEV051-T09B-ACCEPTANCE.md) 2026-10-30 节。
 
 ### 2026-10-30 DEV-051 T01：能力发现与示例收口（文档）
 
-见 [T01 验收卡](../development/DEV051-T01-ACCEPTANCE.md)。本轮补齐本卡「能力说明一致性」范围的文档：README 增 `execute_plan` 多操作、`feature_state` 删除/抑制/恢复、独立 `draft`、组件标签查询与 `end_trim_mm` 的最小示例（全部经当前 schema `validate_operations` 校验通过，仅为文档示例、非新实机证据）；`docs/REFERENCE_SYNTAX.md` 增 `relief`/`end_trim_mm`/`feature_state`/组件标签的形状行与 `revolve_axis`、组件身份查询两节；`docs/COMPATIBILITY.md` 增「开发分支（0.8.5 之后，未发布）的兼容性边界」；README 与能力表同步标出 `end_trim_mm` 属**开发分支未发布、语义待实机确认**。公开工具仍为 94 个。
+见 [T01 验收卡](../archive/development/DEV051-T01-ACCEPTANCE.md)。本轮补齐本卡「能力说明一致性」范围的文档：README 增 `execute_plan` 多操作、`feature_state` 删除/抑制/恢复、独立 `draft`、组件标签查询与 `end_trim_mm` 的最小示例（全部经当前 schema `validate_operations` 校验通过，仅为文档示例、非新实机证据）；`docs/REFERENCE_SYNTAX.md` 增 `relief`/`end_trim_mm`/`feature_state`/组件标签的形状行与 `revolve_axis`、组件身份查询两节；`docs/COMPATIBILITY.md` 增「开发分支（0.8.5 之后，未发布）的兼容性边界」；README 与能力表同步标出 `end_trim_mm` 属**开发分支未发布、语义待实机确认**。公开工具仍为 94 个。
 
 本卡「首批底板 holes、对称深度与编辑、平面引用构造」等其余范围不变，整卡保持开放。
 
@@ -391,7 +391,7 @@ R1 §4.1能力摘要、§4.2成熟度、§3.3/§4.3 unchanged、§5五旧请求�
 
 ### 2026-10-31 DEV-053 P05：工具说明、枚举和异步 revision 对齐（离线）
 
-范围见 [总计划 P05 任务卡](../superpowers/plans/2026-10-31-post0100-master-plan.md)，分支 `codex/dev053-post0100`。实机 MCP 场景（受理→终态→inspect 三 revision 实测）待 P01 准入后由编排排期；本轮为离线文档、schema 与既有作业记录核对。
+范围见 [总计划 P05 任务卡](../archive/superpowers/plans/2026-10-31-post0100-master-plan.md)，分支 `codex/dev053-post0100`。实机 MCP 场景（受理→终态→inspect 三 revision 实测）待 P01 准入后由编排排期；本轮为离线文档、schema 与既有作业记录核对。
 
 - **枚举统一**：`server.py` capabilities 概览原 `extrude_depths=["blind","through_all_cut","symmetric"]` 与 `depth_type` 契约不一致（反馈 F3 问题6），改为三个分开的键：`extrude_depth_types=["blind","through_all"]`（through_all 仅 cut，由 `ExtrudeOp.through_cut` 校验）、`extrude_directions=["positive","negative","symmetric"]`、`extrude_through_all_modes=["cut"]`；不再把 through_all_cut/symmetric 填成深度枚举。
 - **说明补例**：`creo_datum_plane`/`creo_create_sketch` 补 normal 筛选器示例并明确"匹配当前模型已有平面支撑面、不按法向创建新面"（F3 问题2）；`creo_round`/`creo_chamfer` 参数说明补面配对完整例子（两张已有面共享待倒圆边）；`creo_revolve`/`creo_create_sketch` 保留并锁定 `datum_axis_feature` 标签与几何 axis ID 两类例子；`creo_execute_plan` 明确无 `model_id` 时按 `model_type` 新建（默认 part）、钣金须先 `creo_new_sheetmetal` 并等终态、不隐式转换已有实体（F5 §3.2）；`creo_sheetmetal_unbend`/`flat_pattern`/`bend_back` 补 `fixed_surface` 裸面引用示例；`creo_new_sheetmetal` 与 capabilities `sheetmetal` 家族补同一前置说明。未新增任何未经证明的输入支持；独立实体增料未描述成钣金 new_body 已支持。
@@ -407,7 +407,7 @@ R1 §4.1能力摘要、§4.2成熟度、§3.3/§4.3 unchanged、§5五旧请求�
 
 ## 2026-11-01 Q13 首次实机：未通过
 
-`tools/test_t07_preview.py --live --confirm-session-usable` 在 `disk_cut_pattern` 用例的 `save_and_reload` 阶段失败：作业 `61777b5bc9bb4653b912bb1e2bcdd569` 返回 `ProMdlnameBackup(board, destination)` -1，预览/分页矩阵未继续执行。磁盘剩余约 1.3 TB、会话干净，失败原因未定。同一会话重跑一次（作业 `510b73fb998c4706a7e71b6f170acb8f`）仍在同一用例同一阶段失败，属确定性失败而非偶发。进一步实验：强制 `ProSolidRegenerate(PRO_REGEN_FORCE_REGEN)` 后 Backup 仍 -1；回退 `ProMdlSave` 也 -1。三次 pattern 作业全部失败、同时段 43+ 非 pattern 作业保存正常。已登记 [BUG-099](BUG-099.md)。本卡不宣称 Q13 实机通过。证据：`build/live-0.11.1/q13_preview{,_r2,_r3,_r4,_r5}.json` 与对应 `native.log`。
+`tools/test_t07_preview.py --live --confirm-session-usable` 在 `disk_cut_pattern` 用例的 `save_and_reload` 阶段失败：作业 `61777b5bc9bb4653b912bb1e2bcdd569` 返回 `ProMdlnameBackup(board, destination)` -1，预览/分页矩阵未继续执行。磁盘剩余约 1.3 TB、会话干净，失败原因未定。同一会话重跑一次（作业 `510b73fb998c4706a7e71b6f170acb8f`）仍在同一用例同一阶段失败，属确定性失败而非偶发。进一步实验：强制 `ProSolidRegenerate(PRO_REGEN_FORCE_REGEN)` 后 Backup 仍 -1；回退 `ProMdlSave` 也 -1。三次 pattern 作业全部失败、同时段 43+ 非 pattern 作业保存正常。已登记 [BUG-099](../archive/work-items/BUG-099.md)。本卡不宣称 Q13 实机通过。证据：`build/live-0.11.1/q13_preview{,_r2,_r3,_r4,_r5}.json` 与对应 `native.log`。
 
 ## 2026-11-05 补证（会话内）：W05 / W06 状态
 

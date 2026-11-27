@@ -16,7 +16,7 @@
 
 日期：2026-11-01。类型：功能。优先级：P2。状态：**已交付（0.11.1；本机实机通过 2026-11-01 Q05 8/8；被 [BUG-098](BUG-098.md) 阻断后修复）**。目标版本：0.11.1。
 
-来源：[0.10.0 晚间包 02_G5 曲面能力方案](../validation/feedback-0.10.0-2026-11-01/originals/02_G5曲面能力方案.md) §4、[03_BUG094报告](../validation/feedback-0.10.0-2026-11-01/originals/03_BUG094报告.md) §二/§六 与 [04_generic_cpp_patches](../validation/feedback-0.10.0-2026-11-01/originals/04_generic_cpp_patches.md) §补丁 1；[逐章映射](../validation/feedback-0.10.0-2026-11-01/MAPPING.md)。关联 [FEAT-008](FEAT-008.md)、[BUG-097](BUG-097.md)、[BUG-094](BUG-094.md)、[FEAT-009](FEAT-009.md)、[FEAT-039](FEAT-039.md)。
+来源：[0.10.0 晚间包 02_G5 曲面能力方案](../validation/feedback-0.10.0-2026-11-01/originals/02_G5曲面能力方案.md) §4、[03_BUG094报告](../validation/feedback-0.10.0-2026-11-01/originals/03_BUG094报告.md) §二/§六 与 [04_generic_cpp_patches](../validation/feedback-0.10.0-2026-11-01/originals/04_generic_cpp_patches.md) §补丁 1；[逐章映射](../validation/feedback-0.10.0-2026-11-01/MAPPING.md)。关联 [FEAT-008](FEAT-008.md)、[BUG-097](../archive/work-items/BUG-097.md)、[BUG-094](BUG-094.md)、[FEAT-009](FEAT-009.md)、[FEAT-039](FEAT-039.md)。
 
 ## 目标与范围
 
@@ -30,7 +30,7 @@
 - 与 `angle`、`axis`、非零 `offset` **互斥**；缺 `kind`、angle+非零 offset 的既有拒绝语义保持不变。
 - 不支持四点拟合；不猜取多点特征的第一点。
 - **外部写法不能原样放行**：晚间包出现三种不等价写法——`reference={"thru_points":[…]}`（02/03 报告）、`thru_points` 直挂（04 补丁）、`{"kind":"datum_point_feature","label":…}`（04 补丁的解析目标）。须经明确转换进入统一契约，不接受缺 `kind` 的绕过。
-- 三点平面对**任意斜面草图**的解锁属通用增益，但其草图侧的 UV 映射与特征完成问题归 [BUG-097](BUG-097.md)；曲面放样/投影/剪裁归 [FEAT-009](FEAT-009.md)/[FEAT-039](FEAT-039.md)；扭叶片逐站棱柱路线的配方转换归 DEV-053 场景。
+- 三点平面对**任意斜面草图**的解锁属通用增益，但其草图侧的 UV 映射与特征完成问题归 [BUG-097](../archive/work-items/BUG-097.md)；曲面放样/投影/剪裁归 [FEAT-009](FEAT-009.md)/[FEAT-039](FEAT-039.md)；扭叶片逐站棱柱路线的配方转换归 DEV-053 场景。
 
 ## 验收标准
 
@@ -90,7 +90,7 @@
 
 - 原案转换：`tools/test_datum_plane_through_points.py::convert_plane_operation` / `converted_smoke_operations()`——`{"thru_points":[…]}` → `{"kind":"through_points","points":[…]}`；转换后的 smoke 计划可直接 `validate_operations`（单测已锁定）。
 - 真实帧：操作回执 `operations[].plane_frame`（`surface_id`/`normal`/`origin`/`length_unit`，创建特征回读、毫米）；亦可经 `inspect_model(datum_planes)` 按 `surface_id` 查询。**禁止从输入点或矩阵表象重建帧**（Review Focus 3）。
-- 三点平面成功不代表斜面草图可创建（[BUG-097](BUG-097.md)）；Q11 拆点后须保证每个 `datum_plane` 与其三个单点 `datum_points` 在同一计划内（按真实依赖分批）。
+- 三点平面成功不代表斜面草图可创建（[BUG-097](../archive/work-items/BUG-097.md)）；Q11 拆点后须保证每个 `datum_plane` 与其三个单点 `datum_points` 在同一计划内（按真实依赖分批）。
 
 <a id="dev073-latest-evidence"></a>
 
@@ -102,4 +102,4 @@
 
 - 首例因 [BUG-098](BUG-098.md) 的逐约束特征树读取卡死；改为 `ProElementArrayCount` 计数后修复。
 - `tools/test_datum_plane_through_points.py --live --confirm-session-usable` **8/8 通过**：主平面、斜面 smoke、大/小尺度、点序颠倒 5 个有效例；错误引用、近共线、重复点 3 个拒绝例。报告 `build/live-0.11.1/q05_through_points_r3.json`。
-- 三点斜面解锁 Q06：`tools/test_tilted_sketch_3pt.py --live --confirm-session-usable` 的 L1/L2 均通过（辅助垂直基准面修复），体积偏差 1.45e-8；见 [BUG-097](BUG-097.md)。
+- 三点斜面解锁 Q06：`tools/test_tilted_sketch_3pt.py --live --confirm-session-usable` 的 L1/L2 均通过（辅助垂直基准面修复），体积偏差 1.45e-8；见 [BUG-097](../archive/work-items/BUG-097.md)。

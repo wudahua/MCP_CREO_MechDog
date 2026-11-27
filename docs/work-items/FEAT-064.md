@@ -10,11 +10,11 @@
 
 独立显式 inspect/apply，600秒证据、幂等键与冻结分页；仅自有受管目录内同族直接子文件，保留当前/检查点/回退/源件/组件快照/事务与未知引用，合格文件移回收站。
 
-明确边界及拟接口见[设计依据](../superpowers/specs/2026-11-03-alphai-capability-adoption-design.md)。本卡固定身份不能被历史反馈中的同号误写引用替代。
+明确边界及拟接口见[设计依据](../archive/superpowers/specs/2026-11-03-alphai-capability-adoption-design.md)。本卡固定身份不能被历史反馈中的同号误写引用替代。
 
 ## 派工与验收
 
-- 任务号：D03；负责人：unassigned；[子计划](../superpowers/plans/2026-11-03-alphai-d-workflow-plan.md)；[主计划](../superpowers/plans/2026-11-03-alphai-capability-adoption-plan.md)。
+- 任务号：D03；负责人：unassigned；[子计划](../archive/superpowers/plans/2026-11-03-alphai-d-workflow-plan.md)；[主计划](../archive/superpowers/plans/2026-11-03-alphai-capability-adoption-plan.md)。
 - 判据：路径/重解析点/占用/过期/文件与引用变化拒绝或保留；重放不二次回收；部分失败逐项报告；隔离文件夹具证明保留与回收清单，无 Toolkit，不自动随保存/启动清理。
 - 开发环境：Windows x64 / Python 3.12+；原生适用时 Creo 12.4.0.0 / 匹配 SDK/许可，先满足 BUG-001 条件并由会话负责人串行安排。Creo 9/10 未测不能外推。
 - 对应专项 unittest、默认离线驱动、构建、实机命令与错误/恢复矩阵见子计划；所有 live 驱动默认离线。WorkBuddy 如安排则只做公开 MCP 黑盒，不替代内部验证。

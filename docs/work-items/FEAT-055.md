@@ -11,7 +11,7 @@
 
 ## 建卡与 2026-11-08 时点摘要（历史）
 
-日期：2026-11-02。类型：功能/技术路线。优先级：P2。状态：已交付 0.18.4/0.19.0 子项（H08 曲线边圆角 + 数值曲率/G1，均已公开）；**2026-11-08 实机验收通过**：`surface_round` / `creo_surface_round`（相邻面 R3 → 5 面 1187.1238898038469 mm²、开放、保存重载不变；非相邻失败回滚）与 `surface_curvature` / `creo_measure_surface_curvature`（平面 0、R8 球面 0.125 1/mm、G1 90°、只读 revision 不变；不提供斑马纹/曲率梳图像）。公开工具 107（104 + `creo_surface_round` 与 `creo_measure_surface_curvature` + 重新公开的 `creo_quilt_merge`；`creo_surface_boundary_fill` 已实机反证并门禁）；其余未排期（0.11.5/0.11.7/0.12.0 反馈批的归档与逐条映射挂在本卡下，派工编号 Q00—Q07；0.13.0 反馈批见修复计划）。Q00 归档已完成；Q09 投影曲线与 Q10 曲面修剪/加厚测量已由 [FEAT-039](FEAT-039.md) 在 **0.13.0** 实机公开（`creo_project_curve`、`creo_surface_trim`）；Q08 边界混合/`surface_loft` 路线仍不成立，没有公开工具或已注册操作；Q01—Q07 尚未整体实现，按 [0.13.0 修复计划](../superpowers/plans/2026-11-06-0.13.0-feedback-repair-plan.md) 分批推进（本轮仅完成 R07 契约文档的离线部分）。**H08（0.18.4，2026-11-08 实机验收完成）**：曲面边圆角可行（`PRO_FEAT_ROUND` + 两相邻面，结果留在 quilt 上，R3 后 5 面 1187.1238898038469 mm²），`surface_round` / `creo_surface_round` 与数值曲率/G1 均已实机通过，见文末 H08 段。目标版本：0.18.4 / 0.19.0（H08 子项已交付）；剩余未排期。关联 [DEV-053](DEV-053.md)、[FEAT-053](FEAT-053.md)、[FEAT-039](FEAT-039.md)、[FEAT-054](FEAT-054.md)、[DEV-064](DEV-064.md)。
+日期：2026-11-02。类型：功能/技术路线。优先级：P2。状态：已交付 0.18.4/0.19.0 子项（H08 曲线边圆角 + 数值曲率/G1，均已公开）；**2026-11-08 实机验收通过**：`surface_round` / `creo_surface_round`（相邻面 R3 → 5 面 1187.1238898038469 mm²、开放、保存重载不变；非相邻失败回滚）与 `surface_curvature` / `creo_measure_surface_curvature`（平面 0、R8 球面 0.125 1/mm、G1 90°、只读 revision 不变；不提供斑马纹/曲率梳图像）。公开工具 107（104 + `creo_surface_round` 与 `creo_measure_surface_curvature` + 重新公开的 `creo_quilt_merge`；`creo_surface_boundary_fill` 已实机反证并门禁）；其余未排期（0.11.5/0.11.7/0.12.0 反馈批的归档与逐条映射挂在本卡下，派工编号 Q00—Q07；0.13.0 反馈批见修复计划）。Q00 归档已完成；Q09 投影曲线与 Q10 曲面修剪/加厚测量已由 [FEAT-039](FEAT-039.md) 在 **0.13.0** 实机公开（`creo_project_curve`、`creo_surface_trim`）；Q08 边界混合/`surface_loft` 路线仍不成立，没有公开工具或已注册操作；Q01—Q07 尚未整体实现，按 [0.13.0 修复计划](../archive/superpowers/plans/2026-11-06-0.13.0-feedback-repair-plan.md) 分批推进（本轮仅完成 R07 契约文档的离线部分）。**H08（0.18.4，2026-11-08 实机验收完成）**：曲面边圆角可行（`PRO_FEAT_ROUND` + 两相邻面，结果留在 quilt 上，R3 后 5 面 1187.1238898038469 mm²），`surface_round` / `creo_surface_round` 与数值曲率/G1 均已实机通过，见文末 H08 段。目标版本：0.18.4 / 0.19.0（H08 子项已交付）；剩余未排期。关联 [DEV-053](DEV-053.md)、[FEAT-053](FEAT-053.md)、[FEAT-039](FEAT-039.md)、[FEAT-054](FEAT-054.md)、[DEV-064](../archive/work-items/DEV-064.md)。
 
 ## 来源
 
@@ -54,7 +54,7 @@
 ## 2026-11-04 S00 增量：0.11.7 反馈归档、派工登记与契约修订
 
 - 0.11.7 四份原件逐字节归档（[manifest](../validation/feedback-0.11.7-2026-11-04/manifest.json)）；逐条映射与证据分级见 [MAPPING](../validation/feedback-0.11.7-2026-11-04/MAPPING.md)。F03 证实：`sections_available` 仍无 `quilts`、merge 引用 trim 结果 `ProFeatureGeomitemVisit -4` 两版同码；本卡状态保持待规划。
-- 派工登记：[0.11.7 计划](../superpowers/plans/2026-11-04-0.11.7-surface-chain-improvement-plan.md) 的 S00—S10 / C01—C04 / W01—W06 复用既有行，Sxx 是派工编号；S01（quilts 查询、共享测量、quilt 引用修复）归本卡与 FEAT-039，S02—S07 归 FEAT-039/FEAT-009，S08 集成、S09 归 FEAT-054、S10 交付。
+- 派工登记：[0.11.7 计划](../archive/superpowers/plans/2026-11-04-0.11.7-surface-chain-improvement-plan.md) 的 S00—S10 / C01—C04 / W01—W06 复用既有行，Sxx 是派工编号；S01（quilts 查询、共享测量、quilt 引用修复）归本卡与 FEAT-039，S02—S07 归 FEAT-039/FEAT-009，S08 集成、S09 归 FEAT-054、S10 交付。
 - G5 契约按 S00 修订（[§0.1](../development/G5-NATIVE-CONTRACT.md)）：显式 `{"kind":"quilt","id"}` 引用、quilt/surface ID 不可互换、schema 不建 job 与运行时引用失效分层、投影 oracle 纠偏（O2 平面用例 + O2b 圆柱待定义）、修剪两侧按实测位置判、旧路线失败历史保留。
 - 契约测试同步：`tests/unit/test_g5_native_contract.py` 19 项全过（新增 oracle 域内性、显式 quilt 类型、候选清单、旧路线状态断言）。本轮不连 Creo、不运行 Toolkit、不合 main、不发布；实机项均未验证。
 

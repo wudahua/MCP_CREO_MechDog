@@ -380,7 +380,7 @@ XZ 的法向是 negative Y，因此 `direction="positive"` 会让实体向更小
 | `query_code` / `resolution` | 产出几何值的查询码与辅助证据（`feature_axis_query_code`、`axis_item_query_code`、`axis_surface_query_code`、`section_centerline_count`、`section_query_code`） |
 | `section_centerline_count` | 实测**用户中心线**根数。2026-10-30 修正计数口径：草图构建器必写的两条系统投影参考不再计入（此前一条用户线被计成 3），修复后一条用户线计 1 并给出 id；真实多中心线仍保留 `id=null`，不武断选第一条 |
 
-开发分支的该修正**尚未实机验收**；服务准入仍限一条草图中心线，因此「真实多用户中心线」夹具无法经本服务构造，需外部手工草绘模型。详见 [T09B 验收卡](development/DEV051-T09B-ACCEPTANCE.md)。
+开发分支的该修正**尚未实机验收**；服务准入仍限一条草图中心线，因此「真实多用户中心线」夹具无法经本服务构造，需外部手工草绘模型。详见 [T09B 验收卡](archive/development/DEV051-T09B-ACCEPTANCE.md)。
 
 ## 组件身份查询（list_components）
 

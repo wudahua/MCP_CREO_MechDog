@@ -6,7 +6,7 @@
 
 0.35.2 外部双会话 -36，现有配置选择依赖重启服务。Creo 10 `ProCore.h` 的 `ProProcessHandle` 是 Toolkit `PeerIdx`，不能把 PID 或 Windows 进程句柄当作连接 ID。先验证受支持的发现方式，披露已识别/不可识别候选，再设计进程内显式选择，保持失效 ID、当前活动作业和未知模型保护。双会话实测需要覆盖 A→A、无效 ID 无回落及退出换代；窗口、模型名只取实际观察。自动择机另作决策。关联 FEAT-019、BUG-139。
 
-来源：[本批反馈计划](../development/0.35.0-FEEDBACK-PLAN-2026-11-21.md)。
+来源：[本批反馈计划](../archive/development/0.35.0-FEEDBACK-PLAN-2026-11-21.md)。
 
 ## 本轮实现（开发分支 `codex/bug-144-release-evidence-plan`，基线 `98c598f`）
 

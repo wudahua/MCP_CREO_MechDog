@@ -12,18 +12,18 @@
 
 新增受管 part/sheetmetal/assembly 的只读质量接口；查询实际材料密度与单位，输出 kg、mm 重心、主惯量及完整性；按 occurrence 计重复实例，缺材料/未知单位/失败组件不返回伪造总质量。
 
-明确边界及拟接口见[设计依据](../superpowers/specs/2026-11-03-alphai-capability-adoption-design.md)。本卡固定身份不能被历史反馈中的同号误写引用替代。
+明确边界及拟接口见[设计依据](../archive/superpowers/specs/2026-11-03-alphai-capability-adoption-design.md)。本卡固定身份不能被历史反馈中的同号误写引用替代。
 
 ## 派工与验收
 
-- 任务号：A01；负责人：unassigned；[子计划](../superpowers/plans/2026-11-03-alphai-a-foundation-plan.md)；[主计划](../superpowers/plans/2026-11-03-alphai-capability-adoption-plan.md)。
+- 任务号：A01；负责人：unassigned；[子计划](../archive/superpowers/plans/2026-11-03-alphai-a-foundation-plan.md)；[主计划](../archive/superpowers/plans/2026-11-03-alphai-capability-adoption-plan.md)。
 - 判据：已知 6000 mm³ 钢材夹具质量 0.0471 kg；两个实例 0.0942 kg；混合单位、缺材料、组件失败、源文件/revision/窗口不变；当前原生查询证据和独立单位/完整性回归。
 - 开发环境：Windows x64 / Python 3.12+；原生适用时 Creo 12.4.0.0 / 匹配 SDK/许可，先满足 BUG-001 条件并由会话负责人串行安排。Creo 9/10 未测不能外推。
 - 对应专项 unittest、默认离线驱动、构建、实机命令与错误/恢复矩阵见子计划；所有 live 驱动默认离线。WorkBuddy 如安排则只做公开 MCP 黑盒，不替代内部验证。
 
 ## 实现与证据
 
-2026-11-07 [DEV-075](DEV-075.md) 后续离线增量：单工具、计划及原生路径拒绝装配质量查询，含显式密度，取消整装配均质fallback。新增`mass_value_unit="g"`、`native_mass_unit`、`mass_source=native|computed_from_density|none`；旧`mass_unit`保留模型单位语义。请求密度成功时清除此前材料失败原因，无请求时保留实际失败原因；未知单位不猜数值。同步查询的`job_id`是已完成执行记录，无需再次轮询。本批单测/编译与未测范围见[验收记录](../development/DEV-075-ACCEPTANCE.md)；没有新Creo运行证据，英寸体积仍为null，主惯量与装配汇总继续开放。
+2026-11-07 [DEV-075](DEV-075.md) 后续离线增量：单工具、计划及原生路径拒绝装配质量查询，含显式密度，取消整装配均质fallback。新增`mass_value_unit="g"`、`native_mass_unit`、`mass_source=native|computed_from_density|none`；旧`mass_unit`保留模型单位语义。请求密度成功时清除此前材料失败原因，无请求时保留实际失败原因；未知单位不猜数值。同步查询的`job_id`是已完成执行记录，无需再次轮询。本批单测/编译与未测范围见[验收记录](../archive/development/DEV-075-ACCEPTANCE.md)；没有新Creo运行证据，英寸体积仍为null，主惯量与装配汇总继续开放。
 
 2026-11-03 仅登记和规划；未修改产品代码，未运行产品测试、未连接 Creo、未提交/合入 main/发布。执行者按主计划交接实际提交、dirty、受测源码指纹、命令、环境、结果和未测范围；完成后由集成人同步主台账、能力边界与发布记录。
 
@@ -31,7 +31,7 @@
 
 已有实现及显式密度的用户决定按A01验收摘要保留。本次纯函数复现NaN质量/Inf重心未被拒绝；材料实际重心、P00回执差异、卡头/工具文案需收口。此状态不代表main已包含该工具；接续R03，不从零重做。
 
-详见[核验记录](../development/DEV067-POST0120-AUDIT-2026-11-04.md)和[后续计划](../superpowers/plans/2026-11-04-alphai-post0120-integration-plan.md)。本次只改记录/计划，未修改该任务产品代码或进行新实机。
+详见[核验记录](../archive/development/DEV067-POST0120-AUDIT-2026-11-04.md)和[后续计划](../archive/superpowers/plans/2026-11-04-alphai-post0120-integration-plan.md)。本次只改记录/计划，未修改该任务产品代码或进行新实机。
 
 ## 2026-11-04 离线数值守卫子项
 
