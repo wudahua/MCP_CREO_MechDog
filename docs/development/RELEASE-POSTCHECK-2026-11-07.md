@@ -15,6 +15,20 @@
 
 种子包 SHA256 为 `2f392cb45dcadae72bfc3a62b63ff1cadbff42a66680f05a304ed58f2fa61b4e`。两份同名 sidecar 分别记录各自 ZIP 的摘要。远端校验发布后执行，当前未验证。 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.48.3)
 
+### v0.48.3 发布后核对
+
+- 发布记录：Release 460639975，发布时间 `2026-11-27T13:31:56Z`，核对时间 `2026-11-27T13:48:43Z`（`2026-11-27T21:48:43+08:00`），标签 `v0.48.3`（标签对象 `286379ef07098d126c8a7d23df0e1620bb30698b` -> 提交 `718b477f0bd1c54f32989eda57085db7df9144e4`）。
+- 远端核对命令：`PYTHONUTF8=1 .\.venv\Scripts\python.exe tools\check_release_assets.py --tag v0.48.3`，退出码 0（`v0.48.3: four assets downloaded and verified; both sidecars match; release body self-proof verified`）。
+- 托管 Windows CI（`main` 标签提交 `718b477f0bd1c54f32989eda57085db7df9144e4`）：[运行 46007876977](https://github.com/wudahua/MCP_CREO_MechDog/actions/runs/46007876977) 首轮通过，`tests_run=4570`、`skipped=10`、`failures=0`、`errors=0`（`run_id=4098d177735941aba65b24e850f7efbd`、`dirty=false`、`checked_source_sha256=6595e375f87cdda55def32355664109f2eef0496cda44790ecdbcf9ac3492c7c`）。
+- 本机干净 `main`（`718b477f0bd1c54f32989eda57085db7df9144e4`）全量单元测试通过（4,578 项，6 跳过，0 失败，0 错误，`run_id=845f77459df1422782839a4915b6ef15`）；解包源码 ZIP（DEV-075）在临时可编辑 `.venv` 下通过 `tools/test_unit.py`（4,570 项，15 跳过，0 失败，0 错误，`run_id=7f82de862ad04a0b9f0da25226c6cd4e`，`source_fingerprint=8dc39e0f57eebfbf01ab7a5b143bf4811e79f290906c38481e0b5273031d08db`）。
+
+| 附件 | 字节数 | SHA256 |
+| --- | --- | --- |
+| `MCP_CREO_MechDog-0.48.3-seed-library.zip` | 493442 | `2f392cb45dcadae72bfc3a62b63ff1cadbff42a66680f05a304ed58f2fa61b4e` |
+| `MCP_CREO_MechDog-0.48.3-seed-library.zip.sha256` | 107 | `9bcef63bea414603acef8b220b39ebcd4c48f4f9ef1aaf0c38448d2c07031c01` |
+| `MCP_CREO_MechDog-0.48.3-source.zip` | 11409955 | `85aecbee968a60a7b98ae786676a72d295e193f741fcb93209dad381e44ed23a` |
+| `MCP_CREO_MechDog-0.48.3-source.zip.sha256` | 101 | `deaf2a90e3a8d492bd0b6c0d32925bc6b85ed1849e3b080afd395781bc2d8d40` |
+
 ## v0.48.2（2026-11-27，打包时点）
 
 [DEV-107](../work-items/DEV-107.md) Windows CI 在整个 Python 作业中启用 UTF-8，使离线检查能输出中文 JSON 并继续运行全量单测。 [版本说明](../release-notes/RELEASE_NOTES_0.48.2.md) · [验证与发布记录](../validation/RELEASE-0.48.2.md)
