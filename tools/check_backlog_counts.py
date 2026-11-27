@@ -24,6 +24,8 @@ DEFAULT_BACKLOG = Path(__file__).resolve().parents[1] / "docs" / "BACKLOG.md"
 
 
 def main(argv: list[str] | None = None) -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--file", type=Path, default=DEFAULT_BACKLOG)
     args = parser.parse_args(argv)

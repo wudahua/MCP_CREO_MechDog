@@ -29,6 +29,7 @@ class BacklogCountsCliTest(unittest.TestCase):
             [sys.executable, "-I", "-S", str(root / "tools" / "check_backlog_counts.py")],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=False,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
