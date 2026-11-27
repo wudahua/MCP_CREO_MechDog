@@ -13,6 +13,10 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class DocLinksTest(unittest.TestCase):
+    @unittest.skipUnless(
+        (ROOT / ".git").exists(),
+        "full git checkout required because source ZIP omits .agents/, .docx, and .pro files",
+    )
     def test_current_repository_active_docs_have_no_broken_links_or_anchors(self):
         report = check_doc_links(ROOT)
         self.assertTrue(report["consistent"], report)
@@ -20,6 +24,14 @@ class DocLinksTest(unittest.TestCase):
         self.assertEqual(report["broken_anchors"], [])
         self.assertGreater(report["files_scanned"], 0)
         self.assertGreater(report["links_checked"], 0)
+
+    def test_active_doc_anchors_and_packaged_doc_links_have_no_breaks(self):
+        report = check_doc_links(ROOT)
+        self.assertEqual(report["broken_anchors"], [])
+        self.assertGreater(report["files_scanned"], 0)
+        self.assertGreater(report["links_checked"], 0)
+        if (ROOT / ".git").exists():
+            self.assertEqual(report["broken_files"], [])
 
     def test_missing_target_file_fails_in_api_and_cli(self):
         root = Path(self.enterContext(tempfile.TemporaryDirectory()))
