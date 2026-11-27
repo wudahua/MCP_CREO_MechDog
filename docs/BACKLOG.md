@@ -38,13 +38,13 @@
 
 诊断交付不等于根因修复；部分交付不关整卡；缺其他版本证据不自动判未修。观察项等自然新现场，不制造故障。已完成且无保留范围的行移入 [完成档案](BACKLOG_COMPLETED.md#已完成事项)。原进展/证据保留日期，不再回填第二份待办。小修复沿用卡与证据，复杂跨模块任务才另建完整计划。
 
-当前唯一 ID **279**（BUG **144**、FEAT **89**、DEV **46**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
+当前唯一 ID **278**（BUG **143**、FEAT **89**、DEV **46**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
 
 | 当前分类 | 唯一 ID 数 |
 | --- | --- |
 | 仍需修复 | 3 |
 | 待复现/待核实 | 31 |
-| 已有修复但待验收 | 89 |
+| 已有修复但待验收 | 88 |
 | 观察中 | 3 |
 | 其它 agent 处理范围 | 20 |
 | 开发中 | 10 |
@@ -138,8 +138,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [BUG-181](work-items/BUG-181.md) | P1 | 已有修复但待验收 | 0.42.0 | `ExtrudeOp.region` 新增交点分割与精确 Boehm B 样条节点插入及零命中 `closest_loop` 诊断；本机 Creo 10 实机含两相交三次 B 样条 YZ 草图子区域切除（300.0 mm³）通过并保存重载。剩：Creo 9/12、原 Arm7 完整工程、WorkBuddy 黑盒。 |
 | [FEAT-081](work-items/FEAT-081.md) | P2 | 已有修复但待验收 | 0.42.0 | G2 圆角新增几何级 `g2_verification`（沿相切边界边求法向夹角与跨边界法曲率差）；本机 Creo 10 实机 R10 G2 圆角实测 `max_curvature_gap_inv_mm=0.0`、`verdict="pass"` 并保存重载。剩：Creo 9/12、非解析面 G2、WorkBuddy 黑盒。 |
 | [BUG-182](work-items/BUG-182.md) | P1 | 已有修复但待验收 | 0.42.0 | 装配面/边选择器零命中每条候选新增 `suggested_reference`、报错直出最近候选、`assembly` 空间标注 `nearest_coordinate_space="component"` 与 `assembly_origin_mm`/`assembly_normal`；本机 Creo 10 实机验证通过。剩：Creo 9/12、全量 60 配合装配、WorkBuddy 黑盒。 |
-| [BUG-175](work-items/BUG-175.md) | P1 | 已有修复但待验收 | 0.43.2 | 0.41.0 修复第一段，0.43.0 外部干净包复测发现同一用例的强制启动分支仍会误超时。本轮补齐共享假时钟及夹具隔离，解包 120/120、慢探测 3/3、统一开发检查通过。补修随 0.43.2 交付，待报告方复测。 |
-| [BUG-176](work-items/BUG-176.md) | P1 | 已有修复但待验收 | 0.41.0 | 圆形边选择器新增 `full_circle:true`、接缝/极值 `point_mm` 确定性取最小边 ID、单点 `point_mm` 支持圆弧边；本机 Creo 10 实机三组整圆圆角/倒角全部通过并保存重载。剩：Creo 9 原始发动机零件、Creo 12、WorkBuddy 黑盒。 |
+| [BUG-176](work-items/BUG-176.md) | P1 | 已有修复但待验收 | 0.41.0 | Creo 10 三组用例已验。0.47.0 外部 Creo 9 在临时圆柱上复验整圆选择通过；仍缺发动机原件及接缝点、单点选弧的完整黑盒覆盖，Creo 12 待验。 |
 | [FEAT-079](work-items/FEAT-079.md) | P1 | 已有修复但待验收 | 0.41.0 | 多引用 `round`/`chamfer` 失败时逐集探测定位 `failed_reference_index`/`failed_reference`/`round_failure` 并保持回滚；本机 Creo 10 实机精准定位索引 1 并完整回滚。剩：Creo 9/12、WorkBuddy 黑盒。 |
 | [BUG-177](work-items/BUG-177.md) | P2 | 已有修复但待验收 | 0.41.0 | 草图 `Arc.sweep_deg`（本机 Creo 10 实机 270° 优弧体积精确吻合）、`spline` 数值面积、`coordinates` 超差 `shifted_sample` 与 `XY`/`XZ`/`YZ` 基准面文档。剩：Creo 9/12、WorkBuddy 黑盒。 |
 | [BUG-178](work-items/BUG-178.md) | P2 | 已有修复但待验收 | 0.41.0 | `feature_state` 依赖展开 `include_dependencies=true` 与 `suggested_targets`、`component_changes` 1e-12 浮点噪声过滤、`creo_execute_plan` 空装配 `ToolError` 指引；本机 Creo 10 实机删除与装配插入均通过并保存重载。剩：Creo 9/12、WorkBuddy 黑盒。 |
@@ -173,7 +172,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [BUG-029](work-items/BUG-029.md) | P1 | 已有修复但待验收 | 未排期 | 重排主矩阵及 no-op 已验；原模型重建/复杂多特征树仍待验证。 |
 | [BUG-030](work-items/BUG-030.md) | P1 | 已有修复但待验收 | 未排期 | 尺寸编辑主线已验；原报告失败例与受影响回归仍需原件/实机。 |
 | [BUG-040](work-items/BUG-040.md) | P2 | 已有修复但待验收 | 未排期 | 补扫掠后状态变化、compact/full、异常查询；保留非活动记录；依赖：原始 sweep job/native JSON；受控 Creo 会话。 |
-| [BUG-047](work-items/BUG-047.md) | P1 | 已有修复但待验收 | 未排期 | 两方向折边已验；其它边/串连 flip 及回滚后合法折边还需矩阵。 |
+| [BUG-047](work-items/BUG-047.md) | P1 | 已有修复但待验收 | 未排期 | 两向单折边、四壁建成和无效边回滚已有实机记录；待核壁顶内外缘及连续折边的 flip 方向，并在回滚后复验合法折边。 |
 | [BUG-057](work-items/BUG-057.md) | P1 | 已有修复但待验收 | 未排期 | 统一锁及本机三状态60轮已过；双进程200轮与 Win10/Python3.13 原环境待验。 |
 | [BUG-062](work-items/BUG-062.md) | P1 | 已有修复但待验收 | 未排期 | centerline 核心两入口已验；保存重载全矩阵及其它构型按原卡保留。 |
 | [BUG-072](work-items/BUG-072.md) | P2 | 已有修复但待验收 | 未排期 | 非毫米保护本机已验；公开复核待补，继续毫米准入与原件字节保护。 |
@@ -181,13 +180,13 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [BUG-079](work-items/BUG-079.md) | P1 | 已有修复但待验收 | 未排期 | 就地改弧半径已修；非主平面/外部完整编辑矩阵仍未验。 |
 | [BUG-082](work-items/BUG-082.md) | P1 | 已有修复但待验收 | 未排期 | 主修复/外部 Creo 9 编辑已过；非主平面 autodim、贴轴基线及失败 revision 未齐。 |
 | [BUG-083](work-items/BUG-083.md) | P2 | 已有修复但待验收 | 未排期 | Python 非法轴准入已修；原生 validate_revolve_axis 分支与外部原环境未验。 |
-| [BUG-090](work-items/BUG-090.md) | P1 | 已有修复但待验收 | 未排期 | 厚度函数门控/实读回退已修；Creo 10 定向编译与运行待原环境，保持开放。 |
+| [BUG-090](work-items/BUG-090.md) | P1 | 已有修复但待验收 | 未排期 | 0.10.0 已交付函数门控与实读回退，报告方已验证 Creo 10 SDK 零补丁编译。剩原环境下回退分支的板厚实读与建模验收。 |
 | [BUG-098](work-items/BUG-098.md) | P1 | 已有修复但待验收 | 未排期 | 三点面阻塞已修并实机8/8；约束引用逐条核对仍未验证，保留数量校验安全边界。 |
 | [BUG-101](work-items/BUG-101.md) | P1 | 已有修复但待验收 | 未排期 | 0.46.0 已支持近容差 arc-arc 端点焊接并在 Creo 10 验证等价夹具；取得外部 gear10.json 后回放原案。 |
 | [BUG-105](work-items/BUG-105.md) | P1 | 已有修复但待验收 | 未排期 | 回滚成功保持 ready 已验；派发前零变更及 ack_no_mutation 恢复失败态仍未实机。 |
 | [BUG-107](work-items/BUG-107.md) | P1 | 已有修复但待验收 | 未排期 | 0.11.4 已修复生成器的缺头构建错误。外部报告记载 Creo 10 SDK 上 0.21.0 官方包零补丁编译成功；Creo 9 SDK 与原案运行期验收仍待对应证据。 |
 | [BUG-110](work-items/BUG-110.md) | P1 | 已有修复但待验收 | 未排期 | ack_failure 已实现；11/07 仍 guard_only，零件/装配成功确认分支未触发，待健康失败态夹具。 |
-| [BUG-114](work-items/BUG-114.md) | P1 | 已有修复但待验收 | 未排期 | 新件清理/重建已验；新装配失败清理与终态作用域仍需实机，不放宽组件保护。 |
+| [BUG-114](work-items/BUG-114.md) | P1 | 已有修复但待验收 | 未排期 | 0.16.1 在 Creo 12.4 已验新零件、新装配失败清理、同名复建及已保存件回滚。剩 Creo 10 原案中清理后的事务效果核对。 |
 | [BUG-116](work-items/BUG-116.md) | P1 | 已有修复但待验收 | 未排期 | 0.19.3反馈P1/P5：draft 中性面示例改几何平面形式并说明两种解析语义，原生失败带 `failed_reference` 与候选数/ID；实机文案与建模效果未验。 |
 | [BUG-117](work-items/BUG-117.md) | P2 | 已有修复但待验收 | 未排期 | 0.19.3反馈P4：targets 对象形式改单条可读拒绝并给合法示例，依赖列表加重提提示；自动基准面合并开关未设计与实现。 |
 | [BUG-135](work-items/BUG-135.md) | P2 | 已有修复但待验收 | 0.33.0（候选） | 0.31.1 反馈：element_tree 路线 `create_code=0` 但 `ProFeatureElemtreeExtract` 返回 -18 时直接回滚。离线新增显式 `accept_unverified_completion`（默认未设置不改旧计划字节），仅在无边界条件/模板时按几何验证继续并标注 `completion_verified_by=geometry`；panel 路线与带条件计划仍拒绝。**2026-11-20 Creo 10 实测：该宿主无法补全**——`ProFeatureElemtreeCreate` 仍 -18、用创建树 redefine 返回 -1、`ProSolidRegenerate` 后 `feature_incomplete=true` 且 quilt 0，作业 `21535fea…` 以 `SURFACE_LOFT_ACCEPT_INCOMPLETE` 失败并清理新模型；Creo 10 只能走 resident_panel。剩：Creo 12.4 成功路径。 |
@@ -231,7 +230,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
-| [DEV-106](work-items/DEV-106.md) | P2 | 开发中 | 未排期 | 23 张 P1 工作卡已复核，2 张批次汇总卡归档，2 张转待规划，19 张保留待验收。文档变更待分支审阅。 |
+| [DEV-106](work-items/DEV-106.md) | P2 | 开发中 | 未排期 | 23 张 P1 工作卡已复核，2 张批次汇总卡归档，2 张转待规划，19 张保留待验收。第二批复核 51 项 P1，归档 BUG-175，其余 50 项保留待验收。待分支审阅。 |
 | [DEV-101](work-items/DEV-101.md) | P1 | 开发中 | 未排期 | 复核 0.43.1/0.43.2 四份反馈，P0 先修基准面法线与构造实体。 |
 | [DEV-100](work-items/DEV-100.md) | P1 | 开发中 | 未排期 | 归档 0.43.0 机械臂反馈，逐项核对并分批验收。 |
 | [DEV-002](work-items/DEV-002.md) | P2 | 部分交付，剩余待验收 | 0.45.2（第四、五批） | Python 服务包化、新旧 MCP 入口、离线协议和独立安装验收完成。第三批 T5 实机及其余测试布局仍开放。 |

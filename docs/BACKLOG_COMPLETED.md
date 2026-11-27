@@ -8,6 +8,7 @@
 
 | ID | 优先级 | 状态 | 目标版本 | 完成摘要与证据 |
 | --- | --- | --- | --- | --- |
+| [BUG-175](work-items/BUG-175.md) | P1 | 已完成（0.47.1 外部复测） | 0.43.2（补修交付） | 两段启动单测共用假时钟。补修候选解包 120/120、慢探测 3/3；报告方随后在官方干净源码树两轮各 60/60 通过，补齐最后一项验收。[0.43.2 发布记录](validation/RELEASE-0.43.2.md) · [0.47.1 反馈 §2.3](validation/feedback-0.47.0-0.47.1-2026-11-26/originals/v0471-postcheck-backfill-missing.md) |
 | [DEV-052](work-items/DEV-052.md) | P1 | 已完成（0.10.0 交付） | 0.10.0 | N00—N13 归档、集成和发布完成。Phase B 已回填主干、标签及远端四附件核验。后续反馈由 DEV-053 接续，原件、会话与几何余项仍按各技术卡跟踪。 [发布记录](validation/RELEASE-0.10.0.md) |
 | [DEV-065](work-items/DEV-065.md) | P1 | 已完成（0.11.6 交付） | 0.11.6 | R13 五份原件已归档，四项夹具在 Creo 12.4 完成批次验收，标签及附件已核对。真实停滞、刚体平移放行和失败确认成功分支分别由 BUG-109、BUG-108、BUG-110 跟踪，BUG-111 已另行归档。 [发布记录](validation/RELEASE-0.11.6.md) |
 | [DEV-105](work-items/DEV-105.md) | P1 | 已完成（0.48.0 交付） | 0.48.0 | 2026-11-27：补齐 `v0.47.0`（Release `459454832`）与 `v0.47.1`（Release `459515636`）远端四附件核对实证至 `RELEASE-POSTCHECK-2026-11-07.md` 及 `0.47.1.json`（`verified`），新增 `release_integrity.validate_post_release_backfill` 与 `tools/check_release_records.py --post-release` 门禁及 `PostReleaseBackfillGateTest` 单测，随 v0.48.0 交付并同步回填。[发布记录](validation/RELEASE-0.48.0.md) |
