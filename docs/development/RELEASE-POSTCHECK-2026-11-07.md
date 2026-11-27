@@ -8,6 +8,21 @@
 - 四件附件为 `MCP_CREO_MechDog-0.48.1-source.zip`、`MCP_CREO_MechDog-0.48.1-source.zip.sha256`、`MCP_CREO_MechDog-0.48.1-seed-library.zip` 和 `MCP_CREO_MechDog-0.48.1-seed-library.zip.sha256`。种子包 SHA256 为 `1497d2d338ece74b4eaf517357228b061e0f48084e22cd3211435d841f0149e7`。两份同名 sidecar 分别记录对应 ZIP 的摘要。
 - 远端校验发布后执行，当前未验证。 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.48.1)
 
+### v0.48.1 发布后核对
+
+- 正式 Release `460356099` 发布于 2026-11-27 08:54:58 UTC（非 draft、非 prerelease），附注标签 `v0.48.1`（`ff9a501c3877f902af4361c5d45116ad7a054a21`）指向发布主干提交 `b82c3beaa7df4f9e1890c4e6c258c589a046d1ef`。 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.48.1)
+- 干净主干提交 `b82c3beaa7df4f9e1890c4e6c258c589a046d1ef` 在 Windows x64 / Python 3.12.10 运行 `tools/test_unit.py` 共 **4,565** 项，0 失败、0 错误、6 跳过（`run_id=49ca6f91fcb94f72aa2e64356f4a01ef`，受测源码指纹 `6cfb74bcd4e8f7ed68c73a2a49356a666e64cd37a46233217ff98b14a7829e56`）；`tools/check_release_records.py --version 0.48.1 --source-zip` 与 `tools/dev_check.py --skip-unit`、`tools/test_mcp.py --offline --legacy-entry`、`tools/check_backlog_counts.py`（276 项一致）全部通过（`tool_count=112`，Ruff 0 lint / 0 unformatted）。
+- `PYTHONUTF8=1 tools/check_release_assets.py --tag v0.48.1` 退出码 0（`v0.48.1: four assets downloaded and verified; both sidecars match; release body self-proof verified`）：
+
+| 远端附件 | 字节 | 核对实算 SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.48.1-source.zip` | 11,387,264 | `14e82181bb1c898bcb431a23c8ee79875640f8fc4e6297caf4d8b4c52c9e6ed9` |
+| `MCP_CREO_MechDog-0.48.1-source.zip.sha256` | 101 | 与对应 ZIP 摘要一致 |
+| `MCP_CREO_MechDog-0.48.1-seed-library.zip` | 493,442 | `1497d2d338ece74b4eaf517357228b061e0f48084e22cd3211435d841f0149e7` |
+| `MCP_CREO_MechDog-0.48.1-seed-library.zip.sha256` | 107 | 与对应 ZIP 摘要一致 |
+
+- 未测范围：Creo 9 / Creo 10 / Creo 12.4 实机与外部 WorkBuddy 黑盒复测（本版无原生 C++ 改动）。
+
 ## v0.48.0（2026-11-27，打包时点）
 
 - 交付 [BUG-196](../work-items/BUG-196.md)（`creo_refresh_model(..., write_back_snapshot=True)` 无版本破坏只读回填历史模型快照与 `model_summary` `stale_fields`/`refresh_hint`）、[BUG-197](../work-items/BUG-197.md)（`bounding_box_status.basis="tessellated_solid_union"` 与真实 `query_code`、`compact_job` 巡检摘要填充、`creo_round`/`creo_chamfer` 参数示例与 `session_health` 连接/保存健康双子块）与 [DEV-105](../work-items/DEV-105.md)（补齐 `v0.47.0`/`v0.47.1` 发布后核对记录及 `check_release_records.py --post-release` 门禁）；同步随主干合入 [DEV-103](../work-items/DEV-103.md) 校验冷数据归档剥离（`bc794edd`，18.40 MB）。Windows x64 / Python 3.12.10 / Creo 10.0.0.0（release 42）MCP stdio 实机与离线门禁全通过。 [版本说明](../release-notes/RELEASE_NOTES_0.48.0.md) · [验证与发布记录](../validation/RELEASE-0.48.0.md)
