@@ -1,5 +1,7 @@
 # 统一开发台账
 
+2026-11-27（0.48.2 PATCH）：[DEV-107](work-items/DEV-107.md) Windows CI 在整个 Python 作业中启用 UTF-8，使离线检查能输出中文 JSON 并继续运行全量单测。 [发布记录](validation/RELEASE-0.48.2.md)
+
 2026-11-27（0.48.1 PATCH，公开工具 112）：复核 0.47.0 反馈原件补修 [BUG-196](work-items/BUG-196.md) 两处快照边界（分拆 `inspection_ref` 零件快照的 `surfaces[].area_mm2` 过期检出与装配体 `merged_counts` 误报），并合入交付 [DEV-106](work-items/DEV-106.md)（三批台账分类整理与 115 份活跃非冻结文档 364 处迁移断链修复，归档 `DEV-052`/`DEV-065`/`BUG-175`/`DEV-079` 并将 `开发中` 存量清零转入完成档案，活跃 ID 280→276）。 [版本说明](release-notes/RELEASE_NOTES_0.48.1.md) · [发布记录](validation/RELEASE-0.48.1.md)
 
 2026-11-27（0.48.0 MINOR，公开工具 112）：归档 0.47.0 / 0.47.1 两份外部反馈原件至 [feedback-0.47.0-0.47.1-2026-11-26](validation/feedback-0.47.0-0.47.1-2026-11-26/SOURCE_MANIFEST.json)，交付 [BUG-196](work-items/BUG-196.md)（`creo_refresh_model(write_back_snapshot=True)` 无版本破坏只读回填历史模型快照与 `model_summary` `stale_fields`/`refresh_hint`）、[BUG-197](work-items/BUG-197.md)（`bounding_box_status.basis="tessellated_solid_union"` 与真实 `query_code`、`compact_job` 巡检摘要填充、`round`/`chamfer` 参数示例及 `session_health` 连接/保存双子块），并将 [DEV-105](work-items/DEV-105.md)（`v0.47.0`/`v0.47.1` 发布后核对实证回填与 `check_release_records.py --post-release` 门禁）随版收口转入完成档案（活跃 ID 281→280）；同步随主干合并合入 [DEV-103](work-items/DEV-103.md) 校验冷数据归档剥离（提交 `bc794edd`，14 份大体积文件共 18.40 MB 转存归档 Release `archive-validation-2026-11`）。Creo 10.0.0.0 MCP stdio 实机与离线门禁全通过。 [版本说明](release-notes/RELEASE_NOTES_0.48.0.md) · [发布记录](validation/RELEASE-0.48.0.md)
@@ -40,7 +42,7 @@
 
 诊断交付不等于根因修复；部分交付不关整卡；缺其他版本证据不自动判未修。观察项等自然新现场，不制造故障。已完成且无保留范围的行移入 [完成档案](BACKLOG_COMPLETED.md#已完成事项)。原进展/证据保留日期，不再回填第二份待办。小修复沿用卡与证据，复杂跨模块任务才另建完整计划。
 
-当前唯一 ID **277**（BUG **143**、FEAT **89**、DEV **45**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
+当前唯一 ID **276**（BUG **143**、FEAT **89**、DEV **44**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
 
 | 当前分类 | 唯一 ID 数 |
 | --- | --- |
@@ -49,7 +51,7 @@
 | 已有修复但待验收 | 88 |
 | 观察中 | 3 |
 | 其它 agent 处理范围 | 20 |
-| 开发中 | 1 |
+| 开发中 | 0 |
 | 部分交付，剩余待验收 | 62 |
 | 部分交付，剩余待规划 | 17 |
 | 待规划 | 52 |
@@ -232,7 +234,6 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
-| [DEV-107](work-items/DEV-107.md) | P1 | 开发中 | 未排期 | 修复 Windows CI 中文输出编码，验证离线门禁和全量单测能在托管 runner 上完成。 |
 
 ## 部分交付，剩余待验收
 
