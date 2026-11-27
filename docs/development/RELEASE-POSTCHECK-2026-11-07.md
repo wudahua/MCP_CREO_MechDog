@@ -15,6 +15,23 @@
 
 种子包 SHA256 为 `fdecb1c343944b276a342158deee915958293fc594f98c2befeb7bf9941eb642`。两份同名 sidecar 分别记录各自 ZIP 的摘要。远端校验发布后执行，当前未验证。 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.48.2)
 
+### v0.48.2 发布后核对
+
+- 正式 Release `460555771` 发布于 2026-11-27T12:09:24Z，于 2026-11-27T20:10:58+08:00 核对。附注标签 `v0.48.2`（`f4d0a662af06539dc0f1e32e2be7d44f93da3503`）指向发布时主干提交 `51a1c3895b9881f5d1ff6290592cc06da4edc667`。 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.48.2)
+- 主干 Windows / Python 3.12 的 `tools/dev_check.py` 完成三项离线检查及全量单测。离线检查通过，单测结果为，4,557 项，10 跳过，1 失败、0 错误。上传的报告记录 `dirty=false`、运行 ID `38dc52839b834872923c2eba4c15137d` 和受测源码指纹 `4cb20072fb1ad726c9b8a991adf82a6e8e01515422f06fbc4f68cebe3f74e991`。 [主干 CI](https://github.com/wudahua/MCP_CREO_MechDog/actions/runs/45994134069)
+- 主干首轮完成 4,557 项，10 跳过、1 失败、0 错误，三项离线检查均通过。启动重试 ID 断言在同一提交上重跑后再次失败。两轮均跑完全量单测，编码问题均未复现。 [首次运行](https://github.com/wudahua/MCP_CREO_MechDog/actions/runs/45994134069/attempts/1)
+- 本机 Windows x64 / Python 3.12.10 在同一干净提交运行 `tools/dev_check.py --work-item DEV-107`，4,557 项，13 跳过，0 失败、0 错误，运行 ID `0310ed637104403598b0b12056eab70a`，指纹 `4cb20072fb1ad726c9b8a991adf82a6e8e01515422f06fbc4f68cebe3f74e991`。独立解压源码包后运行 `tools/test_unit.py`，4,557 项，14 跳过，0 失败、0 错误，运行 ID `0dd9ded7191d43659a3fb0e6fc635888`，分发源码指纹 `5e214642ea278441b85179c5b4884a61be46e7d22368f1d8be1dafdb73868385`，解压目录无 Git 元数据。
+- 使用 GitHub API 获取正式 Release 正文与四件附件后运行 `tools/check_release_assets.py --tag v0.48.2 --dir <下载目录> --body-file <远端正文>`，退出码 0。四件远端附件逐一下载并实算 SHA256，结果与 API digest、本地发布文件相同。两个 ZIP 的摘要与 sidecar 和 Release 正文一致。
+
+| 远端附件 | 字节 | API digest 与下载后实算 SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.48.2-seed-library.zip` | 493,442 | `fdecb1c343944b276a342158deee915958293fc594f98c2befeb7bf9941eb642` |
+| `MCP_CREO_MechDog-0.48.2-seed-library.zip.sha256` | 107 | `bf1aef32353642eaf17387dea359ac55180f5c8361e4abafe34134026e3d3e63` |
+| `MCP_CREO_MechDog-0.48.2-source.zip` | 11,391,284 | `5f2c95dbe4087139361b2dc29ff8b40f547cf1cc8eeb2c04c3d9cc6cd3b1fb79` |
+| `MCP_CREO_MechDog-0.48.2-source.zip.sha256` | 101 | `5e35a61df5e7573227ee523dd9529d93c19a1a8b784ce2713e773a78e8aa2966` |
+
+未测范围为 Creo 9 / 10 / 12.4 实机及外部 WorkBuddy 黑盒。
+
 ## v0.48.1（2026-11-27，打包时点）
 
 - 补修 [BUG-196](../work-items/BUG-196.md) 分拆 `inspection_ref` 零件快照的 `surfaces[].area_mm2` 过期检出与装配体 `merged_counts` 误报消除，并合入交付 [DEV-106](../work-items/DEV-106.md) 三批台账复核与全量 115 份活跃非冻结文档 364 处迁移断链修复（归档 `DEV-052`/`DEV-065`/`BUG-175`/`DEV-079` 并将 `开发中` 存量清零转入完成档案）。Windows x64 / Python 3.12.10 全量单测、离线 MCP、台账计数与发布记录门禁全通过（本版无原生 C++ 改动）。 [版本说明](../release-notes/RELEASE_NOTES_0.48.1.md) · [验证与发布记录](../validation/RELEASE-0.48.1.md)
