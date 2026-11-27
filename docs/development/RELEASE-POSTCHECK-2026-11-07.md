@@ -2,6 +2,19 @@
 
 本文件补记 [DEV-075](../work-items/DEV-075.md) 指出的缺口：`RELEASING.md` 第 7 步要求「发布后用 `gh release view` 或 `tools/check_release_assets.py --tag <tag>` 核对远端恰有四个附件、两个 sidecar 与对应远端 ZIP 摘要一致，核对结果写入发布记录」，但此前只在各版 `RELEASE-*.md` 里记结论，没有可复核的发布后留存。原有小节记录**发布之后**对远端实际对象的重新下载与重算结果；2026-11-08新增小节另标历史索引、外部元数据和未核验事实；发布前的本地打包、CI 与验收结论仍以各版版本说明和发布记录为准。
 
+## v0.48.3（2026-11-27，打包时点）
+
+交付 [DEV-108](../work-items/DEV-108.md)–[DEV-111](../work-items/DEV-111.md) 四项工程优化，并在 Creo 10.0.0.0 补齐 [BUG-131](../work-items/BUG-131.md) `revision == 0` 新装配收尾实机验收。 [版本说明](../release-notes/RELEASE_NOTES_0.48.3.md) · [验证与发布记录](../validation/RELEASE-0.48.3.md)
+
+分支 `codex/dev-108-111-closeout`（提交 `207e9289`）在托管 Windows CI [运行 46002779873](https://github.com/wudahua/MCP_CREO_MechDog/actions/runs/46002779873) 首轮通过（4,569 项，10 跳过，0 失败，0 错误）。
+
+- `MCP_CREO_MechDog-0.48.3-source.zip`
+- `MCP_CREO_MechDog-0.48.3-source.zip.sha256`
+- `MCP_CREO_MechDog-0.48.3-seed-library.zip`
+- `MCP_CREO_MechDog-0.48.3-seed-library.zip.sha256`
+
+种子包 SHA256 为 `2f392cb45dcadae72bfc3a62b63ff1cadbff42a66680f05a304ed58f2fa61b4e`。两份同名 sidecar 分别记录各自 ZIP 的摘要。远端校验发布后执行，当前未验证。 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.48.3)
+
 ## v0.48.2（2026-11-27，打包时点）
 
 [DEV-107](../work-items/DEV-107.md) Windows CI 在整个 Python 作业中启用 UTF-8，使离线检查能输出中文 JSON 并继续运行全量单测。 [版本说明](../release-notes/RELEASE_NOTES_0.48.2.md) · [验证与发布记录](../validation/RELEASE-0.48.2.md)

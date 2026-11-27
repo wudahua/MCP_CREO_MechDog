@@ -8,6 +8,10 @@
 
 | ID | 优先级 | 状态 | 目标版本 | 完成摘要与证据 |
 | --- | --- | --- | --- | --- |
+| [DEV-108](work-items/DEV-108.md) | P1 | 已完成（0.48.3 交付） | 0.48.3 | 修复 Windows 15.625 ms 时钟刻度内 `retry_id` 重复与 `_run()` 误采用旧 `state.json` 的缺陷，补齐同刻度冻结时钟与跨进程协调单测并在托管 Windows CI 首轮通过。 [发布记录](validation/RELEASE-0.48.3.md) |
+| [DEV-109](work-items/DEV-109.md) | P2 | 已完成（0.48.3 交付） | 0.48.3 | 扩展 `backlog_counts.py` 按状态标题逐组校验台账行数，88/62→87/63 等同总数错组可准确报错，零条目分组通过。 [发布记录](validation/RELEASE-0.48.3.md) |
+| [DEV-110](work-items/DEV-110.md) | P2 | 已完成（0.48.3 交付） | 0.48.3 | 只读核实本机主检出 `D:\my\MCP_CREO_MechDog` 与 WorkBuddy `MCP_CREO_MechDog` 加载来源，校正 `AGENTS.md` 与 `docs/DEVELOPMENT.md` 指引及运行期核查方法。 [发布记录](validation/RELEASE-0.48.3.md) |
+| [DEV-111](work-items/DEV-111.md) | P2 | 已完成（0.48.3 交付） | 0.48.3 | 去重 `docs/BACKLOG.md` 近期动态并保留全部章节与显式锚点；新增 `doc_links.py`/`tools/check_doc_links.py` 动态校验活跃非冻结文档链接与 `#锚点` 并接入 Windows CI。 [发布记录](validation/RELEASE-0.48.3.md) |
 | [DEV-107](work-items/DEV-107.md) | P1 | 已完成（0.48.2 交付） | 0.48.2 | Windows CI 在整个 Python 作业中启用 UTF-8，使离线检查能输出中文 JSON 并继续运行全量单测。 [发布记录](validation/RELEASE-0.48.2.md) |
 | [DEV-106](work-items/DEV-106.md) | P2 | 已完成（0.48.1 交付） | 0.48.1 | 2026-11-27：完成三批台账与活跃文档治理——复核部分交付待验组 23 张 P1（归档 `DEV-052`/`DEV-065`，2 项转待规划）、复核待验收组 51 项 P1（按 0.47.1 外部两轮 60/60 复测归档 `BUG-175` 并收窄 4 项余项）、清零 `开发中` 存量 10 项（归档 `DEV-079`，重分类 8 项并校正 `DEV-091`），并修复全量 115 份活跃非冻结文档 364 处迁移断链（303 份活跃文档 `broken_files=0`/`broken_anchors=0`），随 v0.48.1 合入发布。[发布记录](validation/RELEASE-0.48.1.md) |
 | [DEV-079](work-items/DEV-079.md) | P1 | 已交付 0.19.2（余项交接 DEV-080） | 0.19.2 | 0.19.0 三份 Creo 10 反馈归档与离线契约补漏（`quilt_merge` 说明、曲率默认摘要/`include_samples`、`surface_group` 结构化失败、`profile.method`、POSTCHECK 清理与 8 项回归）已随 v0.19.2 交付；剩余原生/实机 H01—H09 已由 [DEV-080](work-items/DEV-080.md) 接手跟踪。[发布记录](validation/RELEASE-0.19.2.md) |

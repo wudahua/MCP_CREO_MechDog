@@ -15,7 +15,9 @@
 
 ## 版本约定
 
-当前版本为 0.48.2（2026-11-27 PATCH）。Windows CI 在整个 Python 作业中启用 UTF-8，使离线检查能输出中文 JSON 并继续运行全量单测。 [版本说明](../release-notes/RELEASE_NOTES_0.48.2.md) · [发布记录](../validation/RELEASE-0.48.2.md)
+当前版本为 0.48.3（2026-11-27 PATCH）。交付 [DEV-108](../work-items/DEV-108.md)–[DEV-111](../work-items/DEV-111.md) 四项工程优化，并补齐 [BUG-131](../work-items/BUG-131.md) 在 Creo 10.0.0.0 上的 `revision == 0` 新装配收尾实机验收。 [版本说明](../release-notes/RELEASE_NOTES_0.48.3.md) · [发布记录](../validation/RELEASE-0.48.3.md)
+
+此前的 0.48.2（2026-11-27 PATCH，公开工具 112）。Windows CI 在整个 Python 作业中启用 UTF-8，使离线检查能输出中文 JSON 并继续运行全量单测。 [版本说明](../release-notes/RELEASE_NOTES_0.48.2.md) · [发布记录](../validation/RELEASE-0.48.2.md)
 
 此前的 0.48.1（2026-11-27 PATCH，补修 [BUG-196](../work-items/BUG-196.md) 分拆 `inspection_ref` 零件快照 `surfaces[].area_mm2` 过期检出与装配体 `merged_counts` 误报，并合入交付 [DEV-106](../work-items/DEV-106.md) 三批台账整理与 115 份活跃非冻结文档 364 处迁移断链修复，公开工具 112）。 [版本说明](../release-notes/RELEASE_NOTES_0.48.1.md) · [发布记录](../validation/RELEASE-0.48.1.md)
 
