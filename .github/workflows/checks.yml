@@ -12,6 +12,8 @@ permissions:
 jobs:
   windows-unit-and-style:
     runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
