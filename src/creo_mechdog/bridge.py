@@ -2486,6 +2486,10 @@ def compact_job(manifest: dict, sections: list[str] | None = None) -> dict:
         native["inspection"] = inspection_summary(result.get("inspection"))
         if "inspection_summary" in result:
             native["inspection_summary"] = result["inspection_summary"]
+            if not native["inspection"].get("inspection_available") and isinstance(
+                result["inspection_summary"], dict
+            ):
+                native["inspection"] = result["inspection_summary"]
         if "inspection_ref" in result:
             native["inspection_ref"] = result["inspection_ref"]
         if "aliases_ref" in result:

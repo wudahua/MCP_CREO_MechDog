@@ -622,5 +622,91 @@ class UnitReportGateTest(unittest.TestCase):
             self.assertEqual(validate_release_records(VERSION, root=root), [])
 
 
+class PostReleaseBackfillGateTest(unittest.TestCase):
+    """DEV-105: validate_post_release_backfill must reject pending snapshots or incomplete tables."""
+
+    @staticmethod
+    def _verified_postcheck(version: str = "0.47.1") -> str:
+        a = "a" * 64
+        b = "b" * 64
+        c = "937dd2b289c28a2d77b845a23c47e7773bb92721"
+        return (
+            "# 发布后附件核对记录\n\n"
+            f"## v{version}（2026-11-26，打包时点）\n\n"
+            "- 远端校验发布后执行，当前未验证。\n\n"
+            f"### v{version} 发布后核对\n\n"
+            f"- 正式 Release `459515636` 发布于 2026-11-26 14:22:21 UTC，指向提交 `{c}`。\n"
+            f"- `tools/check_release_assets.py --tag v{version}` 退出码 0：\n"
+            f"| `MCP_CREO_MechDog-{version}-source.zip` | 100 | `{a}` |\n"
+            f"| `MCP_CREO_MechDog-{version}-source.zip.sha256` | 10 | 一致 |\n"
+            f"| `MCP_CREO_MechDog-{version}-seed-library.zip` | 100 | `{b}` |\n"
+            f"| `MCP_CREO_MechDog-{version}-seed-library.zip.sha256` | 10 | 一致 |\n"
+        )
+
+    @staticmethod
+    def _verified_snapshot(version: str = "0.47.1", status: str = "verified") -> str:
+        return json.dumps(
+            {"schema_version": 1, "version": version, "remote_verification": status},
+            indent=2,
+        )
+
+    def test_valid_backfill_passes(self):
+        from creo_mechdog.release_integrity import validate_post_release_backfill
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            _write_tree(
+                root,
+                {
+                    "docs/releases/0.47.1.json": self._verified_snapshot(),
+                    "docs/development/RELEASE-POSTCHECK-2026-11-07.md": self._verified_postcheck(),
+                },
+            )
+            self.assertEqual(validate_post_release_backfill("0.47.1", root=root), [])
+
+    def test_pending_snapshot_and_missing_subsection_fail(self):
+        from creo_mechdog.release_integrity import validate_post_release_backfill
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            _write_tree(
+                root,
+                {
+                    "docs/releases/0.47.1.json": self._verified_snapshot(status="pending"),
+                    "docs/development/RELEASE-POSTCHECK-2026-11-07.md": "# 发布后附件核对记录\n",
+                },
+            )
+            problems = validate_post_release_backfill("0.47.1", root=root)
+        joined = "\n".join(problems)
+        self.assertIn("remote_verification", joined)
+        self.assertIn("发布后核对", joined)
+
+    def test_subsection_missing_sha256_or_commit_fails(self):
+        from creo_mechdog.release_integrity import validate_post_release_backfill
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            bad = (
+                "# 发布后附件核对记录\n\n"
+                "### v0.47.1 发布后核对\n\n"
+                "- 正式 Release 459515636，退出码 0\n"
+                "| `MCP_CREO_MechDog-0.47.1-source.zip` |\n"
+                "| `MCP_CREO_MechDog-0.47.1-source.zip.sha256` |\n"
+                "| `MCP_CREO_MechDog-0.47.1-seed-library.zip` |\n"
+                "| `MCP_CREO_MechDog-0.47.1-seed-library.zip.sha256` |\n"
+            )
+            _write_tree(
+                root,
+                {
+                    "docs/releases/0.47.1.json": self._verified_snapshot(),
+                    "docs/development/RELEASE-POSTCHECK-2026-11-07.md": bad,
+                },
+            )
+            problems = validate_post_release_backfill("0.47.1", root=root)
+        joined = "\n".join(problems)
+        self.assertIn("40-hex", joined)
+        self.assertIn("SHA256", joined)
+
+
 if __name__ == "__main__":
     unittest.main()

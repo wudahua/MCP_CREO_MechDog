@@ -13,7 +13,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
-from creo_mechdog.release_integrity import validate_release_records
+from creo_mechdog.release_integrity import (
+    validate_post_release_backfill,
+    validate_release_records,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -30,7 +33,21 @@ def main(argv: list[str] | None = None) -> int:
         default=ROOT,
         help="Source tree to check; defaults to this checkout",
     )
+    parser.add_argument(
+        "--post-release",
+        action="store_true",
+        help="Also verify post-release backfill in POSTCHECK and docs/releases/<version>.json",
+    )
     args = parser.parse_args(argv)
+    if args.post_release:
+        post_problems = validate_post_release_backfill(args.version, args.root)
+        if post_problems:
+            print(f"{args.version}: post-release backfill is not current", file=sys.stderr)
+            for problem in post_problems:
+                print(f"  - {problem}", file=sys.stderr)
+            return 1
+        print(f"{args.version}: post-release backfill verified")
+        return 0
     problems = validate_release_records(args.version, args.source_zip, args.root)
     if problems:
         print(f"{args.version}: release records are not current", file=sys.stderr)

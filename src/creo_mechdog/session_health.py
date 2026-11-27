@@ -664,9 +664,25 @@ def snapshot(
     sessions = sorted({r["session"] for r in records if r["session"]})
     observed_at = records[0]["at"] if records else None
     connection_fact = _connection_fact(records, moment)
+    if connection_fact and not connection_fact.get("stale"):
+        conn_status = "connected" if connection_fact.get("outcome") == "connected" else "failed"
+    else:
+        conn_status = "unknown"
+    connection_health = {
+        "status": conn_status,
+        "observed_at": connection_fact.get("at") if connection_fact else None,
+        "age_seconds": connection_fact.get("age_seconds") if connection_fact else None,
+        "toolkit_code": connection_fact.get("toolkit_code") if connection_fact else None,
+    }
+    save_verification_health = {
+        "status": decision["status"],
+        "reason": decision["reason"],
+    }
     return {
         "status": decision["status"],
         "reason": decision["reason"],
+        "connection_health": connection_health,
+        "save_verification_health": save_verification_health,
         "evaluated_at": moment.isoformat(),
         "observed_at": observed_at.isoformat() if observed_at else None,
         "evidence_age_seconds": int(_age(records[0], moment)) if records else None,

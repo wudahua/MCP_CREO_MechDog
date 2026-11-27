@@ -1704,3 +1704,79 @@ def validate_release_records(
     return problems + _records_problems(
         version, read_archive, exists_archive, f"{archive_path.name}"
     )
+
+
+def _postcheck_verified_subsection(text: str, version: str) -> str | None:
+    """The body of ``### v<version> 发布后核对`` in the POSTCHECK file, or ``None``."""
+    heading = re.compile(rf"^###\s+v{re.escape(version)}\s+发布后核对\s*$", re.MULTILINE)
+    match = heading.search(text)
+    if match is None:
+        return None
+    rest = text[match.end() :]
+    next_heading = re.search(r"^#{2,3}\s+", rest, re.MULTILINE)
+    return rest if next_heading is None else rest[: next_heading.start()]
+
+
+def validate_post_release_backfill(version: str, root: Path | None = None) -> list[str]:
+    """Verify post-release backfill evidence on a source tree after publishing."""
+    try:
+        _release_version_tuple(version)
+    except ValueError as error:
+        return [str(error)]
+    base = Path(root) if root is not None else Path(__file__).resolve().parents[2]
+    problems: list[str] = []
+
+    snapshot_file = base / DELIVERY_SNAPSHOT_DIR / f"{version}.json"
+    if not snapshot_file.is_file():
+        problems.append(f"source tree: missing {DELIVERY_SNAPSHOT_DIR}/{version}.json")
+    else:
+        try:
+            snapshot = json.loads(snapshot_file.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError):
+            problems.append(
+                f"source tree: {DELIVERY_SNAPSHOT_DIR}/{version}.json is not readable JSON"
+            )
+        else:
+            remote_status = (
+                snapshot.get("remote_verification") if isinstance(snapshot, dict) else None
+            )
+            if remote_status != "verified":
+                problems.append(
+                    f"source tree: {DELIVERY_SNAPSHOT_DIR}/{version}.json remote_verification "
+                    f"must be 'verified' after release, got {remote_status!r}"
+                )
+
+    postcheck_file = base / POSTCHECK
+    if not postcheck_file.is_file():
+        problems.append(f"source tree: missing {POSTCHECK}")
+        return problems
+    postcheck_text = postcheck_file.read_text(encoding="utf-8-sig")
+    subsection = _postcheck_verified_subsection(postcheck_text, version)
+    if subsection is None:
+        problems.append(f"source tree: {POSTCHECK} has no '### v{version} 发布后核对' section")
+        return problems
+
+    if re.search(r"Release\s+`?\d+`?", subsection) is None:
+        problems.append(
+            f"source tree: POSTCHECK ### v{version} 发布后核对 must record Release numeric id"
+        )
+    if "退出码 0" not in subsection and "exit 0" not in subsection:
+        problems.append(
+            f"source tree: POSTCHECK ### v{version} 发布后核对 must record '退出码 0' or 'exit 0'"
+        )
+    if re.search(r"\b[0-9a-f]{40}\b", subsection) is None:
+        problems.append(
+            f"source tree: POSTCHECK ### v{version} 发布后核对 must record a 40-hex commit hash"
+        )
+    for asset_name in expected_assets(version):
+        if asset_name not in subsection:
+            problems.append(
+                f"source tree: POSTCHECK ### v{version} 发布后核对 is missing asset {asset_name!r}"
+            )
+    digests = re.findall(r"\b[0-9a-f]{64}\b", subsection)
+    if len(digests) < 2:
+        problems.append(
+            f"source tree: POSTCHECK ### v{version} 发布后核对 must record SHA256 digests for "
+            "both ZIP assets"
+        )
+    return problems

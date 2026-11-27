@@ -94,6 +94,7 @@ RESULT_KEYS = (
     "feature_errors",
     "verify_stages",
     "failed_transform",
+    "snapshot_write_back",
 )
 
 #: Outcome/evidence fields that ``sections`` never removes (failure reason,
@@ -142,6 +143,7 @@ PROTECTED_RESULT_KEYS = (
     # operations list; they stay even when the records themselves are filtered.
     "operations_total",
     "operations_truncated",
+    "snapshot_write_back",
 )
 
 #: Selectable result-level blocks. ``inspection*``, ``live``, ``recolor``,

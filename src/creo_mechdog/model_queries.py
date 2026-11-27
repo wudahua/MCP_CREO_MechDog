@@ -339,13 +339,55 @@ def model_summary(model: dict[str, Any]) -> dict[str, Any]:
     saved = bool(model.get("inspection") or model.get("inspection_ref")) and bool(
         model.get("part_file")
     )
-    result["snapshot"] = {
-        "source": "saved_verified" if saved else "unavailable",
+    snapshot_source = (
+        model.get("snapshot_source")
+        if saved and model.get("snapshot_source") == "refresh_verified"
+        else ("saved_verified" if saved else "unavailable")
+    )
+    snapshot_meta: dict[str, Any] = {
+        "source": snapshot_source,
         "revision": model.get("revision"),
         "at": model.get("updated_at"),
         "live_state_verified": False,
         "mutation_pending": bool(model.get("pending_job") or model.get("recovery_pending")),
     }
+    if snapshot_source == "refresh_verified" and model.get("snapshot_refreshed_at"):
+        snapshot_meta["refreshed_at"] = model.get("snapshot_refreshed_at")
+    insp_summary = result["inspection"]
+    if saved and insp_summary.get("inspection_available"):
+        counts = insp_summary.get("counts") or {}
+        has_surface_or_solid = bool(insp_summary.get("has_solid")) or (
+            isinstance(counts.get("surfaces"), int) and counts["surfaces"] > 0
+        )
+        if has_surface_or_solid:
+            stale_fields = [
+                key
+                for key in ("total_surface_area_mm2", "bounding_box_mm", "merged_counts")
+                if insp_summary.get(key) is None
+            ]
+            if (
+                insp_summary.get("bounding_box_source") == "legacy_regeneration_outline"
+                and "bounding_box_mm" not in stale_fields
+            ):
+                stale_fields.append("bounding_box_mm")
+            raw_insp = model.get("inspection")
+            raw_surfaces = raw_insp.get("surfaces") if isinstance(raw_insp, dict) else None
+            if (
+                isinstance(raw_surfaces, list)
+                and raw_surfaces
+                and any(isinstance(s, dict) and s.get("area_mm2") is None for s in raw_surfaces)
+            ):
+                stale_fields.append("surfaces[].area_mm2")
+            if stale_fields:
+                snapshot_meta["stale_fields"] = stale_fields
+                snapshot_meta["refresh_hint"] = (
+                    "This snapshot predates newer inspection fields; call "
+                    "creo_refresh_model(model_id, write_back_snapshot=True) to backfill metadata "
+                    "without changing revision or model file bytes, or read "
+                    "result.inspection_summary via creo_get_job(detail='compact', "
+                    "sections=['inspection_summary']) / detail='full'."
+                )
+    result["snapshot"] = snapshot_meta
     result["detail_available"] = True
     source = model.get("adopted_from")
     result["adopted"] = bool(source and source.get("state") == "completed")

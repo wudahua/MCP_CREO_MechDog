@@ -1,8 +1,8 @@
-# MCP_CREO_MechDog 0.47.1
+# MCP_CREO_MechDog 0.48.0
 
-![version](https://img.shields.io/badge/version-0.47.1-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
+![version](https://img.shields.io/badge/version-0.48.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.47.1**（PATCH，公开工具 112）。修复默认主基准面偏移（如 XZ `axis="y"`）法线与 `capabilities.frames` 矛盾导致的草图静默反号问题，为 `datum_plane` 补齐 `plane_frame` 回执、为字典草图面反向法线补齐 `frame_warning` 告警与 `frames_note` 文档（[BUG-187](docs/work-items/BUG-187.md)），并合入开发入口统一与四批 P1/P2 台账复核（[DEV-104](docs/work-items/DEV-104.md)）。 [版本说明](docs/release-notes/RELEASE_NOTES_0.47.1.md) · [下载页](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.47.1)
+当前正式版 **0.48.0**（MINOR，公开工具 112）。交付 0.47.0 / 0.47.1 两份外部反馈的三项修复与收口：`creo_refresh_model(..., write_back_snapshot=True)` 无版本破坏只读回填历史模型快照与 `model_summary` 过期字段提示（[BUG-196](docs/work-items/BUG-196.md)），`bounding_box_status` 网格并集口径 `basis` 与真实 `query_code`、`compact_job` 巡检摘要、`creo_round`/`creo_chamfer` 参数示例与 `session_health` 连接/保存双健康子块（[BUG-197](docs/work-items/BUG-197.md)），以及 `v0.47.0`/`v0.47.1` 发布后实证回填与 `tools/check_release_records.py --post-release` 门禁（[DEV-105](docs/work-items/DEV-105.md)）；同步合入 [DEV-103](docs/work-items/DEV-103.md) 校验冷数据归档剥离（18.40 MB 转存归档 Release）。 [版本说明](docs/release-notes/RELEASE_NOTES_0.48.0.md) · [下载页](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.48.0)
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 

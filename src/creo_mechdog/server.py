@@ -312,7 +312,28 @@ async def creo_check_environment() -> dict[str, Any]:
 async def creo_session_status() -> dict[str, Any]:
     """Check the configured/unique Creo session through Toolkit using the configured probe timeout, without rebuilding. Every return branch carries server_version. Busy returns its occupying job; probe_timeout returns recovery guidance. During startup return its snapshot promptly without starting another probe. connected=true requires verification; ambiguous/stale session selections never fall back to a random session. Includes a read-only creo_process_snapshot (pid/name/created_at/matches) so a failed probe can be interpreted alongside observed processes. Use creo_startup_status(retry=true) for a bounded recheck of an unconfirmed connection. session_health reuses this completed probe plus already recorded job results; it never adds a connection, save or session probe."""
     result = await invoke(startup.session_status)
-    return {**result, "server_version": VERSION, "session_health": session_health()}
+    try:
+        health = session_health(refresh=True)
+    except TypeError:
+        health = session_health()
+    if (
+        isinstance(result, dict)
+        and result.get("connected") is True
+        and isinstance(health, dict)
+        and isinstance(health.get("connection_health"), dict)
+        and health["connection_health"].get("status") != "connected"
+    ):
+        health = {
+            **health,
+            "connection_health": {
+                "status": "connected",
+                "observed_at": result.get("checked_at")
+                or health["connection_health"].get("observed_at"),
+                "age_seconds": 0,
+                "toolkit_code": result.get("toolkit_code", 0),
+            },
+        }
+    return {**result, "server_version": VERSION, "session_health": health}
 
 
 @mcp.tool(annotations=READ)
@@ -483,7 +504,8 @@ async def creo_get_job(
         list[str] | None,
         Field(
             description=(
-                'Compact-only list of result block names to retain (e.g. ["operations", "preview"]). '
+                "Compact-only list of result block names to retain (e.g. "
+                '["operations", "inspection_summary", "preview"]). '
                 'Requires detail="compact" (rejected when detail="full").'
             )
         ),
@@ -1690,8 +1712,11 @@ async def creo_round(
             description=(
                 "Set list: [{'edge':{'kind':'edge','id':N}}], a geometric edge selector "
                 "[{'edge':{'kind':'geometry_selector','target':'edge','point_mm':[x,y,z],"
-                "'tolerance_mm':0.5}}] (also accepts endpoints_mm, center_mm+radius_mm, and "
-                "optional feature label), or a face pair "
+                "'tolerance_mm':0.5}}] or full-circle edge "
+                "[{'edge':{'kind':'geometry_selector','target':'edge','center_mm':[x,y,z],"
+                "'radius_mm':R,'axis':[ax,ay,az],'tolerance_mm':0.5,'full_circle':true}}] "
+                "(tolerance_mm is required; also accepts endpoints_mm and optional feature label), "
+                "or a face pair "
                 "[{'surfaces':[{'kind':'surface','id':A},{'kind':'surface','id':B}]}] "
                 "where A/B are two existing faces of the current model that share the "
                 "edge to round (example: [{'surfaces':[{'kind':'surface','id':11},"
@@ -1756,8 +1781,11 @@ async def creo_chamfer(
             description=(
                 "Set list: [{'edge':{'kind':'edge','id':N}}], a geometric edge selector "
                 "[{'edge':{'kind':'geometry_selector','target':'edge','point_mm':[x,y,z],"
-                "'tolerance_mm':0.5}}] (also accepts endpoints_mm, center_mm+radius_mm, and "
-                "optional feature label), or a face pair "
+                "'tolerance_mm':0.5}}] or full-circle edge "
+                "[{'edge':{'kind':'geometry_selector','target':'edge','center_mm':[x,y,z],"
+                "'radius_mm':R,'axis':[ax,ay,az],'tolerance_mm':0.5,'full_circle':true}}] "
+                "(tolerance_mm is required; also accepts endpoints_mm and optional feature label), "
+                "or a face pair "
                 "[{'surfaces':[{'kind':'surface','id':A},{'kind':'surface','id':B}]}] "
                 "where A/B are two existing faces of the current model that share the "
                 "edge to chamfer (example: [{'surfaces':[{'kind':'surface','id':11},"
@@ -3012,10 +3040,17 @@ async def creo_inspect_model(
 ) -> dict[str, Any]:
     """Read a saved verified snapshot, compact by default (identity/revision/status/volume/total_surface_area_mm2/bounding_box_mm/counts/merged_counts).
 
-    bounding_box_mm approximates the trimmed solid faces in the model or assembly frame.
-    bounding_box_source and bounding_box_status disclose the source and sampling target.
-    For older snapshots, legacy_regeneration_outline_mm carries the historical outline.
-    Query refresh_model for a new live bounding box or save_model to update the saved snapshot.
+    bounding_box_mm uses the tessellated_solid_union basis (approximating trimmed solid faces
+    in the model or assembly frame), which can differ from CAD BodyBox corner unions or
+    point-cloud tight envelopes. bounding_box_source and bounding_box_status disclose the
+    basis, source, query_code and sampling target.
+    For older snapshots missing 0.41.0+ fields (total_surface_area_mm2, bounding_box_mm,
+    merged_counts, per-surface area_mm2), snapshot.stale_fields and snapshot.refresh_hint
+    appear: call creo_refresh_model(model_id, write_back_snapshot=True) to backfill the
+    snapshot without changing revision or model file bytes, or read live results via
+    creo_get_job(detail='compact', sections=['inspection_summary']) / detail='full'.
+    For legacy outlines, legacy_regeneration_outline_mm carries the historical outline.
+    Query refresh_model for a new live inspection or save_model to advance revision.
 
     Use detail=full for geometry; large snapshots return data grouped by section,
     complete=false and next_cursor. Repeat with the same detail/section and cursor.
@@ -3065,9 +3100,32 @@ async def creo_inspect_model(
 
 
 @mcp.tool(annotations=READ)
-async def creo_refresh_model(model_id: str) -> dict[str, Any]:
-    """Query live native model through Toolkit. Returns a job_id; poll get_job for the actual snapshot."""
-    return await invoke(general.submit, [], model_id, None, None, None, True)
+async def creo_refresh_model(
+    model_id: str,
+    write_back_snapshot: Annotated[
+        bool,
+        Field(
+            default=False,
+            description=(
+                "Optional read-only metadata backfill (BUG-196): when true and disk part_sha256 "
+                "is unchanged, writes the live inspection snapshot back into the model registry "
+                "so subsequent creo_inspect_model calls see newer fields without advancing "
+                "revision or modifying the native file on disk."
+            ),
+        ),
+    ] = False,
+) -> dict[str, Any]:
+    """Query live native model through Toolkit. Returns a job_id; poll get_job(detail='compact', sections=['inspection_summary']) or detail='full' for the live snapshot. Pass write_back_snapshot=True to also backfill the model's inspect snapshot without advancing revision."""
+    return await invoke(
+        general.submit,
+        [],
+        model_id,
+        None,
+        None,
+        None,
+        True,
+        write_back_snapshot=write_back_snapshot,
+    )
 
 
 @mcp.tool(annotations=READ)

@@ -2,17 +2,51 @@
 
 本文件补记 [DEV-075](../work-items/DEV-075.md) 指出的缺口：`RELEASING.md` 第 7 步要求「发布后用 `gh release view` 或 `tools/check_release_assets.py --tag <tag>` 核对远端恰有四个附件、两个 sidecar 与对应远端 ZIP 摘要一致，核对结果写入发布记录」，但此前只在各版 `RELEASE-*.md` 里记结论，没有可复核的发布后留存。原有小节记录**发布之后**对远端实际对象的重新下载与重算结果；2026-11-08新增小节另标历史索引、外部元数据和未核验事实；发布前的本地打包、CI 与验收结论仍以各版版本说明和发布记录为准。
 
+## v0.48.0（2026-11-27，打包时点）
+
+- 交付 [BUG-196](../work-items/BUG-196.md)（`creo_refresh_model(..., write_back_snapshot=True)` 无版本破坏只读回填历史模型快照与 `model_summary` `stale_fields`/`refresh_hint`）、[BUG-197](../work-items/BUG-197.md)（`bounding_box_status.basis="tessellated_solid_union"` 与真实 `query_code`、`compact_job` 巡检摘要填充、`creo_round`/`creo_chamfer` 参数示例与 `session_health` 连接/保存健康双子块）与 [DEV-105](../work-items/DEV-105.md)（补齐 `v0.47.0`/`v0.47.1` 发布后核对记录及 `check_release_records.py --post-release` 门禁）；同步随主干合入 [DEV-103](../work-items/DEV-103.md) 校验冷数据归档剥离（`bc794edd`，18.40 MB）。Windows x64 / Python 3.12.10 / Creo 10.0.0.0（release 42）MCP stdio 实机与离线门禁全通过。 [版本说明](../release-notes/RELEASE_NOTES_0.48.0.md) · [验证与发布记录](../validation/RELEASE-0.48.0.md)
+- 四件附件为 `MCP_CREO_MechDog-0.48.0-source.zip`、`MCP_CREO_MechDog-0.48.0-source.zip.sha256`、`MCP_CREO_MechDog-0.48.0-seed-library.zip` 和 `MCP_CREO_MechDog-0.48.0-seed-library.zip.sha256`。种子包 SHA256 为 `c30953f986123190393862e211a5d6660c69b19c2369cc6855adb03b56c4ed31`。两份同名 sidecar 分别记录对应 ZIP 的摘要。
+- 远端校验发布后执行，当前未验证。 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.48.0)
+
 ## v0.47.1（2026-11-26，打包时点）
 
 - 交付 [BUG-187](../work-items/BUG-187.md)（主基准面偏移默认法线对齐 `frames.XY/XZ/YZ`、`datum_plane` 新增 `plane_frame` 回执、字典草图反向法线输出 `frame_warning` 及 `frames_note` 文档）与 [DEV-104](../work-items/DEV-104.md)（开发入口统一与四批台账复核）；Windows x64 / Python 3.12.10 / Creo 10.0.0.0（release 42）三组实机对照与保存重载全通过。 [版本说明](../release-notes/RELEASE_NOTES_0.47.1.md) · [验证与发布记录](../validation/RELEASE-0.47.1.md)
 - 四件附件为 `MCP_CREO_MechDog-0.47.1-source.zip`、`MCP_CREO_MechDog-0.47.1-source.zip.sha256`、`MCP_CREO_MechDog-0.47.1-seed-library.zip` 和 `MCP_CREO_MechDog-0.47.1-seed-library.zip.sha256`。种子包 SHA256 为 `326eb7ac1c140fdf26205c2e17d282a326b34d2417b6bac459c53a9fde3e58d8`。两份同名 sidecar 分别记录对应 ZIP 的摘要。
 - 远端校验发布后执行，当前未验证。 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.47.1)
 
+### v0.47.1 发布后核对
+
+- 正式 Release `459515636` 发布于 2026-11-26 14:22:21 UTC（非 draft、非 prerelease），附注标签 `v0.47.1` 指向发布主干提交 `937dd2b289c28a2d77b845a23c47e7773bb92721`。 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.47.1)
+- 发布后补核通过 `PYTHONUTF8=1 tools/check_release_assets.py --tag v0.47.1`（2026-11-27 补验），退出码 0（`v0.47.1: four assets downloaded and verified; both sidecars match; release body self-proof verified`）：
+
+| 远端附件 | 字节 | 核对实算 SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.47.1-source.zip` | 12,432,963 | `03757ed9a7774c4543c5305628b37ccd1f376e181de3ef2475a916fb35e01540` |
+| `MCP_CREO_MechDog-0.47.1-source.zip.sha256` | 101 | 与对应 ZIP 摘要一致 |
+| `MCP_CREO_MechDog-0.47.1-seed-library.zip` | 493,442 | `326eb7ac1c140fdf26205c2e17d282a326b34d2417b6bac459c53a9fde3e58d8` |
+| `MCP_CREO_MechDog-0.47.1-seed-library.zip.sha256` | 107 | 与对应 ZIP 摘要一致 |
+
+- 未测范围：Creo 9 / Creo 12.4 实机与外部 WorkBuddy 黑盒复测；发布后已由外部使用方指出漏回填并纳入 `DEV-105` 门禁收口。
+
 ## v0.47.0（2026-11-26，打包时点）
 
 - 交付 [BUG-194](../work-items/BUG-194.md)、[BUG-195](../work-items/BUG-195.md)、[FEAT-091](../work-items/FEAT-091.md) 与 [FEAT-092](../work-items/FEAT-092.md)：`auto` 草图求解器回归修复与自助出口提示、包围盒面细分内缩误差界披露、空件平面报错与边选择器歧义提示、`round` 期望凹凸/加减料断言、`sheetmetal_base_flange` 包络偏移字段、只读 `creo_server_info`（工具数 112）与 `region.closed_chain` 封闭链选区；Windows x64 / Python 3.12.10 / Creo 10.0.0.0（release 42）10 项全链路实机通过。 [版本说明](../release-notes/RELEASE_NOTES_0.47.0.md) · [验证与发布记录](../validation/RELEASE-0.47.0.md)
 - 四件附件为 `MCP_CREO_MechDog-0.47.0-source.zip`、`MCP_CREO_MechDog-0.47.0-source.zip.sha256`、`MCP_CREO_MechDog-0.47.0-seed-library.zip` 和 `MCP_CREO_MechDog-0.47.0-seed-library.zip.sha256`。种子包 SHA256 为 `1145977816e4abbfc99eff079da56491a37c9da5eb02c46bb2fb41b7c712e952`。两份同名 sidecar 分别记录对应 ZIP 的摘要。
 - 远端校验发布后执行，当前未验证。 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.47.0)
+
+### v0.47.0 发布后核对
+
+- 正式 Release `459454832` 发布于 2026-11-26 13:31:08 UTC（非 draft、非 prerelease），附注标签 `v0.47.0` 指向发布主干提交 `baeb3d66aa7166a874d474187fb73bfcfdf210f4`。 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.47.0)
+- 发布后补核通过 `PYTHONUTF8=1 tools/check_release_assets.py --tag v0.47.0`（2026-11-27 补验），退出码 0（`v0.47.0: four assets downloaded and verified; both sidecars match; release body self-proof verified`）：
+
+| 远端附件 | 字节 | 核对实算 SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.47.0-source.zip` | 12,416,923 | `766ac49894c7379a44a0f059ce10a57f78ea4925e45d574a4700b4f9186b3f8f` |
+| `MCP_CREO_MechDog-0.47.0-source.zip.sha256` | 101 | 与对应 ZIP 摘要一致 |
+| `MCP_CREO_MechDog-0.47.0-seed-library.zip` | 493,442 | `1145977816e4abbfc99eff079da56491a37c9da5eb02c46bb2fb41b7c712e952` |
+| `MCP_CREO_MechDog-0.47.0-seed-library.zip.sha256` | 107 | 与对应 ZIP 摘要一致 |
+
+- 未测范围：Creo 12.4 实机验证；外部 Creo 9.0.0.0（WorkBuddy）验收反馈的 `BUG-196`、`BUG-197` 另行立项修复。
 
 ## v0.46.1（2026-11-26，打包时点）
 

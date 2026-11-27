@@ -1270,6 +1270,7 @@ def submit(
     template_name: str | None = None,
     timeout_seconds: int | None = None,
     response_detail: str = "full",
+    write_back_snapshot: bool = False,
 ) -> dict:
     # FEAT-023: the detail level is validated before any job exists, so a
     # malformed value can never reserve a model or a Toolkit channel.
@@ -1343,6 +1344,13 @@ def submit(
     assertions = Assertions.model_validate(assertions or {}).model_dump(exclude_none=True)
     if loft_seed and (model_id is not None or readonly or model_type != "part"):
         raise ValueError("Native loft seed initialization is only available for a new part")
+    if not isinstance(write_back_snapshot, bool):
+        raise ValueError("write_back_snapshot must be a boolean")
+    if write_back_snapshot and (not readonly or operations or model_id is None):
+        raise ValueError(
+            "write_back_snapshot is only supported for read-only refresh_model queries on an "
+            "existing model"
+        )
     if readonly and any(op["op"] not in INSPECTION_ONLY_OPERATIONS for op in operations):
         raise ValueError("Read-only requests may only inspect/export")
     # BUG-121: a plan that cannot modify the model is admitted read-only even when the
@@ -1685,6 +1693,7 @@ def submit(
             "operations": operations,
             "readonly": readonly,
             "readonly_source": readonly_source,
+            "write_back_snapshot": write_back_snapshot,
             "components": {sid: _request_view(source) for sid, source in components.items()},
             "template_file": str(template),
             "assertions": assertions or {},
@@ -1708,6 +1717,7 @@ def submit(
             "status": "queued",
             "readonly": readonly,
             "readonly_source": readonly_source,
+            "write_back_snapshot": write_back_snapshot,
             "created_at": bridge.now(),
             # R04/0.14.0: the accepted plan is echoed after validate_operations
             # (defaults applied, extrude omissions marked in defaulted_fields).
@@ -2100,8 +2110,53 @@ def run_generic_job(job_id: str, manifest: dict):
                                 model["last_live_inspection"] = result["inspection"]
                             if "inspection_ref" in result:
                                 model["last_live_inspection_ref"] = result["inspection_ref"]
+                            if request.get("write_back_snapshot") is True:
+                                expected_sha = model.get("part_sha256")
+                                if (
+                                    isinstance(expected_sha, str)
+                                    and expected_sha
+                                    and expected_sha == result.get("sha256")
+                                ):
+                                    live_payload = (
+                                        result_inspection
+                                        if isinstance(result_inspection, dict) and result_inspection
+                                        else None
+                                    )
+                                    if live_payload is not None or "inspection_ref" in result:
+                                        model.pop("inspection", None)
+                                        model.pop("inspection_ref", None)
+                                        model.pop("inspection_summary", None)
+                                        if live_payload is not None:
+                                            model["inspection"] = live_payload
+                                        else:
+                                            model["inspection_ref"] = result["inspection_ref"]
+                                            if "inspection_summary" in result:
+                                                model["inspection_summary"] = result[
+                                                    "inspection_summary"
+                                                ]
+                                        refreshed_at = bridge.now()
+                                        model["snapshot_source"] = "refresh_verified"
+                                        model["snapshot_refreshed_at"] = refreshed_at
+                                        result["snapshot_write_back"] = {
+                                            "applied": True,
+                                            "revision": model["revision"],
+                                            "part_sha256": model["part_sha256"],
+                                            "refreshed_at": refreshed_at,
+                                        }
+                                    else:
+                                        result["snapshot_write_back"] = {
+                                            "applied": False,
+                                            "reason": "live_inspection_unavailable",
+                                        }
+                                else:
+                                    result["snapshot_write_back"] = {
+                                        "applied": False,
+                                        "reason": "part_sha256_mismatch_or_missing",
+                                    }
                         else:
                             model["revision"] += 1
+                            model.pop("snapshot_source", None)
+                            model.pop("snapshot_refreshed_at", None)
                             model.update(
                                 status="ready",
                                 part_file=result["part_file"],

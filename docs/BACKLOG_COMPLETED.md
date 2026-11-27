@@ -8,6 +8,7 @@
 
 | ID | 优先级 | 状态 | 目标版本 | 完成摘要与证据 |
 | --- | --- | --- | --- | --- |
+| [DEV-105](work-items/DEV-105.md) | P1 | 已完成（0.48.0 交付） | 0.48.0 | 2026-11-27：补齐 `v0.47.0`（Release `459454832`）与 `v0.47.1`（Release `459515636`）远端四附件核对实证至 `RELEASE-POSTCHECK-2026-11-07.md` 及 `0.47.1.json`（`verified`），新增 `release_integrity.validate_post_release_backfill` 与 `tools/check_release_records.py --post-release` 门禁及 `PostReleaseBackfillGateTest` 单测，随 v0.48.0 交付并同步回填。[发布记录](validation/RELEASE-0.48.0.md) |
 | [DEV-104](work-items/DEV-104.md) | P2 | 已完成（0.47.1 交付） | 0.47.1 | 2026-11-26：统一 `CLAUDE.md`/`README.md`/`docs/DEVELOPMENT.md`/`docs/development/ARCHITECTURE.md` 开发入口，完成四批 P1/P2 台账复核与分类校正（归档 `BUG-133`/`BUG-080`，对齐 `BUG-146/148/149/132/129/102/108/193`、`FEAT-078/001/009/055`、`DEV-076/081/095` 归属与计数）。随 v0.47.1 合入发布。[发布记录](validation/RELEASE-0.47.1.md) |
 | [BUG-080](work-items/BUG-080.md) | P1 | 验收完成（0.5.2） | 0.5.2 | 单层英寸装配与毫米组件的变换、原始矩阵及只读重复查询已通过[第三轮 WorkBuddy 黑盒](validation/wb080-blackbox-round3-2026-10-24.md)。多级嵌套、缺件、父变换失败、子装配遍历失败仅有离线覆盖，实机范围见 [0.5.2 发布记录](validation/RELEASE-0.5.2.md)。 |
 | [BUG-133](work-items/BUG-133.md) | P1 | 已交付 0.35.4 | 0.35.4 | Python 与原生旋转矩阵准入容差统一为 `1e-7`，Creo 10 已实测边界；其他 Creo 版本及 WorkBuddy 未测。[发布记录](validation/RELEASE-0.35.4.md) |

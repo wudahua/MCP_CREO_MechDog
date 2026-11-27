@@ -1,0 +1,21 @@
+{
+  "archived_at": "2026-11-27",
+  "feedback_versions": [
+    "0.47.0",
+    "0.47.1"
+  ],
+  "files": [
+    {
+      "source_filename": "2026-11-26_CREO_v0.47.0_新验收字段对历史模型不可见与面积闸检出连杆盖超差.md",
+      "archived_path": "originals/v0470-legacy-snapshot-visibility.md",
+      "bytes": 11959,
+      "sha256": "c41cf4f8a246cc00eba5fc07d2ea3403cfffde04b5f0178d231ca175e6eb6f0f"
+    },
+    {
+      "source_filename": "2026-11-26CREO10.0.0.0-0.47.1-两版发布后实证未回填main仍发布提交且snapshot仍pending.md",
+      "archived_path": "originals/v0471-postcheck-backfill-missing.md",
+      "bytes": 10816,
+      "sha256": "c9630e9a5fc708d8f07d3e084994bcc1b947b32669057954a15de695762444c0"
+    }
+  ]
+}

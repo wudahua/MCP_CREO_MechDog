@@ -236,7 +236,10 @@ inline void inspect(ProSolid model, bool assembly, const MillimeterScale &scale,
                   : bounds.facets ? "measured"
                                   : "no_solid"},
         {"reason", bounds.reason ? nlohmann::json(bounds.reason) : nlohmann::json(nullptr)},
-        {"query_code", bounds.code ? nlohmann::json(bounds.code) : nlohmann::json(nullptr)},
+        {"query_code", (measured || bounds.code != PRO_TK_NO_ERROR)
+                           ? nlohmann::json(static_cast<int>(bounds.code))
+                           : nlohmann::json(nullptr)},
+        {"basis", measured ? nlohmann::json("tessellated_solid_union") : nlohmann::json(nullptr)},
         {"target_chord_height_mm", target_chord_mm},
         {"measurement_method", measured ? nlohmann::json("tessellated") : nlohmann::json(nullptr)},
         {"method_error_bound_mm",
