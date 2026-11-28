@@ -14,7 +14,7 @@
 
 与直接前版 `0.48.4` 对照：`native/third_party/**` 与第三方许可及种子 PRT 原字节均未变化（仅更新兼容版本号为 `0.49.0`）；`native/generic.cpp`、`native/geometry.cpp`、`native/panel_run.h` 有更新并重编 `creo_worker.exe`；回调 loader 与 payload 源码及构建指纹不变，既有已注册回调无需重新注册。
 
-离线门禁在合并并冻结 `main` 提交后执行，干净主干 `tools/test_unit.py` 与独立解压源码包 `tools/test_unit.py` 结果、受测提交与源码指纹随正文和[发布后核对记录](../development/RELEASE-POSTCHECK-2026-11-07.md)一起留存。
+制作源码包的条件是本轮全量单测通过，打包时核验报告、运行 ID 及提交对应的源码指纹。另执行 `tools/dev_check.py --skip-unit`、链接与计数检查，并在源码 ZIP 解包后独立运行 `tools/test_unit.py`。最终受测提交、命令、运行标识及结果见 Release 正文和[发布后核对记录](../development/RELEASE-POSTCHECK-2026-11-07.md)。
 
 未测范围：交互桌面 `WinSta0\Default` 经 `explorer.exe` 脱离 Job Object（`runner_detached_from_job=true`）后的跨客户断连实机存活（已由单元测试覆盖）、`native/panel_run.h` 真实模态框卡死现场、真实 Windows 杀软/索引器并发文件锁、约 6 MB / 589 特征级超大外部零件实机加载超时、Creo 9 / 12.4 与外部 WorkBuddy 黑盒验收。
 

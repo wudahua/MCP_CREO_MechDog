@@ -76,8 +76,14 @@ class BacklogCountsTest(unittest.TestCase):
 
     def test_same_total_swapped_group_counts_fails_and_names_both_groups(self):
         text = BACKLOG.read_text(encoding="utf-8")
-        old_a, new_a = "| 已有修复但待验收 | 88 |", "| 已有修复但待验收 | 87 |"
-        old_b, new_b = "| 部分交付，剩余待验收 | 62 |", "| 部分交付，剩余待验收 | 63 |"
+        baseline = summarize(text)
+        count_a = baseline["declared_categories"]["已有修复但待验收"]
+        count_b = baseline["declared_categories"]["部分交付，剩余待验收"]
+        old_a, new_a = f"| 已有修复但待验收 | {count_a} |", f"| 已有修复但待验收 | {count_a - 1} |"
+        old_b, new_b = (
+            f"| 部分交付，剩余待验收 | {count_b} |",
+            f"| 部分交付，剩余待验收 | {count_b + 1} |",
+        )
         self.assertIn(old_a, text)
         self.assertIn(old_b, text)
         mutated = text.replace(old_a, new_a, 1).replace(old_b, new_b, 1)
@@ -92,8 +98,8 @@ class BacklogCountsTest(unittest.TestCase):
             by_name["已有修复但待验收"],
             {
                 "category": "已有修复但待验收",
-                "declared": 87,
-                "actual": 88,
+                "declared": count_a - 1,
+                "actual": count_a,
                 "reason": "count_mismatch",
             },
         )
@@ -101,8 +107,8 @@ class BacklogCountsTest(unittest.TestCase):
             by_name["部分交付，剩余待验收"],
             {
                 "category": "部分交付，剩余待验收",
-                "declared": 63,
-                "actual": 62,
+                "declared": count_b + 1,
+                "actual": count_b,
                 "reason": "count_mismatch",
             },
         )
