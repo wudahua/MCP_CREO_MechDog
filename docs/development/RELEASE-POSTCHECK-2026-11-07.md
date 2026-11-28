@@ -13,6 +13,22 @@
 
 种子包 SHA256 为 `7607128038de9ce304f12ecb7196bcf8f47580ab5d0c93290e0f65d7d5373220`。源码包和种子包的摘要分别记录在同名 sidecar。远端校验发布后执行，当前未验证。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.48.4)
 
+### v0.48.4 发布后核对
+
+- 发布记录：Release 461241767（非 draft、非 prerelease），发布时间 `2026-11-28T02:24:53Z`，核对时间 `2026-11-28T02:25:06Z`（`2026-11-28T10:25:06+08:00`），附注标签 `v0.48.4`（标签对象 `058b5118ca787a67bd4bdc4000aa868b7009a1aa` -> 提交 `48eb2586e8592fd20fb79df54ac4f7e6e3125d4b`）。
+- 远端核对命令：`PYTHONUTF8=1 .\.venv\Scripts\python.exe tools\check_release_assets.py --tag v0.48.4`，退出码 0（`v0.48.4: four assets downloaded and verified; both sidecars match; release body self-proof verified`）；另通过 `gh release download v0.48.4` 独立下载四件附件并逐一重算 SHA256 与字节数，与本地发布产物及 GitHub API `digest` 完全一致。
+- 托管 Windows CI（`main` 标签提交 `48eb2586e8592fd20fb79df54ac4f7e6e3125d4b`）：[运行 46097923570](https://github.com/wudahua/MCP_CREO_MechDog/actions/runs/46097923570) 首轮通过，`tests_run=4570`、`skipped=10`、`failures=0`、`errors=0`（`run_id=6c34f31491bb41009986ce1992e52873`、`dirty=false`、`checked_source_sha256=3f91c3fb38ac725f7c75124b55fb7b0aa08568540dfa752ddf5bea0a7bad116a`，0 lint / 0 unformatted，3/3 离线验收通过）；候选分支 `codex/dev-112-streamline-development-docs` 同提交 `48eb2586`（[运行 46089906581](https://github.com/wudahua/MCP_CREO_MechDog/actions/runs/46089906581)）亦通过。
+- 本机干净 `main`（`48eb2586e8592fd20fb79df54ac4f7e6e3125d4b`）全量单元测试通过（4,578 项，7 跳过，0 失败，0 错误，`run_id=e0ef0b15f9664fecac260f1bb15eafef`，`source_fingerprint=7bb53b30b8a15cc2f8d82554bcff52a44ec15f823cbdb3dbd9db5df7958d4232`）；解包源码 ZIP（DEV-075）在独立临时可编辑 `.venv` 下通过 `tools/test_unit.py`（4,570 项，15 跳过，0 失败，0 错误，`run_id=086cc0d729004797b5ce90e548b21be0`，`source_fingerprint=6b76eb51e6b1ce63068c684589e20ca2a1739cac95d262c94676cc60335c1c1d`）。
+
+| 附件 | 字节数 | API digest 与下载重算 SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.48.4-seed-library.zip` | 493442 | `7607128038de9ce304f12ecb7196bcf8f47580ab5d0c93290e0f65d7d5373220` |
+| `MCP_CREO_MechDog-0.48.4-seed-library.zip.sha256` | 107 | `a30cc9a47df282bb95dba54dca1937173484e077fbe0f38dbb6ca6afa43a27a6` |
+| `MCP_CREO_MechDog-0.48.4-source.zip` | 11408038 | `99b50f30c07d8c9153054761deaa2b72d67325cad2d0050aac4bec14bce3e99c` |
+| `MCP_CREO_MechDog-0.48.4-source.zip.sha256` | 101 | `4ebb76574d3e6478d1117ac3d3a34c13e81b1cedaa37df6332242061426d9d0e` |
+
+- 未测范围：Creo 9 / 10 / 12.4 实机建模与外部 WorkBuddy 黑盒（本版仅含文档与版本元数据变更）。
+
 ## v0.48.3（2026-11-27，打包时点）
 
 交付 [DEV-108](../work-items/DEV-108.md)–[DEV-111](../work-items/DEV-111.md) 四项工程优化，并在 Creo 10.0.0.0 补齐 [BUG-131](../work-items/BUG-131.md) `revision == 0` 新装配收尾实机验收。 [版本说明](../release-notes/RELEASE_NOTES_0.48.3.md) · [验证与发布记录](../validation/RELEASE-0.48.3.md)
