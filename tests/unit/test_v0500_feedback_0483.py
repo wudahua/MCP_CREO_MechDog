@@ -140,6 +140,8 @@ class Bug205Creo10SurfaceLoftTests(unittest.TestCase):
         )
 
     def test_compact_capabilities_shows_surface_loft_not_runtime_ready(self):
+        capability_pages.reset_snapshot()
+        self.addCleanup(capability_pages.reset_snapshot)
         payload = server._capabilities_payload([])
         payload["families"] = capabilities.project_worker_availability(
             payload["families"],
