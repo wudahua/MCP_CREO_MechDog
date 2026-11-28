@@ -15,7 +15,9 @@
 
 ## 版本约定
 
-当前版本为 0.48.4（2026-11-28 PATCH）。[DEV-112](../work-items/DEV-112.md) 精简开发文档与台账。[版本说明](../release-notes/RELEASE_NOTES_0.48.4.md) · [发布记录](../validation/RELEASE-0.48.4.md)
+当前版本为 0.49.0（2026-11-28 MINOR，公开工具 112）。交付 [BUG-198](../work-items/BUG-198.md)–[BUG-201](../work-items/BUG-201.md) 与 [FEAT-093](../work-items/FEAT-093.md)。[版本说明](../release-notes/RELEASE_NOTES_0.49.0.md) · [发布记录](../validation/RELEASE-0.49.0.md)
+
+此前的 0.48.4（2026-11-28 PATCH）。[DEV-112](../work-items/DEV-112.md) 精简开发文档与台账。[版本说明](../release-notes/RELEASE_NOTES_0.48.4.md) · [发布记录](../validation/RELEASE-0.48.4.md)
 
 此前的 0.48.3（2026-11-27 PATCH）。交付 [DEV-108](../work-items/DEV-108.md)–[DEV-111](../work-items/DEV-111.md) 四项工程优化，并补齐 [BUG-131](../work-items/BUG-131.md) 在 Creo 10.0.0.0 上的 `revision == 0` 新装配收尾实机验收。 [版本说明](../release-notes/RELEASE_NOTES_0.48.3.md) · [发布记录](../validation/RELEASE-0.48.3.md)
 

@@ -1,6 +1,6 @@
 # 统一开发台账
 
-最新正式版 **0.48.4**（2026-11-28 PATCH，公开工具 112）。[DEV-112](work-items/DEV-112.md) 完成开发文档与台账精简。完整近况见 [近期动态](#近期动态)，当前分类统计见 [使用与计数](#使用与计数)，更早记录见 [历史时间线](archive/BACKLOG_TIMELINE_2026.md)。
+最新正式版 **0.49.0**（2026-11-28 MINOR，公开工具 112）。交付 [BUG-198](work-items/BUG-198.md)–[BUG-201](work-items/BUG-201.md) 与 [FEAT-093](work-items/FEAT-093.md)。完整近况见 [近期动态](#近期动态)，当前分类统计见 [使用与计数](#使用与计数)，更早记录见 [历史时间线](archive/BACKLOG_TIMELINE_2026.md)。
 
 ## 使用与计数
 
@@ -356,6 +356,8 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [FEAT-087](work-items/FEAT-087.md) | P1 | 待规划 | 未排期 | 按重建镜像特征的一等操作，公开反射帧规则；保留 `PRO_FEATURE` 挂死拒绝。 |
 
 ## 近期动态
+
+2026-11-28（0.49.0 MINOR，公开工具 112）：逐字节归档 0.47.1 / 0.48.3 两份反馈原件至 [feedback-0.47.1-0.48.3-2026-11-27](validation/feedback-0.47.1-0.48.3-2026-11-27/SOURCE_MANIFEST.json)，交付 [BUG-198](work-items/BUG-198.md)（Windows JSON 原子替换瞬时 WinError 5 重试与 `.tmp` 清理）、[BUG-199](work-items/BUG-199.md)（runner Job Object 实测与 Explorer 脱离、`owner_liveness`、`cancel_job` PID/128、`confirm_panel_closed` 死所有者解锁及模态框观测）、[BUG-200](work-items/BUG-200.md)（可配自适应 `utility_worker_timeout_seconds` 及超时强杀证据）、[BUG-201](work-items/BUG-201.md)（`direct_blend_callback.readiness` 口径统一、`startup_in_progress` 消歧、UTF-8 stderr 与提示补全）与 [FEAT-093](work-items/FEAT-093.md)（`ExtrudeOp.depth2` 双向不等深拉伸、`datum_planes[].name` 与 `cut_scope` 实体级边界说明）；本机 Creo 10.0.0.0 实机与离线门禁全通过。 [版本说明](release-notes/RELEASE_NOTES_0.49.0.md) · [发布记录](validation/RELEASE-0.49.0.md)
 
 2026-11-28（0.48.4 PATCH）：[DEV-112](work-items/DEV-112.md) 精简开发入口及七条台账摘要，统一 Toolkit 授权与发布后核对入口。[版本说明](release-notes/RELEASE_NOTES_0.48.4.md)
 
