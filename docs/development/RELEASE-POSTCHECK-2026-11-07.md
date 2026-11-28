@@ -2,6 +2,17 @@
 
 本文件补记 [DEV-075](../work-items/DEV-075.md) 指出的缺口：`RELEASING.md` 第 7 步要求「发布后用 `gh release view` 或 `tools/check_release_assets.py --tag <tag>` 核对远端恰有四个附件、两个 sidecar 与对应远端 ZIP 摘要一致，核对结果写入发布记录」，但此前只在各版 `RELEASE-*.md` 里记结论，没有可复核的发布后留存。原有小节记录**发布之后**对远端实际对象的重新下载与重算结果；2026-11-08新增小节另标历史索引、外部元数据和未核验事实；发布前的本地打包、CI 与验收结论仍以各版版本说明和发布记录为准。
 
+## v0.50.1（2026-11-28，打包时点）
+
+交付 [DEV-114](../work-items/DEV-114.md)（`spawn_detached_runner` 按实际选用的进程工厂判断 Explorer 脱离路径，修复托管 Windows CI 作业临时目录清理的 `WinError 32/5`）。[版本说明](../release-notes/RELEASE_NOTES_0.50.1.md) · [发布记录](../validation/RELEASE-0.50.1.md)
+
+- `MCP_CREO_MechDog-0.50.1-source.zip`
+- `MCP_CREO_MechDog-0.50.1-source.zip.sha256`
+- `MCP_CREO_MechDog-0.50.1-seed-library.zip`
+- `MCP_CREO_MechDog-0.50.1-seed-library.zip.sha256`
+
+种子包 SHA256 为 `db2adcbb8893dd64194a22b9079f2350d1f87797ce9d178bc0d57d7dc3565b35`。源码包和种子包的摘要分别记录在同名 sidecar。远端校验发布后执行，当前未验证。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.50.1)
+
 ## v0.50.0（2026-11-28，打包时点）
 
 交付 [BUG-202](../work-items/BUG-202.md)–[BUG-209](../work-items/BUG-209.md)、[DEV-113](../work-items/DEV-113.md)、[FEAT-094](../work-items/FEAT-094.md) 与 [FEAT-095](../work-items/FEAT-095.md)（面板锁与无会话恢复、重试单测事件同步、草图公开 `weld_pairs` 分离、Creo 10 回调冷启动与 `element_tree` 前置拒绝、种子矩阵、`coordinates` 椭圆标注与 `auto` 回退、布尔初始体 `-5778` 支持、轮廓冲突前置披露与状态轮询 `compact` 精简输出）。[版本说明](../release-notes/RELEASE_NOTES_0.50.0.md) · [发布记录](../validation/RELEASE-0.50.0.md)

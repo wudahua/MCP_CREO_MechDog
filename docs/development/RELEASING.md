@@ -15,7 +15,9 @@
 
 ## 版本约定
 
-当前版本为 0.50.0（2026-11-28 MINOR，公开工具 112）。交付 [BUG-202](../work-items/BUG-202.md)–[BUG-209](../work-items/BUG-209.md)、[DEV-113](../work-items/DEV-113.md)、[FEAT-094](../work-items/FEAT-094.md) 与 [FEAT-095](../work-items/FEAT-095.md)。[版本说明](../release-notes/RELEASE_NOTES_0.50.0.md) · [发布记录](../validation/RELEASE-0.50.0.md)
+当前版本为 0.50.1（2026-11-28 PATCH，公开工具 112）。交付 [DEV-114](../work-items/DEV-114.md) 的 Windows CI runner 工厂识别修复。[版本说明](../release-notes/RELEASE_NOTES_0.50.1.md) · [发布记录](../validation/RELEASE-0.50.1.md)
+
+此前的 0.50.0（2026-11-28 MINOR，公开工具 112）。交付 [BUG-202](../work-items/BUG-202.md)–[BUG-209](../work-items/BUG-209.md)、[DEV-113](../work-items/DEV-113.md)、[FEAT-094](../work-items/FEAT-094.md) 与 [FEAT-095](../work-items/FEAT-095.md)。[版本说明](../release-notes/RELEASE_NOTES_0.50.0.md) · [发布记录](../validation/RELEASE-0.50.0.md)
 
 此前的 0.48.4（2026-11-28 PATCH）。[DEV-112](../work-items/DEV-112.md) 精简开发文档与台账。[版本说明](../release-notes/RELEASE_NOTES_0.48.4.md) · [发布记录](../validation/RELEASE-0.48.4.md)
 

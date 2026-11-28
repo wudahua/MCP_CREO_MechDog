@@ -1,8 +1,8 @@
-# MCP_CREO_MechDog 0.50.0
+# MCP_CREO_MechDog 0.50.1
 
-![version](https://img.shields.io/badge/version-0.50.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
+![version](https://img.shields.io/badge/version-0.50.1-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.50.0**（MINOR，公开工具 112）。交付 [BUG-202](docs/work-items/BUG-202.md)–[BUG-209](docs/work-items/BUG-209.md)、[DEV-113](docs/work-items/DEV-113.md)、[FEAT-094](docs/work-items/FEAT-094.md) 与 [FEAT-095](docs/work-items/FEAT-095.md)（面板锁恢复指引与无会话拒绝、重试同刻度确定性同步、草图焊接公开输入分离、Creo 10 回调状态一致性与 `element_tree` 前置拒绝、种子矩阵、`coordinates` 椭圆标注与 `auto` 回退、布尔初始体 `-5778` 支持、轮廓冲突披露及状态轮询 `compact` 精简输出）。[版本说明](docs/release-notes/RELEASE_NOTES_0.50.0.md) · [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.50.0)
+当前正式版 **0.50.1**（PATCH，公开工具 112）。交付 [DEV-114](docs/work-items/DEV-114.md)（Windows 托管 CI 作业清理时误用 Explorer 脱离启动路径的修复）。[版本说明](docs/release-notes/RELEASE_NOTES_0.50.1.md) · [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.50.1)
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 
@@ -11,7 +11,7 @@ MCP_CREO_MechDog 是运行在你自己 Windows 电脑上的本地 MCP 服务（s
 **适合**：重复性参数化建模、批量零件、AI 驱动的草图→拉伸→孔→装配流程、接管已有模型继续修改。
 **不适合**：任意复杂自由曲面、专业模块的完整封装、没有真实 Creo 与许可的「云端建模」。
 
-开发分支变更（待发布）：草图的 `weld_pairs` 由服务生成。异心圆弧微间隙可显式设 `snap_endpoints=true` 和最大移动量；回执的 `snap_applied_pairs` 为提交前吸附数，`welded_pairs` 为原生执行数。恢复过程中，两个状态工具会给出面板锁对应模型与检查步骤；确认本机会话缺失时，恢复基线或接纳现场会在建立恢复作业前返回 `before_native`。
+0.50.1 修复（DEV-114）：`spawn_detached_runner` 以实际选用的进程工厂判断是否需要经 Explorer 脱离 Job Object，替换工厂的测试不再被误路由到桌面启动器，Windows 托管 CI 的作业临时目录清理不再报 `WinError 32/5`。
 
 ## 特性
 

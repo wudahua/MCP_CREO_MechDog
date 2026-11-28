@@ -1,6 +1,6 @@
 # 统一开发台账
 
-最新正式版 **0.50.0**（2026-11-28 MINOR，公开工具 112）。交付 [BUG-202](work-items/BUG-202.md)–[BUG-209](work-items/BUG-209.md)、[DEV-113](work-items/DEV-113.md)、[FEAT-094](work-items/FEAT-094.md) 与 [FEAT-095](work-items/FEAT-095.md)。完整近况见 [近期动态](#近期动态)，当前分类统计见 [使用与计数](#使用与计数)，更早记录见 [历史时间线](archive/BACKLOG_TIMELINE_2026.md)。
+最新正式版 **0.50.1**（2026-11-28 PATCH，公开工具 112）。交付 [DEV-114](work-items/DEV-114.md)（Windows CI 临时目录被 runner 占用）。完整近况见 [近期动态](#近期动态)，当前分类统计见 [使用与计数](#使用与计数)，更早记录见 [历史时间线](archive/BACKLOG_TIMELINE_2026.md)。
 
 ## 使用与计数
 
@@ -74,7 +74,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
-| [DEV-114](work-items/DEV-114.md) | P1 | 已有修复但待验收 | 未排期 | 修正 runner 工厂识别，Windows 两项清理用例并发 200 次通过；待集成。 |
+| [DEV-114](work-items/DEV-114.md) | P1 | 已有修复但待验收 | 0.50.1 | 修正 runner 工厂识别，Windows 两项清理用例并发 200 次通过；剩：托管 Windows CI 全量复核。 |
 | [BUG-202](work-items/BUG-202.md) | P1 | 已有修复但待验收 | 0.50.0 | 面板锁未知 `model_id` 披露/活动持有者保护与退役、无 Creo `restore_baseline`/`accept_live` 提交前拒绝并保留状态已通过 Creo 10 实机；剩：Creo 9/12.4 与 WorkBuddy 黑盒。 |
 | [DEV-113](work-items/DEV-113.md) | P1 | 已有修复但待验收 | 0.50.0 | `test_startup_retry.py` 改用显式事件握手消除 `join(2)` 竞态，隔离 `2×60` 与并发 `3×120` 压测均为 0 失败；剩：托管 CI 同并发复测。 |
 | [BUG-203](work-items/BUG-203.md) | P1 | 已有修复但待验收 | 0.50.0 | 分离公开 `weld_pairs` 与内部 `weld_plan`，40 弧等价夹具实机验证显式报错/仅 weld 拒绝/`snap_endpoints` `184.9802 mm³` 重载通过；剩：外部 `scripts/gear10.json`、Creo 9/12.4 与 WorkBuddy 黑盒。 |
@@ -368,6 +368,8 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [FEAT-087](work-items/FEAT-087.md) | P1 | 待规划 | 未排期 | 按重建镜像特征的一等操作，公开反射帧规则；保留 `PRO_FEATURE` 挂死拒绝。 |
 
 ## 近期动态
+
+2026-11-28（0.50.1 PATCH，公开工具 112）：交付 [DEV-114](work-items/DEV-114.md)，`spawn_detached_runner` 以实际选用的进程工厂判断 Explorer 脱离路径，消除托管 Windows CI 作业临时目录清理的 `WinError 32/5`；本机 200 次并发复现 0 错误。[版本说明](release-notes/RELEASE_NOTES_0.50.1.md) · [发布记录](validation/RELEASE-0.50.1.md)
 
 2026-11-28（0.50.0 MINOR，公开工具 112）：基于 v0.49.0 回填基线解决[三份 0.48.3 外部反馈](validation/feedback-0.48.3-2026-11-28/SOURCE_MANIFEST.json)，交付 [BUG-202](work-items/BUG-202.md)–[BUG-209](work-items/BUG-209.md)、[DEV-113](work-items/DEV-113.md)、[FEAT-094](work-items/FEAT-094.md) 与 [FEAT-095](work-items/FEAT-095.md)，并完成 [BUG-153](work-items/BUG-153.md) 精确 B 样条去料基准与 [FEAT-082](work-items/FEAT-082.md) 多视角预览复验。本机 Creo 10.0.0.0 完成第一/三批、四项回归对照与第二批冷启动/前置拒绝/种子矩阵实机验收；交互桌面手动启动回调后三项（已加载最小 `creo_loft`、`resident_panel` 100 mm² 曲面与已有零件追加）、外部 `scripts/gear10.json`、Creo 9/12.4 与 WorkBuddy 黑盒单列未测。[版本说明](release-notes/RELEASE_NOTES_0.50.0.md) · [发布记录](validation/RELEASE-0.50.0.md)
 

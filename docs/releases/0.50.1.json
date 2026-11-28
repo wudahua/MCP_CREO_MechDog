@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "version": "0.50.1",
+  "previous_version": "0.50.0",
+  "previous_release_tag": "v0.50.0",
+  "previous_release_commit": "16386157e477b424737cccf66076a3c8f204a036",
+  "remote_verification": "pending",
+  "delivery_ids": [
+    "DEV-114"
+  ],
+  "frozen_on": "2026-11-28"
+}
