@@ -8,7 +8,7 @@
 
 | ID | 优先级 | 状态 | 目标版本 | 完成摘要与证据 |
 | --- | --- | --- | --- | --- |
-| [DEV-112](work-items/DEV-112.md) | P2 | 已完成（开发分支） | 未排期 | 精简开发指引及七条台账摘要，统一 Toolkit 授权和发布后核对入口。 |
+| [DEV-112](work-items/DEV-112.md) | P2 | 已完成（0.48.4 交付） | 0.48.4 | 精简开发指引及七条台账摘要，统一 Toolkit 授权和发布后核对入口。 |
 | [DEV-108](work-items/DEV-108.md) | P1 | 已完成（0.48.3 交付） | 0.48.3 | 修复 Windows 15.625 ms 时钟刻度内 `retry_id` 重复与 `_run()` 误采用旧 `state.json` 的缺陷，补齐同刻度冻结时钟与跨进程协调单测并在托管 Windows CI 首轮通过。 [发布记录](validation/RELEASE-0.48.3.md) |
 | [DEV-109](work-items/DEV-109.md) | P2 | 已完成（0.48.3 交付） | 0.48.3 | 扩展 `backlog_counts.py` 按状态标题逐组校验台账行数，88/62→87/63 等同总数错组可准确报错，零条目分组通过。 [发布记录](validation/RELEASE-0.48.3.md) |
 | [DEV-110](work-items/DEV-110.md) | P2 | 已完成（0.48.3 交付） | 0.48.3 | 只读核实本机主检出 `D:\my\MCP_CREO_MechDog` 与 WorkBuddy `MCP_CREO_MechDog` 加载来源，校正 `AGENTS.md` 与 `docs/DEVELOPMENT.md` 指引及运行期核查方法。 [发布记录](validation/RELEASE-0.48.3.md) |

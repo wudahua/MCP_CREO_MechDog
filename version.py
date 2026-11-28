@@ -1,3 +1,3 @@
 """Public server and source-release version."""
 
-VERSION = "0.48.3"
+VERSION = "0.48.4"

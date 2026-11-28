@@ -1,6 +1,6 @@
 # 统一开发台账
 
-最新正式版 **0.48.3**（2026-11-27 PATCH，公开工具 112）：交付 [DEV-108](work-items/DEV-108.md)–[DEV-111](work-items/DEV-111.md)（启动重试 ID 修复、台账逐组计数校验、本机 MCP 联调指引校正、台账去重与文档链接 CI 门禁）并补齐 [BUG-131](work-items/BUG-131.md) Creo 10 `revision == 0` 新装配收尾实机验收。完整近况见 [近期动态](#近期动态)，当前分类统计见 [使用与计数](#使用与计数)，更早记录见 [历史时间线](archive/BACKLOG_TIMELINE_2026.md)。
+最新正式版 **0.48.4**（2026-11-28 PATCH，公开工具 112）。[DEV-112](work-items/DEV-112.md) 完成开发文档与台账精简。完整近况见 [近期动态](#近期动态)，当前分类统计见 [使用与计数](#使用与计数)，更早记录见 [历史时间线](archive/BACKLOG_TIMELINE_2026.md)。
 
 ## 使用与计数
 
@@ -351,6 +351,8 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [FEAT-087](work-items/FEAT-087.md) | P1 | 待规划 | 未排期 | 按重建镜像特征的一等操作，公开反射帧规则；保留 `PRO_FEATURE` 挂死拒绝。 |
 
 ## 近期动态
+
+2026-11-28（0.48.4 PATCH）：[DEV-112](work-items/DEV-112.md) 精简开发入口及七条台账摘要，统一 Toolkit 授权与发布后核对入口。[版本说明](release-notes/RELEASE_NOTES_0.48.4.md)
 
 2026-11-27（0.48.3 PATCH，公开工具 112）：交付 [DEV-108](work-items/DEV-108.md)（修复 Windows CI 同刻度 `retry_id` 重复与旧快照误采用）、[DEV-109](work-items/DEV-109.md)（台账逐组计数校验）、[DEV-110](work-items/DEV-110.md)（校正本机 MCP 联调路径 `D:\my\MCP_CREO_MechDog` 与运行期核查指引）、[DEV-111](work-items/DEV-111.md)（台账近期动态去重与活跃非冻结文档链接/锚点 CI 门禁），并在 Creo 10.0.0.0 补齐 [BUG-131](work-items/BUG-131.md) `revision == 0` 新装配收尾（`abandon_new` / `ack_failure` / `revision == 1` 拒绝负对照）实机验收；`BUG-017`/`BUG-034` 与 `BUG-131` 23 组件 `hom_1` 挂死原案仍因缺少外部材料保留在 `仍需修复`。 [版本说明](release-notes/RELEASE_NOTES_0.48.3.md) · [发布记录](validation/RELEASE-0.48.3.md)
 
