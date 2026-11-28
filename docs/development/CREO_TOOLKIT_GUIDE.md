@@ -98,8 +98,8 @@ rg -n 'ProFeatureWithoptionsCreate|ProArrayFree|ProSelectionFree' native/geometr
 | 层次 | 现有位置与要核对的事 |
 | --- | --- |
 | 输入契约 | 包内 `schema.py` 及其领域模块，例如 [surface_ops.py](../../src/creo_mechdog/surface_ops.py)；参数、引用、单位、拒绝分支、旧调用兼容；根包装共享包内类型 |
-| 能力与公开工具 | [capabilities.py](../../src/creo_mechdog/capabilities.py) 是登记与限制来源；只有需要独立公开工具时在根 `server.py` 加薄包装，工具数由实际登记计算 |
-| 计划、任务与保护 | 根 `generic_bridge.py` 核对计划、模型登记与 revision；根 `bridge.py` 持有 Toolkit 通道。按现有入口接入，不创建第二套调度或锁 |
+| 能力与公开工具 | [capabilities.py](../../src/creo_mechdog/capabilities.py) 是登记与限制来源；只有需要独立公开工具时在包内 [server.py](../../src/creo_mechdog/server.py) 注册工具，工具数由实际登记计算 |
+| 计划、任务与保护 | 包内 [generic_bridge.py](../../src/creo_mechdog/generic_bridge.py) 校验计划、登记模型并检查 revision；[bridge.py](../../src/creo_mechdog/bridge.py) 管理 Toolkit 通道锁。按现有入口接入，不创建第二套调度或锁 |
 | 原生执行 | `native/generic.cpp` 的操作分派、对应特征实现及 include 顺序；对照 [surface_loft.cpp](../../native/surface_loft.cpp)。几何在原生端计算，Python 不模拟 Creo |
 | 回执与查询 | 包内 [operation_results.py](../../src/creo_mechdog/operation_results.py)、[job_projection.py](../../src/creo_mechdog/job_projection.py)：成功/失败字段、原始诊断、full/compact 投影；必要测量标量不能在 compact 中丢失 |
 | 测试与文档 | 新增单元放 `tests/unit/`，集成驱动沿用 `tools/`；同步受影响的语法、能力限制和工作卡，不把离线成功写成原生成功 |
@@ -122,7 +122,7 @@ rg -n 'ProFeatureWithoptionsCreate|ProArrayFree|ProSelectionFree' native/geometr
 
 1. **先定义要证明什么。** 写出最小输入、目标几何/选项、预期依据及失败判据，区分“树或两条路线一致”和“满足用户几何要求”。优先采用可复算算例、已知尺寸/关系、官方语义或有来源的参照数据，不能只比较两条共享同一假设的实现。
 2. **自行发现参照。** 先查相关工作卡、既有模板清单/原始 XML、种子与已验证任务，核对形态、来源版本、文件指纹和适用限制。再考虑用现有 MCP/驱动生成最小临时参照；尚无该能力时，开发 AI 先核对官方实现方法，必要时按已登记条目补最小验证驱动，或评估本次可用且获准的其它建模自动化路径。不把“请用户在 GUI 建好并确认”设为默认前置；确无可用样本或自动化路径时，记录具体缺口和下一步，不臆造树或通过结论。
-3. **先核对本次权限，再实际取样。** 资料离线分析和实际 Creo 操作分开。无当次授权时先完成可做的查证、方案与预期，汇总具体临时模型范围、构建/取样/重建/检查动作后申请必要授权；不要求用户确认技术对错。已明确允许的范围连续执行，不为每个已覆盖步骤反复询问，不沿用历史授权，不擅自操作用户模型或进程。
+3. **实机取样。** 按[本机实机常设授权](../../AGENTS.md#配置许可与本机实机常设授权)在临时模型上取样、重建和检查。超出授权范围的操作先完成离线查证，再说明需要的权限。
 4. **取完整可追溯数据。** 优先复用 [read_reference_tree.py](../../tools/read_reference_tree.py)、[export_elemtree_template.py](../../tools/export_elemtree_template.py) 及 `creo_dump_feature_tree` 的适用入口；先读实际脚本参数/行为，不因名字或示例开关就假定它是离线安全的。官方可核实路线是 `pt_userguide` 的 Export XML，对应 `ProFeatureElemtreeExtract` → `ProElemtreeWrite`；本机示例为 `protk_appls/pt_userguide/ptu_featcreat/UgXMLFeat.c`。未经核对的 `pt_feat_dump` 名称不作为命令依据；`pt_feats` 的文本信息输出也不等同于完整 XML 引用数据。
 5. **用单变量对照理解变化。** 固定其余输入，分别生成基准与只改变一个选项的参照（例如自由边界与相切边界）。对照节点路径、父子/数组结构、数据类型、值及模型引用，先识别名字/ID/顺序等实例差异，再核对官方语义。导出结果可能包含数字枚举、内部/可选节点和模型相关引用，不把“出现于一次成功树”当成所有输入都必填或取值已完整文档化。提取的树副本按 `ProFeatureElemtreeFree` 约定释放；新建/读入的树及其它资源按各 API 自身所有权处理。
 6. **适配引用后重建。** 按角色重绑实际需要的 owner/id/type 与装配路径；曲线数量、方向、特征名及相关条件分支一并核对。不能只替换看到的第一组引用，不能假定其它模板的条件子树也没有模型引用；形态/数量不符按契约拒绝，不裁剪、近似或任意删节点。读取 XML 成功只说明完成了加载，不证明它适用于目标特征；创建、完成和再生仍需分别检查。
@@ -130,8 +130,8 @@ rg -n 'ProFeatureWithoptionsCreate|ProArrayFree|ProSelectionFree' native/geometr
 
 | 遇到的情况 | 开发 AI 应怎样处理 |
 | --- | --- |
-| 有适用的旧参照/历史实测，但无本次实机授权 | 自行解析清单/XML/源码并形成可执行验证方案；明确历史证据与当前待测，不执行真实取树/重建，不要求用户代验 |
-| 已获准本次取样与重建 | 在范围内自行完成、判断和记录；授权不是已通过，临时模型也不代表可清锁、结束进程或改写用户模型 |
+| 有适用的旧参照/历史实测，但目标环境未获实机授权 | 自行解析清单/XML/源码并形成可执行验证方案；明确历史证据与当前待测，不执行真实取树/重建，不要求用户代验 |
+| 取样与重建在授权范围内 | 在临时模型上完成操作，记录实测结果和未测范围 |
 | 同宿主/特征已知提取 `-18`，或 XML 有版本/结构错误 | 保留原码与阶段、版本和元素错误；停止重复同一路线，不靠换转储包装、乱改枚举或用高版本成功掩盖失败。继续可做的离线定位/有依据的替代方案；新的验证须有明确假设且在允许范围内 |
 | 创建阶段有未完成特征 | 结合该路线是否需要后续补齐/重定义判断，不能一见中间状态就误拒绝；到要求的完成点仍不满足状态或几何目标时，不能报成功 |
 | 缺参照、测量接口或明确工程输入 | 说明究竟缺什么、已查哪些来源及可继续的动作；能自动解决的继续处理。只向用户索取必要输入/授权或设计选择，不让用户“人工确认这棵树/这个结果没问题” |
@@ -164,6 +164,6 @@ rg -n 'ProFeatureWithoptionsCreate|ProArrayFree|ProSelectionFree' native/geometr
 | 获准后的原生验收 | 匹配 SDK 构建、任务终态、几何及参数、保存重载和适用回滚；逐项记录结果 |
 | WorkBuddy 黑盒 | 公开 MCP 的最终用户行为；不补做源码检查，也不由开发者证据替代 |
 
-未来原生实现的验收命令、成功标准和证据身份沿用 DEVELOPMENT；必须记录源码提交、dirty、受测指纹、命令、环境与未测范围，不能只写“返回成功”。用户当次明确确认后才可编译执行器或进行实机联调；本指南和 skill 自身不授予这些权限，也不要求恢复已失效的“先查清卡死根因”前置。禁止擅自结束/重启进程、清锁、清 unknown 保护或处理用户模型，详见 AGENTS 的当前规则。
+原生改动按[验收与交付](../DEVELOPMENT.md#验收与交付)记录构建、实机结果、源码身份与未测范围。
 
 纯文档/skill 整理只做适用的格式、链接、台账和只读查证。本次没有新增建模能力，不更新工具数、版本或发布声明；没有实机结果的项目明确写“未验证”。后续任务的实际验证范围由改动决定。
