@@ -4,7 +4,7 @@
   "previous_version": "0.48.4",
   "previous_release_tag": "v0.48.4",
   "previous_release_commit": "48eb2586e8592fd20fb79df54ac4f7e6e3125d4b",
-  "remote_verification": "pending",
+  "remote_verification": "verified",
   "delivery_ids": [
     "BUG-198",
     "BUG-199",

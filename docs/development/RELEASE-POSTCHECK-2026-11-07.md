@@ -13,6 +13,22 @@
 
 种子包 SHA256 为 `5d9a92e4162c2580cd2f173d56818cea50c46657e1b85cf842f998ca76cf0eaa`。源码包和种子包的摘要分别记录在同名 sidecar。远端校验发布后执行，当前未验证。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.49.0)
 
+### v0.49.0 发布后核对
+
+- 发布记录：Release `461349889`（非 draft、非 prerelease），发布时间 `2026-11-28T06:21:15Z`，核对时间 `2026-11-28T06:32:31Z`（`2026-11-28T14:32:31+08:00`），附注标签 `v0.49.0`（标签对象 `7edac5d0e1724e58ec5e4bf3f8d1d8e63e3f9834` -> 主干提交 `a98aff2969e0d1430319f6141a08ba33587d09a4`）。
+- 远端核对命令：`$env:PYTHONUTF8="1"; .\.venv\Scripts\python.exe tools\check_release_assets.py --tag v0.49.0`，退出码 0（`v0.49.0: four assets downloaded and verified; both sidecars match; release body self-proof verified`），与 `gh release view v0.49.0` API `digest` 及本地打包摘要逐一匹配。
+- 干净 `main`（`a98aff2969e0d1430319f6141a08ba33587d09a4`）本机验证：`tools/dev_check.py --skip-unit` 通过（`dirty=false`、`checked_source_sha256=287b8684c7e7707f887301e7ee921e74e2ec026e20e56f4127de5dd859bf41e1`、0 lint / 0 unformatted、3/3 离线验收通过）；`tools/test_unit.py` 全量通过（4,592 项，6 跳过，0 失败，0 错误，`run_id=f52f7f09c9154fe192e480298b2a37ce`、`source_fingerprint=9d1f052006f7d8e455917efaf8f8e0c961f7ab0969f5c42e9b424b8af7de4538`）；解包源码 ZIP（DEV-075）在独立隔离临时 `.venv` 下通过 `tools/test_unit.py`（4,584 项，15 跳过，0 失败，0 错误，`run_id=9727a29418894a6ba85ff728e37336b5`、`source_fingerprint=2decb4d0dfd97d82fd62f7bc77b2c4ecd1ad3e80e29a44840640cbda38ab888e`、`git_status="unavailable"`、`source_file_count=686`）；本机 Creo 10.0.0.0（`release_numeric=42`、`worker_sha256=73354279ce7016b3573f37a50213dc55439078d6f40dc7c96b83f0a0b07073c1`）`FEAT-093`（模型 `0c347e63075942eba0f290462c903df7`、`part_sha256=32fcdc1d6698f3f5d4897178c7bedb3684835ed067a0621a9307044882511a91`）与 `BUG-199`（`3b515eb80f7b4b65a919d1ed91c344c1` / `5ba519a99d06490a9f962823e026141b`）实机通过。
+- 托管 Windows CI（`main` 提交 `a98aff2969e0d1430319f6141a08ba33587d09a4`）：[运行 46116179656](https://github.com/wudahua/MCP_CREO_MechDog/actions/runs/46116179656) 风格检查（0 lint / 0 unformatted）与 3/3 离线验收通过，单元阶段报 2 例临时目录清理 `[WinError 32]` 进程占用错误（含 `.tmp\bug009_qwj3cyuh`，`errors=2, skipped=10`），整体状态 `completed / failure`（如实记录，本机干净 `main` 与解包 ZIP 均全过）。
+
+| 附件 | 字节数 | API digest 与下载重算 SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.49.0-seed-library.zip` | 493442 | `5d9a92e4162c2580cd2f173d56818cea50c46657e1b85cf842f998ca76cf0eaa` |
+| `MCP_CREO_MechDog-0.49.0-seed-library.zip.sha256` | 107 | `2d55ef10ea10ea83542e4ea630d9fb606a92daac324d8db22d205d3cddbae085` |
+| `MCP_CREO_MechDog-0.49.0-source.zip` | 11470073 | `888f781ba5f510a1efdea89166f23ac46f4e06bebf60a175561724ff78d0fada` |
+| `MCP_CREO_MechDog-0.49.0-source.zip.sha256` | 101 | `9035a12705a061f614b79ddff6d1ff79ea852a6967eed3d68c9339bc9bd8e399` |
+
+- 未测范围：交互桌面 `WinSta0\Default` 经 `explorer.exe` 脱离 Job Object 后的真实客户端断连保活、`native/panel_run.h` 真实模态框卡死现场、真实 Windows 杀软/索引器并发文件锁、约 6 MB / 589 特征级超大外部零件超时加载、Creo 9 / 12.4 与外部 WorkBuddy 黑盒验收。
+
 ## v0.48.4（2026-11-28，打包时点）
 
 [DEV-112](../work-items/DEV-112.md) 开发文档与台账精简。[版本说明](../release-notes/RELEASE_NOTES_0.48.4.md) · [发布记录](../validation/RELEASE-0.48.4.md)
