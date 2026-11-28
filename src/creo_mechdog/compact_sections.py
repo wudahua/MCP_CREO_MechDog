@@ -204,6 +204,7 @@ OPERATION_KEYS = (
     "volume_after_mm3",
     "material_delta_mm3",
     "material_effect",
+    "endpoint_weld",
     "material_measurement",
     "draft_geometry",
     "extrude_depth",

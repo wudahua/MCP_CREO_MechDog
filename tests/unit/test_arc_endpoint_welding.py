@@ -6,7 +6,7 @@ import inspect
 import math
 import unittest
 
-from creo_mechdog import schema, server
+from creo_mechdog import bridge, schema, server
 from creo_mechdog.endpoint_welding import annotate_result, prepare_endpoint_weld, prepare_operations
 
 
@@ -166,6 +166,11 @@ class ArcEndpointWeldingTests(unittest.TestCase):
         self.assertEqual(entry["endpoint_weld"]["snap_applied_pairs"], 40)
         self.assertEqual(entry["endpoint_weld"]["applied_by"], "python_request_rewrite")
         self.assertFalse(entry["endpoint_weld"]["native_applied"])
+        job = {"result": {"operations": [entry]}, "status": "succeeded"}
+        compact = bridge.compact_job(job)["result"]["operations"][0]["endpoint_weld"]
+        self.assertEqual(compact["snap_applied_pairs"], 40)
+        self.assertEqual(compact["welded_pairs"], 0)
+        self.assertNotIn("snap", compact)
 
     def test_native_applied_count_comes_from_the_worker(self):
         op = {"op": "sketch", "entities": [], "endpoint_policy": "weld"}

@@ -413,6 +413,7 @@ OUTCOME_OPERATION_KEYS = (
     "member_count",
     "rib_diagnostics",
     "material_effect",
+    "endpoint_weld",
 )
 
 #: Failure diagnostics kept in full on the failed record itself. A per-record

@@ -419,7 +419,26 @@ def compact_operation(operation: dict[str, Any]) -> dict[str, Any]:
     """
     if not isinstance(operation, dict):
         return {}
-    return {key: operation[key] for key in operation_keys(operation) if key in operation}
+    projected = {key: operation[key] for key in operation_keys(operation) if key in operation}
+    weld = projected.get("endpoint_weld")
+    if isinstance(weld, dict):
+        projected["endpoint_weld"] = {
+            key: weld[key]
+            for key in (
+                "policy",
+                "applied",
+                "applied_by",
+                "native_applied",
+                "snap_applied_pairs",
+                "welded_pairs",
+                "candidate_pairs",
+                "accepted_pairs",
+                "refused_pairs",
+                "failure_reason",
+            )
+            if key in weld
+        }
+    return projected
 
 
 def compact_progress(progress: dict[str, Any]) -> dict[str, Any]:
