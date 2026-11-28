@@ -501,7 +501,22 @@ class SketchConstraint(StrictModel):
     refs: Annotated[list[EntityRef], Field(min_length=1, max_length=2)]
 
 
-class SketchOp(StrictModel):
+class _SketchWeldInput(StrictModel):
+    @model_validator(mode="before")
+    @classmethod
+    def reject_internal_weld_pairs(cls, value):
+        if isinstance(value, dict) and "weld_pairs" in value:
+            if value["weld_pairs"] != []:
+                raise ValueError(
+                    "weld_pairs is generated internally. Use endpoint_policy='weld' or "
+                    "snap_endpoints=true with max_endpoint_move_mm."
+                )
+            # Older clients can echo the previously published empty default.
+            return {key: item for key, item in value.items() if key != "weld_pairs"}
+        return value
+
+
+class SketchOp(_SketchWeldInput):
     op: Literal["sketch"]
     label: Label
     plane: Literal["XY", "XZ", "YZ"] | dict[str, Any] = Field(
@@ -524,12 +539,9 @@ class SketchOp(StrictModel):
     # FEAT-039/W01: the endpoint weld policy. The create and the update
     # entry share one definition, so the same request means the same thing
     # on both paths. "report" only reports the pairing evidence, "reject"
-    # refuses a profile whose endpoints could be welded, and "weld" stays
-    # refused until the native solver exists.
+    # refuses a profile whose endpoints could be welded, and "weld" prepares
+    # pairs for the native worker.
     endpoint_policy: Literal["report", "reject", "weld"] = "report"
-    # The weld plan the policy layer derived: the native side regularises
-    # exactly these endpoint pairs before it writes the entities.
-    weld_pairs: list[dict[str, Any]] = []
     max_endpoint_move_mm: Annotated[float, Field(gt=0)] | None = None
 
     @field_validator("max_endpoint_move_mm", mode="before")
@@ -668,19 +680,16 @@ def _closure_tolerance(value: Any) -> Any:
     return float(value)
 
 
-class SketchGeometryOp(StrictModel):
+class SketchGeometryOp(_SketchWeldInput):
     op: Literal["update_sketch_geometry"]
     sketch: Label
     entities: Annotated[list[Entity], Field(min_length=1, max_length=500)]
     # FEAT-039/W01: the endpoint weld policy. The create and the update
     # entry share one definition, so the same request means the same thing
     # on both paths. "report" only reports the pairing evidence, "reject"
-    # refuses a profile whose endpoints could be welded, and "weld" stays
-    # refused until the native solver exists.
+    # refuses a profile whose endpoints could be welded, and "weld" prepares
+    # pairs for the native worker.
     endpoint_policy: Literal["report", "reject", "weld"] = "report"
-    # The weld plan the policy layer derived: the native side regularises
-    # exactly these endpoint pairs before it writes the entities.
-    weld_pairs: list[dict[str, Any]] = []
     max_endpoint_move_mm: Annotated[float, Field(gt=0)] | None = None
 
     @field_validator("max_endpoint_move_mm", mode="before")

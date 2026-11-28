@@ -55,6 +55,7 @@ FAILURE_CODES = {
     "configuration_error": "configuration_error",
     "selection_required": "session_selection_required",
     "lock_error": "coordination_lock_access",
+    "panel_session_locked": "panel_session_locked",
     "timeout": "startup_timeout",
 }
 _RETRY_ID_LOCK = threading.Lock()
@@ -1022,6 +1023,38 @@ class CreoStartup:
             "session_candidates": report["candidates"],
         }
 
+    def _publish_panel_lock(self, exc: panel_session_guard.PanelSessionLocked) -> dict:
+        holder = {
+            key: exc.holder[key]
+            for key in (
+                "model_id",
+                "job_id",
+                "profile_id",
+                "state",
+                "status",
+                "reason",
+                "created_at",
+            )
+            if key in exc.holder
+        }
+        model_id = holder.get("model_id")
+        steps = (
+            [
+                f"Call creo_reconcile_model(model_id={model_id!r}, mode='inspect').",
+                "After confirming the panel is closed, follow the available "
+                "confirm_panel_closed action with confirm_panel_closed=true.",
+            ]
+            if model_id
+            else [str(exc)]
+        )
+        return self._publish(
+            "panel_session_locked",
+            f"{exc} " + " ".join(steps) if model_id else str(exc),
+            shared=False,
+            panel_session_guard=holder or None,
+            next_steps=steps,
+        )
+
     def session_status(self) -> dict:
         with self._mutex:
             running = bool(self._thread and self._thread.is_alive())
@@ -1071,6 +1104,18 @@ class CreoStartup:
                 },
                 "creo_process_snapshot": snapshot,
                 "startup": self.status(),
+            }
+        except panel_session_guard.PanelSessionLocked as exc:
+            self._publish_panel_lock(exc)
+            state = self.status()
+            return {
+                **state,
+                "mode": "explicit_live",
+                "connection_state": "panel_session_locked",
+                "live_probe": {"performed": False, "busy": False, "queued": False},
+                "creo_process_snapshot": snapshot,
+                "startup": state,
+                **self.session_keys(snapshot),
             }
         except (RuntimeError, OSError) as exc:
             native = {
@@ -1233,20 +1278,7 @@ class CreoStartup:
             )
         except panel_session_guard.PanelSessionLocked as exc:
             LOG.warning("Creo startup blocked by resident panel guard")
-            holder = exc.holder if isinstance(exc.holder, dict) else {}
-            model_id = holder.get("model_id")
-            hint = (
-                f"Call creo_reconcile_model(model_id={model_id!r}, mode='inspect') and "
-                "confirm_panel_closed once no Creo panel dialog is open."
-                if model_id
-                else "Check Creo for an open panel dialog and retire the panel session guard."
-            )
-            self._publish(
-                "panel_session_locked",
-                f"{exc} {hint}",
-                shared=False,
-                panel_session_guard=holder or None,
-            )
+            self._publish_panel_lock(exc)
         except Exception as exc:
             # Exceptions may carry local paths; never echo raw launch environment,
             # configured session IDs, process command lines or PSF/license text.
@@ -1344,6 +1376,9 @@ class CreoStartup:
                     self._stop.wait(0.25)
                     continue
                 break
+        except panel_session_guard.PanelSessionLocked as exc:
+            self._publish_panel_lock(exc)
+            return
         except (RuntimeError, OSError) as exc:
             self._publish(
                 "selection_required",
@@ -1609,6 +1644,8 @@ class CreoStartup:
                 )
                 self._stop.wait(max(0.0, min(0.5, deadline - time.monotonic())))
                 continue
+            except panel_session_guard.PanelSessionLocked:
+                raise
             except RuntimeError:
                 self._publish(
                     "waiting_for_connection",

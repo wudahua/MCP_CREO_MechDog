@@ -124,6 +124,58 @@ class Reconciliation(unittest.TestCase):
         self.assertTrue(inspected["actions"]["restore_baseline"]["available"])
         self.assertEqual(before, (general.model_path(self.mid) / "model.json").read_bytes())
 
+    def test_absent_session_refuses_recovery_before_creating_a_job(self):
+        model_file = general.model_path(self.mid) / "model.json"
+        before = model_file.read_bytes()
+        with (
+            patch.object(rec.creo_startup.Settings, "load") as settings,
+            patch.object(
+                rec.creo_startup, "inventory", return_value={"uncertain": False, "processes": []}
+            ),
+            patch.object(
+                rec,
+                "_live",
+                return_value={
+                    "loaded": True,
+                    "owned": True,
+                    "millimeter_units": True,
+                    "dependency_free": True,
+                    "inspection": self.state,
+                    "session_fingerprint": "fixture",
+                    "model_name": "owned_part",
+                },
+            ),
+            patch.object(bridge, "spawn_detached_runner") as spawn,
+        ):
+            settings.return_value.selected = False
+            for action in ("restore_baseline", "accept_live"):
+                evidence = rec.inspect(self.mid, live=action == "accept_live")
+                with self.assertRaises(rec.RecoverySessionAbsent) as caught:
+                    rec.apply(
+                        self.mid,
+                        action,
+                        1,
+                        self.original,
+                        evidence["evidence_token"],
+                        "absent_session",
+                    )
+                self.assertEqual(caught.exception.payload["failure_phase"], "before_native")
+                self.assertFalse(caught.exception.payload["worker_started"])
+            spawn.assert_not_called()
+        self.assertEqual(model_file.read_bytes(), before)
+        self.assertFalse(rec._journal(self.mid, "absent_session").exists())
+        self.assertEqual(list(bridge.JOBS.iterdir()), [bridge.job_path(self.original)])
+
+    def test_incomplete_inventory_cannot_establish_absence(self):
+        with patch.object(rec.creo_startup.Settings, "load") as settings:
+            settings.return_value.selected = False
+            for observed in (
+                {"uncertain": True, "processes": []},
+                {"uncertain": False, "processes": [{"pid": 42}]},
+            ):
+                with patch.object(rec.creo_startup, "inventory", return_value=observed):
+                    rec._check_recovery_session(self.mid, "restore_baseline")
+
     def test_restore_keeps_revision_and_original_history_and_is_idempotent(self):
         original = (bridge.job_path(self.original) / "job.json").read_bytes()
         created, args = self.prepare()

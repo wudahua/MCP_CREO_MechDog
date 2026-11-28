@@ -26,6 +26,24 @@ class StartupRetry(unittest.TestCase):
     def controller(self):
         return creo_startup.CreoStartup(self.fixture.coordinator)
 
+    def run_retry(self, controller):
+        """Keep the real coordinator thread and wait for this invocation to finish."""
+        completed = threading.Event()
+        run = controller._run
+
+        def observed_run(*args):
+            try:
+                run(*args)
+            finally:
+                completed.set()
+
+        with patch.object(controller, "_run", side_effect=observed_run):
+            accepted = controller.start(retry=True)
+            thread = controller._thread
+            self.assertTrue(completed.wait(60), "startup coordinator did not finish")
+            thread.join()
+        return accepted
+
     def test_damaged_history_is_preserved_and_cannot_authorize_a_launch(self):
         for content in (
             b"",
@@ -39,9 +57,8 @@ class StartupRetry(unittest.TestCase):
                 path = self.fixture.coordinator / "state.json"
                 path.write_bytes(content)
                 controller = self.controller()
-                value = controller.start(retry=True)
+                value = self.run_retry(controller)
                 self.assertIn(value["state"], creo_startup.ACTIVE)
-                controller._thread.join(2)
                 self.assertFalse(controller._thread.is_alive())
                 state = controller.status()
                 self.assertEqual(state["state"], "selection_required")
@@ -86,8 +103,7 @@ class StartupRetry(unittest.TestCase):
         path.write_bytes(b"")
         self.fixture.inventory.return_value = self.fixture.existing()
         controller = self.controller()
-        controller.start(retry=True)
-        controller._thread.join(2)
+        self.run_retry(controller)
         state = controller.status()
         self.assertEqual(state["state"], "ready")
         self.assertTrue(state["connected"])
@@ -117,8 +133,7 @@ class StartupRetry(unittest.TestCase):
                 )
                 before = path.read_bytes()
                 controller = self.controller()
-                controller.start(retry=True)
-                controller._thread.join(2)
+                self.run_retry(controller)
                 self.assertEqual(controller.status()["state"], "selection_required")
                 self.assertEqual(path.read_bytes(), before)
         self.fixture.launch.assert_not_called()
@@ -145,8 +160,7 @@ class StartupRetry(unittest.TestCase):
             self.fixture.existing() if launched.is_set() else {"processes": [], "uncertain": False}
         )
         controller = self.controller()
-        controller.start(retry=True)
-        controller._thread.join(3)
+        self.run_retry(controller)
         self.assertEqual(controller.status()["state"], "ready")
         self.assertEqual(controller.status()["launch_attempt"], 18)
         self.fixture.launch.assert_called_once()
@@ -162,8 +176,7 @@ class StartupRetry(unittest.TestCase):
         self.fixture.inventory.return_value = self.fixture.existing()
         self.fixture.probe.return_value = startup_tests.READY
         controller = self.controller()
-        controller.start(retry=True)
-        controller._thread.join(2)
+        self.run_retry(controller)
         state = controller.status()
         self.assertEqual(state["state"], "ready")
         self.assertEqual(state["launch_attempt"], 17)
@@ -177,16 +190,14 @@ class StartupRetry(unittest.TestCase):
         self.fixture.inventory.return_value = self.fixture.existing()
         self.fixture.probe.return_value = startup_tests.READY
         controller = self.controller()
-        controller.start(retry=True)
+        self.run_retry(controller)
         first_thread = controller._thread
-        first_thread.join(2)
         self.assertFalse(first_thread.is_alive())
         first = controller.status()
         self.assertEqual(first["retry_id"], controller.status()["retry_id"])
-        accepted = controller.start(retry=True)
+        accepted = self.run_retry(controller)
         self.assertIsNot(controller._thread, first_thread)
         self.assertNotEqual(first["retry_id"], accepted["retry_id"])
-        controller._thread.join(2)
         self.assertFalse(controller._thread.is_alive())
         second = controller.status()
         self.assertNotEqual(first["retry_id"], second["retry_id"])
@@ -202,16 +213,14 @@ class StartupRetry(unittest.TestCase):
             patch.object(creo_startup.time, "monotonic_ns", return_value=123456789),
             patch.object(creo_startup.time, "perf_counter_ns", return_value=987654321),
         ):
-            controller.start(retry=True)
+            self.run_retry(controller)
             first_thread = controller._thread
-            first_thread.join(2)
             self.assertFalse(first_thread.is_alive())
             first = controller.status()
             self.assertEqual(first["retry_id"], controller.status()["retry_id"])
-            accepted = controller.start(retry=True)
+            accepted = self.run_retry(controller)
             self.assertIsNot(controller._thread, first_thread)
             self.assertNotEqual(first["retry_id"], accepted["retry_id"])
-            controller._thread.join(2)
             self.assertFalse(controller._thread.is_alive())
             second = controller.status()
         self.assertNotEqual(first["retry_id"], second["retry_id"])
@@ -260,8 +269,7 @@ class StartupRetry(unittest.TestCase):
             patch.object(bridge, "now", return_value=frozen),
             patch.object(bridge, "read_json", side_effect=read_with_concurrent_finish),
         ):
-            controller.start(retry=True)
-            controller._thread.join(2)
+            self.run_retry(controller)
             self.assertFalse(controller._thread.is_alive())
             status = controller.status()
         self.assertTrue(status["coordinated"])
@@ -276,8 +284,7 @@ class StartupRetry(unittest.TestCase):
             startup_tests.READY,
         ]
         controller = self.controller()
-        controller.start(retry=True)
-        controller._thread.join(5)
+        self.run_retry(controller)
         state = controller.status()
         self.assertEqual(state["state"], "ready")
         self.assertEqual(self.fixture.probe.call_count, 2)

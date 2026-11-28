@@ -6,8 +6,8 @@ import inspect
 import math
 import unittest
 
-from creo_mechdog import server
-from creo_mechdog.endpoint_welding import prepare_endpoint_weld, prepare_operations
+from creo_mechdog import schema, server
+from creo_mechdog.endpoint_welding import annotate_result, prepare_endpoint_weld, prepare_operations
 
 
 def _arc_endpoints(arc: dict) -> tuple[tuple[float, float], tuple[float, float]]:
@@ -138,6 +138,42 @@ class ArcEndpointWeldingTests(unittest.TestCase):
                 _, end_i = _arc_endpoints(snapped[base + side])
                 start_next, _ = _arc_endpoints(snapped[base + ((side + 1) % 4)])
                 self.assertLess(math.dist(end_i, start_next), 1e-12)
+
+    def test_explicit_internal_pairs_are_refused_on_create_and_update(self):
+        for operation in (
+            {"op": "sketch", "label": "s"},
+            {"op": "update_sketch_geometry", "sketch": "s"},
+        ):
+            spec = {**operation, "entities": _gear10_like_entities()[:4]}
+            with self.assertRaisesRegex(ValueError, "weld_pairs is generated internally"):
+                schema.validate_operations([{**spec, "weld_pairs": [{"entity_a": "a"}] * 20}])
+            self.assertNotIn(
+                "weld_pairs", schema.validate_operations([{**spec, "weld_pairs": []}])[0]
+            )
+
+    def test_different_center_arc_weld_requires_explicit_snap(self):
+        op = {
+            "op": "sketch",
+            "entities": _gear10_like_entities(),
+            "endpoint_policy": "weld",
+            "max_endpoint_move_mm": 0.01,
+        }
+        with self.assertRaisesRegex(ValueError, "snap_endpoints=true"):
+            prepare_operations([op])
+        ops = prepare_operations([{**op, "snap_endpoints": True}])
+        entry = {"index": 0, "endpoint_weld_native": {"applied_pairs": 0}}
+        annotate_result({"operations": [entry]}, ops)
+        self.assertEqual(entry["endpoint_weld"]["snap_applied_pairs"], 40)
+        self.assertEqual(entry["endpoint_weld"]["applied_by"], "python_request_rewrite")
+        self.assertFalse(entry["endpoint_weld"]["native_applied"])
+
+    def test_native_applied_count_comes_from_the_worker(self):
+        op = {"op": "sketch", "entities": [], "endpoint_policy": "weld"}
+        entry = {"index": 0, "endpoint_weld_native": {"applied_pairs": 2}}
+        annotate_result({"operations": [entry]}, [op])
+        self.assertEqual(entry["endpoint_weld"]["welded_pairs"], 2)
+        self.assertTrue(entry["endpoint_weld"]["native_applied"])
+        self.assertEqual(entry["endpoint_weld"]["applied_by"], "native")
 
     def test_sketch_mcp_tools_expose_endpoint_welding_parameters(self):
         for fn in (server.creo_create_sketch, server.creo_update_sketch_geometry):

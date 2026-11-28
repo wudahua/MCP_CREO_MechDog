@@ -14,7 +14,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
-from creo_mechdog import bridge, inspection_refs, model_registry, panel_session_guard
+from creo_mechdog import bridge, creo_startup, inspection_refs, model_registry, panel_session_guard
 from creo_mechdog import generic_bridge as general
 from creo_mechdog.legacy_recovery import previous_boot_evidence
 from creo_mechdog.recovery import process_identity
@@ -1856,6 +1856,34 @@ def _abandon_unknown_recovery(
     return result
 
 
+class RecoverySessionAbsent(ValueError):
+    def __init__(self, model_id: str, action: str):
+        self.payload = {
+            "status": "rejected",
+            "reason": "no_creo_session",
+            "failure_phase": "before_native",
+            "worker_started": False,
+            "model_id": model_id,
+            "action": action,
+            "message": "No Creo process is running in this Windows session. "
+            "Call creo_startup_status(retry=true), then inspect the model again.",
+        }
+        super().__init__(json.dumps(self.payload, ensure_ascii=False))
+
+
+def _check_recovery_session(model_id: str, action: str) -> None:
+    # An explicit session may be reachable beyond this process inventory.
+    try:
+        settings = creo_startup.Settings.load()
+        if settings.selected:
+            return
+        observed = creo_startup.inventory(settings)
+    except (ValueError, OSError, RuntimeError):
+        return
+    if observed.get("uncertain") is False and observed.get("processes") == []:
+        raise RecoverySessionAbsent(model_id, action)
+
+
 def apply(
     model_id: str,
     action: str,
@@ -2009,6 +2037,8 @@ def apply(
             record = _validate_evidence(
                 model_id, evidence_token, expected_revision, expected_pending_job_id, action
             )
+            if action in ("restore_baseline", "accept_live"):
+                _check_recovery_session(model_id, action)
             model = record["snapshot"]["model"]
             job_id = uuid.uuid4().hex
             directory = bridge.job_path(job_id)

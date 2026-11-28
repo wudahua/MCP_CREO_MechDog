@@ -351,6 +351,16 @@ class Bug199LifecycleAndRecoveryTests(unittest.TestCase):
         status = startup.status()
         self.assertEqual(status["state"], "panel_session_locked")
         self.assertEqual(status["panel_session_guard"]["model_id"], "b" * 32)
+        self.assertIn("b" * 32, status["next_steps"][0])
+        with (
+            patch.object(creo_startup.Settings, "load", return_value=settings),
+            patch.object(creo_startup, "process_snapshot", return_value={}),
+            patch.object(bridge, "session_status", side_effect=locked),
+        ):
+            explicit = startup.session_status()
+        self.assertEqual(explicit["connection_state"], "panel_session_locked")
+        self.assertEqual(explicit["startup"]["next_steps"], status["next_steps"])
+        self.assertFalse(explicit["live_probe"]["performed"])
 
     def test_get_job_exposes_owner_liveness_for_dead_runner(self):
         job_id = "2" * 32

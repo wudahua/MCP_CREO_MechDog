@@ -1,9 +1,7 @@
 """FEAT-039/W01: the endpoint weld contract, policy layer.
 
-Python decides which endpoint pairs may be welded and reports the evidence; it
-never moves geometry and never pretends the kernel welded anything. The native
-solver does the real coincidence work, so until that exists the ``weld``
-policy is refused and the receipt says so.
+Python plans native coordinate regularisation and reports measured pair counts.
+Explicit snap_endpoints may rewrite request coordinates within the supplied bound.
 
 The endpoint view is the one the profile diagnostics already use: the curves
 come from :mod:`creo_mechdog.profile_diagnostics`, so this module adds no
@@ -989,6 +987,26 @@ def prepare_operations(operations: list[dict[str, Any]]) -> list[dict[str, Any]]
                     f"{eligibility['blocking_pairs']} endpoint join(s) cannot be welded by the "
                     f"policy layer ({sample}). " + eligibility_summary(eligibility)
                 )
+            if (
+                not snap
+                and eligibility["verdict"] == "not_needed"
+                and any(entity.get("type") == "arc" for entity in operation["entities"])
+            ):
+                # Native regularisation supports lines. Check the finer explicit
+                # snap scale so an arc seam cannot silently receive an empty plan.
+                entities = operation["entities"]
+                _, candidates, _, _ = _plan(
+                    entities,
+                    operation.get("max_endpoint_move_mm"),
+                    cluster_tol,
+                    min_gap_mm=EXACT_TOLERANCE_MM,
+                )
+                if any(not pair["arc_consistent"] for pair in candidates):
+                    raise ValueError(
+                        "endpoint policy weld cannot regularise arc-arc seams in the native "
+                        "worker. Use snap_endpoints=true with max_endpoint_move_mm to request "
+                        "bounded coordinate rewriting."
+                    )
             # The weld policy hands the native side the pairs to regularise.
             # Python still decides and still reports; the native side owns the
             # coordinates it writes.
@@ -1023,7 +1041,7 @@ def annotate_result(result: dict[str, Any], operations: list[dict[str, Any]]) ->
         policy = operation.get("endpoint_policy", "report")
         stored = operation.get("snap_endpoint_receipt")
         if isinstance(stored, dict):
-            receipt = stored
+            receipt = dict(stored)
         else:
             receipt = prepare_endpoint_weld(
                 operation.get("entities", []),
@@ -1039,4 +1057,20 @@ def annotate_result(result: dict[str, Any], operations: list[dict[str, Any]]) ->
             continue
         native_block = entry.get("endpoint_weld_native")
         receipt["native"] = native_block if isinstance(native_block, dict) else None
+        native_details = native_block if isinstance(native_block, dict) else {}
+        native_count = native_details.get("applied_pairs", 0)
+        snap_count = receipt["snap"].get("applied_pair_count", 0)
+        receipt["snap_applied_pairs"] = snap_count
+        receipt["native_applied"] = native_count > 0
+        receipt["welded_pairs"] = native_count
+        if native_count:
+            receipt["applied"] = True
+            receipt["applied_by"] = "python_request_rewrite_and_native" if snap_count else "native"
+            receipt["note"] = "Native coordinate regularisation is reported in the native block."
+        elif policy == "weld" and not snap_count:
+            receipt["failure_reason"] = (
+                "native_pairs_skipped"
+                if native_details.get("skipped")
+                else "no_native_pairs_applied"
+            )
         entry["endpoint_weld"] = receipt
