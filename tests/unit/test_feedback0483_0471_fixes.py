@@ -176,6 +176,23 @@ class Bug199LifecycleAndRecoveryTests(unittest.TestCase):
         self.assertIs(proc2, fake_proc)
         self.assertFalse(detached2)
 
+    @unittest.skipUnless(os.name == "nt", "Windows Job Object detach semantics")
+    def test_replaced_default_process_factory_never_launches_via_explorer(self):
+        command = ["python.exe", str(self.root / "bridge.py"), "run-job", "a" * 32]
+        with (
+            patch.dict(os.environ, {"MECHDOG_DISABLE_DESKTOP_DETACH": "0"}),
+            patch.object(bridge, "_process_in_job", return_value=True),
+            patch.object(bridge, "config", return_value={"creo_worker_launch": "auto"}),
+            patch.object(bridge.subprocess, "Popen") as factory,
+            patch.object(desktop_worker, "launch_detached_command") as launch,
+            (self.root / "runner.log").open("ab") as log_file,
+        ):
+            proc, _ = bridge.spawn_detached_runner(command, cwd=self.root, log_file=log_file)
+        self.assertIs(proc, factory.return_value)
+        factory.assert_called_once()
+        self.assertEqual(factory.call_args.args, (command,))
+        launch.assert_not_called()
+
     def test_explorer_shell_rejects_zero_tid_as_desktop_unverified(self):
         fake_desktop = MagicMock()
         fake_desktop.HWND = 65856

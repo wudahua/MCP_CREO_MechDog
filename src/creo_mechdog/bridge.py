@@ -101,8 +101,8 @@ def spawn_detached_runner(command: list[str], *, cwd: Path, log_file, popen=None
     ``IsProcessInJob`` whether the spawned child actually escaped any enclosing
     Job Object so ``detached_from_job`` is never overstated.
     """
-    factory = popen or subprocess.Popen
-    is_real_popen = popen is None or popen is _REAL_POPEN
+    factory = subprocess.Popen if popen is None else popen
+    is_real_popen = factory is _REAL_POPEN
     if os.name != "nt":
         proc = factory(
             command,
