@@ -8,7 +8,7 @@
 
 诊断交付不等于根因修复；部分交付不关整卡；缺其他版本证据不自动判未修。观察项等自然新现场，不制造故障。已完成且无保留范围的行移入 [完成档案](BACKLOG_COMPLETED.md#已完成事项)。原进展/证据保留日期，不再回填第二份待办。小修复沿用卡与证据，复杂跨模块任务才另建完整计划。
 
-当前唯一 ID **281**（BUG **147**、FEAT **90**、DEV **44**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
+当前唯一 ID **284**（BUG **149**、FEAT **90**、DEV **45**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
 
 | 当前分类 | 唯一 ID 数 |
 | --- | --- |
@@ -17,7 +17,7 @@
 | 已有修复但待验收 | 93 |
 | 观察中 | 3 |
 | 其它 agent 处理范围 | 20 |
-| 开发中 | 0 |
+| 开发中 | 3 |
 | 部分交付，剩余待验收 | 62 |
 | 部分交付，剩余待规划 | 17 |
 | 待规划 | 52 |
@@ -205,6 +205,9 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
+| [BUG-202](work-items/BUG-202.md) | P1 | 开发中 | 未排期 | 面板锁恢复指引与无会话恢复准入。 |
+| [DEV-113](work-items/DEV-113.md) | P1 | 开发中 | 未排期 | 同刻度重试测试的确定性同步。 |
+| [BUG-203](work-items/BUG-203.md) | P1 | 开发中 | 未排期 | 草图焊接公开输入及实际执行回执。 |
 
 ## 部分交付，剩余待验收
 
@@ -356,6 +359,8 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [FEAT-087](work-items/FEAT-087.md) | P1 | 待规划 | 未排期 | 按重建镜像特征的一等操作，公开反射帧规则；保留 `PRO_FEATURE` 挂死拒绝。 |
 
 ## 近期动态
+
+2026-11-28：[三份 0.48.3 外部反馈](validation/feedback-0.48.3-2026-11-28/SOURCE_MANIFEST.json)。第一批见开发中三卡。后续依次复核放样回调与曲面、种子范围及已有件追加（BUG-193、BUG-154）；混合弧标注与椭圆、精确样条切除、布尔实体引用（BUG-194、BUG-153、FEAT-014）；其余为轮廓限制说明、作业与会话摘要、定向预览（原报告 P9–P12），均待排期。
 
 2026-11-28（0.49.0 MINOR，公开工具 112）：逐字节归档 0.47.1 / 0.48.3 两份反馈原件至 [feedback-0.47.1-0.48.3-2026-11-27](validation/feedback-0.47.1-0.48.3-2026-11-27/SOURCE_MANIFEST.json)，交付 [BUG-198](work-items/BUG-198.md)（Windows JSON 原子替换瞬时 WinError 5 重试与 `.tmp` 清理）、[BUG-199](work-items/BUG-199.md)（runner Job Object 实测与 Explorer 脱离、`owner_liveness`、`cancel_job` PID/128、`confirm_panel_closed` 死所有者解锁及模态框观测）、[BUG-200](work-items/BUG-200.md)（可配自适应 `utility_worker_timeout_seconds` 及超时强杀证据）、[BUG-201](work-items/BUG-201.md)（`direct_blend_callback.readiness` 口径统一、`startup_in_progress` 消歧、UTF-8 stderr 与提示补全）与 [FEAT-093](work-items/FEAT-093.md)（`ExtrudeOp.depth2` 双向不等深拉伸、`datum_planes[].name` 与 `cut_scope` 实体级边界说明）；本机 Creo 10.0.0.0 实机与离线门禁全通过。 [版本说明](release-notes/RELEASE_NOTES_0.49.0.md) · [发布记录](validation/RELEASE-0.49.0.md)
 

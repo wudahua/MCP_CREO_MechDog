@@ -137,3 +137,5 @@ references/creo9.0.0.0-sdk/includes.zip -text -diff
 references/creo10.0.0.0-sdk/includes/** -text -diff
 references/creo9.0.0.0-sdk/README.md text eol=lf
 references/creo10.0.0.0-sdk/README.md text eol=lf
+
+docs/validation/feedback-0.48.3-2026-11-28/originals/** -text

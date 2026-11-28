@@ -1,0 +1,45 @@
+{
+  "archived_at": "2026-11-28",
+  "feedback_versions": [
+    "0.48.3"
+  ],
+  "files": [
+    {
+      "source_filename": "2026-11-28CREO10.0.0.0-0.48.3-DEV108同刻度重试单测固定2秒join在并发负载下仍随机失败.md",
+      "archived_path": "originals/startup-retry.md",
+      "bytes": 10375,
+      "sha256": "f7c751bca3937c9e9c718110d3fe423a7a5ad825bbb3428645b7f3f18b9ba695",
+      "work_items": [
+        "DEV-113"
+      ]
+    },
+    {
+      "source_filename": "2026-11-28CREO10.0.0.0-0.48.3-放样回调未加载与崩溃残留锁阻断启动共12项.md",
+      "archived_path": "originals/recovery-and-modeling.md",
+      "bytes": 14872,
+      "sha256": "e78abbcf7ce7d2cc75d0728fc5b39b943a0dcea53854a9685e2294aac930a77a",
+      "work_items": [
+        "BUG-202",
+        "BUG-199",
+        "BUG-193",
+        "BUG-154",
+        "BUG-194",
+        "BUG-153",
+        "FEAT-014",
+        "BUG-197"
+      ]
+    },
+    {
+      "source_filename": "20261128_CREO_v0.48.3_端点焊接新字段空转_曲面放样仍不可用_无回调放样仅支持6段.md",
+      "archived_path": "originals/weld-and-loft.md",
+      "bytes": 12905,
+      "sha256": "6823eb1755b45e089c1f5e5bbc3c0a81ae75405f88a2c7a87cb03aa7d5fbb11e",
+      "work_items": [
+        "BUG-203",
+        "FEAT-090",
+        "BUG-193",
+        "BUG-154"
+      ]
+    }
+  ]
+}
