@@ -13,6 +13,22 @@
 
 种子包 SHA256 为 `db2adcbb8893dd64194a22b9079f2350d1f87797ce9d178bc0d57d7dc3565b35`。源码包和种子包的摘要分别记录在同名 sidecar。远端校验发布后执行，当前未验证。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.50.1)
 
+### v0.50.1 发布后核对
+
+- 发布记录：Release `461548538`（非 draft、非 prerelease），发布时间 `2026-11-28T12:37:01Z`，核对时间 `2026-11-28T13:21:50Z`（`2026-11-28T21:21:50+08:00`），附注标签 `v0.50.1`（标签对象 `1451b105c4581df8ccecd130f834070fca052748` -> 主干提交 `2779c3674fe28e3b4f6a86ea7625459069c01eec`）。
+- 远端核对：`gh api repos/wudahua/MCP_CREO_MechDog/releases/tags/v0.50.1` 返回四个 `state=uploaded` 附件，API `digest` 与本地打包产物逐一一致。自动下载通道限速中断后，种子包与两个 sidecar 改用 `gh release download v0.50.1` 取得，源码包以 `curl -C -` 续传补齐；四件本地重算摘要均与 API `digest` 一致。随后 `$env:PYTHONUTF8="1"; .\.venv\Scripts\python.exe tools\check_release_assets.py --tag v0.50.1 --dir build\release-assets\v0.50.1 --body-file build\release-0.50.1\release-body.md` 退出码 0（`local_verified: four assets present; both sidecars match (version 0.50.1); release body self-proof verified`）。
+- 本机候选工作树（`dirty=true`，提交 `2779c367` 前）：`tools/dev_check.py --skip-unit` 通过（0 lint / 0 unformatted、71 个 C++ 与 617 个 Python 文件、3/3 离线验收、`checked_source_sha256=32562da41a2a7bc05e36003a23f2bde2f9ec9e045b5ebb469ec04f1df08696b3`）；`tools/test_unit.py` 全量通过（4,615 项，6 跳过，0 失败，0 错误，`run_id=8ef443c4c1a147cd8639ea450cff591c`、`source_fingerprint=3910ee201388159f4bdca4d0a8186ef352eb9031be2714d2e0caf26d07937549`）；源码 ZIP 解包至独立目录（无 `.git/`，`git_status="unavailable"`）在隔离 venv 下通过 `tools/test_unit.py`（4,607 项，15 跳过，0 失败，0 错误，`run_id=b0171a5d733d49c3a18e5986fbed814d`、`source_fingerprint=cc0b5d296895d83ccc365ae38778dab4e0e667c0cfd51e2e9f518274d95c755d`、`source_file_count=688`）。
+- 托管 Windows CI（`main` 提交 `2779c3674fe28e3b4f6a86ea7625459069c01eec`）：[运行 46145094110](https://github.com/wudahua/MCP_CREO_MechDog/actions/runs/46145094110) 通过，`Ran 4607 tests`、`OK (skipped=10)`、0 lint / 0 unformatted、3/3 离线验收通过。
+
+| 附件 | 字节数 | API digest 与下载重算 SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.50.1-seed-library.zip` | 493442 | `db2adcbb8893dd64194a22b9079f2350d1f87797ce9d178bc0d57d7dc3565b35` |
+| `MCP_CREO_MechDog-0.50.1-seed-library.zip.sha256` | 107 | `d4e4f022725eb2e12d8135bb46de98d52166099abf4abee5b79a97ef7538c184` |
+| `MCP_CREO_MechDog-0.50.1-source.zip` | 11538048 | `84279808b525fe05cf8134f60664cd40b096800be9ca969e529f648608e52880` |
+| `MCP_CREO_MechDog-0.50.1-source.zip.sha256` | 101 | `a88720d32e9445cc15b55ab1003b6d02b3c9a489f575c81d8336537a88a1ac34` |
+
+- 未测范围：本版仅涉及启动器与单元测试隔离，未进行 Creo 建模；Creo 9 / 12.4 实机与外部 WorkBuddy 黑盒未测。
+
 ## v0.50.0（2026-11-28，打包时点）
 
 交付 [BUG-202](../work-items/BUG-202.md)–[BUG-209](../work-items/BUG-209.md)、[DEV-113](../work-items/DEV-113.md)、[FEAT-094](../work-items/FEAT-094.md) 与 [FEAT-095](../work-items/FEAT-095.md)（面板锁与无会话恢复、重试单测事件同步、草图公开 `weld_pairs` 分离、Creo 10 回调冷启动与 `element_tree` 前置拒绝、种子矩阵、`coordinates` 椭圆标注与 `auto` 回退、布尔初始体 `-5778` 支持、轮廓冲突前置披露与状态轮询 `compact` 精简输出）。[版本说明](../release-notes/RELEASE_NOTES_0.50.0.md) · [发布记录](../validation/RELEASE-0.50.0.md)
