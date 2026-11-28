@@ -13,6 +13,22 @@
 
 种子包 SHA256 为 `b0f87bb3eac0240f66147d417c84e3e34661b283c0b1e8e8e3e3c0a6c85dc6da`。源码包和种子包的摘要分别记录在同名 sidecar。远端校验发布后执行，当前未验证。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.50.0)
 
+### v0.50.0 发布后核对
+
+- 发布记录：Release `461462034`（非 draft、非 prerelease），发布时间 `2026-11-28T10:04:20Z`，核对时间 `2026-11-28T10:13:31Z`（`2026-11-28T18:13:31+08:00`），附注标签 `v0.50.0`（标签对象 `3ee2d1e348094c5e8202173dcb5c6641b0f39ff1` -> 主干提交 `16386157e477b424737cccf66076a3c8f204a036`）。
+- 远端核对命令：`$env:PYTHONUTF8="1"; .\.venv\Scripts\python.exe tools\check_release_assets.py --tag v0.50.0`，退出码 0（`v0.50.0: four assets downloaded and verified; both sidecars match; release body self-proof verified`），与 `gh api repos/wudahua/MCP_CREO_MechDog/releases/tags/v0.50.0` `digest` 及本地打包摘要逐一匹配。
+- 干净 `main`（`16386157e477b424737cccf66076a3c8f204a036`）本机验证：`tools/dev_check.py --skip-unit` 通过（`dirty=false`、`checked_source_sha256=bb6c636e93f570543361f15643b1181d537b4babe395dcdbda729698772aa2a3`、0 lint / 0 unformatted、`71` C++ 与 `617` Python 文件、`3/3` 离线验收通过）；`tools/test_unit.py` 全量通过（`4,614` 项，`6` 跳过，`0` 失败，`0` 错误，`run_id=0112f454e9474958aac66bff63dfe012`、`source_fingerprint=cd54365166ac4b5c510d0b7d045374a8bf83f4c5e195d88faa17717e5f4e48fd`）；解包源码 ZIP（DEV-075）在独立隔离临时 `.venv` 下通过 `tools/test_unit.py`（`4,606` 项，`15` 跳过，`0` 失败，`0` 错误，`run_id=ea85cfd0ff884a45952742fa937d8543`、`source_fingerprint=24427d5b52af9b723a8458d0b669bcccec8d12c1b45bee60cc36a74da42b4cf0`、`git_status="unavailable"`、`source_file_count=688`）；本机 Creo 10.0.0.0（`release_numeric=42`、`worker_sha256=3b96c175d735941e804c2444db005eb177edcd57c55fc0f495b0ce6aeb6e4469`）完成 `BUG-202` 面板锁与无 Creo 会话恢复拒绝、`BUG-203` 40 弧 `weld+snap`（`184.9802 mm³`）、`BUG-204` 冷启动 `not_loaded` 对照、`BUG-205` `element_tree` 前置拒绝、`BUG-206` 9 种子清单与 `5/straight` 拒绝、`BUG-207` 混合圆弧与偏置椭圆（`max_deviation_mm=0.0`、`6635.0333 mm³`）、`BUG-153` B 样条精准切除（`1049.9832 mm³`）、`BUG-208` `-5778 + 135` 布尔（`4625.0 mm³`）与空 `-5778` 拒绝/`pos+pos`（`12000.0 mm³`）、`BUG-209` 轮廓冲突前置拒绝与嵌套方环（`1680.0 mm³`）、`FEAT-095` 状态 `compact` 精简实测、`FEAT-082` `120×60×45` 多视角 JPEG（`top`/`right`/`back`）及 4 项回归实机验收并保存重载验证。
+- 托管 Windows CI（`main` 提交 `16386157e477b424737cccf66076a3c8f204a036`）：[运行 46133390927](https://github.com/wudahua/MCP_CREO_MechDog/actions/runs/46133390927) 风格检查（`0` lint / `0` unformatted）与 `3/3` 离线验收通过，单元阶段报 2 例临时目录清理 `PermissionError: [WinError 32]`/`[WinError 5]` 错误（含 `.tmp\bug009_7to12_gz`，`errors=2, skipped=10`），整体状态 `completed / failure`（如实记录，本机干净 `main` 与解包源码 ZIP 均全过）。
+
+| 附件 | 字节数 | API digest 与下载重算 SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.50.0-seed-library.zip` | 493442 | `b0f87bb3eac0240f66147d417c84e3e34661b283c0b1e8e8e3e3c0a6c85dc6da` |
+| `MCP_CREO_MechDog-0.50.0-seed-library.zip.sha256` | 107 | `f09038c3c637b6187a3eefce2ea81ff045de3d68138c8ad17976ac2fb38ad39b` |
+| `MCP_CREO_MechDog-0.50.0-source.zip` | 11530667 | `7af39e5a896a40a3d319665b38b206dc0a3ce58a68d480f43fe64092ef1a712c` |
+| `MCP_CREO_MechDog-0.50.0-source.zip.sha256` | 101 | `d1bad84903c1aacb5f8721e21d0a7c8546b1b279897eb3e78ed283cf7edb043a` |
+
+- 未测范围：隔离执行桌面无法交互操作 Creo GUI `Tools → Auxiliary Applications → Start`，故回调已加载态下 3 项（最小 `creo_loft`、`resident_panel` 100 mm² 曲面与同 `model_id` 已有零件追加）需在交互桌面手动启动回调后补验；原外部 `scripts/gear10.json`（仓库未附带）、Creo 9 / 12.4 与外部 WorkBuddy 黑盒验收单列未测。
+
 ## v0.49.0（2026-11-28，打包时点）
 
 交付 [BUG-198](../work-items/BUG-198.md)–[BUG-201](../work-items/BUG-201.md) 与 [FEAT-093](../work-items/FEAT-093.md)（Windows JSON 原子替换 WinError 5 重试、runner Job Object 脱离与死作业/面板锁解套、可配自适应 worker 超时、能力回执一致与 UTF-8 stderr、拉伸双向不等深 `depth2` 及 `datum_planes[].name`）。[版本说明](../release-notes/RELEASE_NOTES_0.49.0.md) · [发布记录](../validation/RELEASE-0.49.0.md)
