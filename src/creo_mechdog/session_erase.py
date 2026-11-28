@@ -23,7 +23,7 @@ from creo_mechdog import bridge
 from creo_mechdog import generic_bridge as general
 
 TOKEN_SECONDS = 600
-WORKER_SECONDS = 115
+WORKER_SECONDS = 300
 TARGET_TYPES = ("part", "sheetmetal", "assembly")
 TARGET_LIMIT = 50
 
@@ -89,6 +89,7 @@ def _native_request(choice: dict) -> dict:
 
 def _probe(directory: Path, manifest: dict) -> dict:
     exe = bridge.build_native()
+    timeout = bridge.utility_worker_timeout_seconds(default_seconds=WORKER_SECONDS)
     with (directory / "worker.log").open("wb") as log:
         proc = subprocess.run(
             [str(exe), "generic", str(directory)],
@@ -96,7 +97,7 @@ def _probe(directory: Path, manifest: dict) -> dict:
             env=bridge.native_environment(),
             stdout=log,
             stderr=subprocess.STDOUT,
-            timeout=WORKER_SECONDS,
+            timeout=timeout,
             creationflags=bridge.HIDDEN,
         )
     result = bridge.read_json(directory / "native_result.json")
@@ -263,15 +264,16 @@ def _apply(evidence_token: str, idempotency_key: str) -> dict:
                 durable=True,
             )
             with (directory / "runner.log").open("ab") as log:
-                subprocess.Popen(
+                proc, detached = bridge.spawn_detached_runner(
                     [sys.executable, str(bridge.ROOT / "bridge.py"), "run-job", job_id],
                     cwd=bridge.ROOT,
-                    stdin=subprocess.DEVNULL,
-                    stdout=log,
-                    stderr=subprocess.STDOUT,
-                    creationflags=bridge.HIDDEN,
-                    close_fds=True,
+                    log_file=log,
+                    popen=subprocess.Popen,
                 )
+            manifest["runner_detached_from_job"] = detached
+            if proc is not None and isinstance(getattr(proc, "pid", None), int):
+                manifest["runner_pid"] = proc.pid
+            bridge.write_json(directory / "job.json", manifest, durable=True)
         except Exception as error:
             manifest.update(status="failed", message=str(error), finished_at=bridge.now())
             if (directory / "job.json").is_file():

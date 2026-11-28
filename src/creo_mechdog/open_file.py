@@ -20,7 +20,7 @@ from pathlib import Path, PureWindowsPath
 
 from creo_mechdog import bridge
 
-WORKER_SECONDS = 115
+WORKER_SECONDS = 300
 KIND_BY_EXTENSION = {"prt": "part", "asm": "assembly"}
 
 
@@ -149,9 +149,11 @@ def _native_request(choice: dict) -> dict:
     }
 
 
-def open_file(file_path: str, idempotency_key: str) -> dict:
+def open_file(file_path: str, idempotency_key: str, timeout_seconds: int | None = None) -> dict:
     """Submit one read-only open; poll the returned job_id with creo_get_job."""
     _key(idempotency_key)
+    if timeout_seconds is not None:
+        timeout_seconds = bridge.utility_worker_timeout_seconds(timeout_seconds=timeout_seconds)
     selected, kind, version = select_file(file_path)
     arguments = {
         "file_path": file_path,
@@ -168,6 +170,11 @@ def open_file(file_path: str, idempotency_key: str) -> dict:
                 raise ValueError("Idempotency key already belongs to another open-file request")
             return bridge.get_job(existing["job_id"], "compact")
         before = _identity(selected)
+        effective_timeout = bridge.utility_worker_timeout_seconds(
+            file_size_bytes=before.get("size_bytes"),
+            timeout_seconds=timeout_seconds,
+            default_seconds=WORKER_SECONDS,
+        )
         job_id = uuid.uuid4().hex
         directory = bridge.job_path(job_id)
         manifest = {
@@ -179,6 +186,7 @@ def open_file(file_path: str, idempotency_key: str) -> dict:
             "idempotency_key": idempotency_key,
             "created_at": bridge.now(),
             "stage": "intent_persisted",
+            "timeout_seconds": effective_timeout,
             "message": "Open-file request accepted; poll this job_id",
         }
         choice = {
@@ -203,15 +211,16 @@ def open_file(file_path: str, idempotency_key: str) -> dict:
                 durable=True,
             )
             with (directory / "runner.log").open("ab") as log:
-                subprocess.Popen(
+                proc, detached = bridge.spawn_detached_runner(
                     [sys.executable, str(bridge.ROOT / "bridge.py"), "run-job", job_id],
                     cwd=bridge.ROOT,
-                    stdin=subprocess.DEVNULL,
-                    stdout=log,
-                    stderr=subprocess.STDOUT,
-                    creationflags=bridge.HIDDEN,
-                    close_fds=True,
+                    log_file=log,
+                    popen=subprocess.Popen,
                 )
+            manifest["runner_detached_from_job"] = detached
+            if proc is not None and isinstance(getattr(proc, "pid", None), int):
+                manifest["runner_pid"] = proc.pid
+            bridge.write_json(directory / "job.json", manifest, durable=True)
         except Exception as error:
             manifest.update(status="failed", message=str(error), finished_at=bridge.now())
             if (directory / "job.json").is_file():
@@ -233,6 +242,10 @@ def run(job_id: str, manifest: dict) -> None:
             manifest["worker_started"] = True
             worker_started = True
             bridge.write_json(directory / "job.json", manifest, durable=True)
+            timeout = manifest.get("timeout_seconds")
+            if not isinstance(timeout, int) or isinstance(timeout, bool) or timeout <= 0:
+                timeout = bridge.utility_worker_timeout_seconds(default_seconds=WORKER_SECONDS)
+            manifest["timeout_seconds"] = timeout
             with (directory / "worker.log").open("wb") as log:
                 proc = subprocess.run(
                     [str(exe), "generic", str(directory)],
@@ -240,7 +253,7 @@ def run(job_id: str, manifest: dict) -> None:
                     env=bridge.native_environment(),
                     stdout=log,
                     stderr=subprocess.STDOUT,
-                    timeout=WORKER_SECONDS,
+                    timeout=timeout,
                     creationflags=bridge.HIDDEN,
                 )
             result = _read(directory / "native_result.json")
@@ -290,6 +303,7 @@ def run(job_id: str, manifest: dict) -> None:
                 except (OSError, ValueError):
                     pass  # Informational only; never fail a successful open.
     except subprocess.TimeoutExpired:
+        manifest["worker_terminated_on_timeout"] = True
         manifest.update(
             status="unknown_outcome",
             message=(

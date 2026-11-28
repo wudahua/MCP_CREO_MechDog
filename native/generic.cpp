@@ -1191,7 +1191,7 @@ static const char *body_state_name(ProSolidBodyState state) {
 
 // BUG-172: quiet datum-plane collection (same Plane records as datum_cb/geom_cb
 // without emitting one fflush()'d line per datum plane).
-static ProError geom_cb_quiet(ProGeomitem *gi, ProError status, ProAppData) {
+static ProError geom_cb_quiet(ProGeomitem *gi, ProError status, ProAppData data) {
     if (status)
         return PRO_TK_NO_ERROR;
     ProGeomitemdata *d = nullptr;
@@ -1201,6 +1201,10 @@ static ProError geom_cb_quiet(ProGeomitem *gi, ProError status, ProAppData) {
             const ProPlanedata &p = d->data.p_surface_data->srf_shape.plane;
             Plane q = {};
             q.id = gi->id;
+            if (auto *meta = static_cast<const DatumPlaneMeta *>(data)) {
+                q.feature_id = meta->feature_id;
+                q.name = meta->name;
+            }
             memcpy(q.n, p.e3, sizeof(q.n));
             memcpy(q.o, p.origin, sizeof(q.o));
             planes.push_back(q);
@@ -1211,8 +1215,13 @@ static ProError geom_cb_quiet(ProGeomitem *gi, ProError status, ProAppData) {
 }
 static ProError datum_cb_quiet(ProFeature *f, ProError status, ProAppData) {
     ProFeattype type;
-    if (!status && ProFeatureTypeGet(f, &type) == PRO_TK_NO_ERROR && type == PRO_FEAT_DATUM)
-        ProFeatureGeomitemVisit(f, PRO_SURFACE, geom_cb_quiet, nullptr, nullptr);
+    if (!status && ProFeatureTypeGet(f, &type) == PRO_TK_NO_ERROR && type == PRO_FEAT_DATUM) {
+        DatumPlaneMeta meta = {f->id, ""};
+        ProName wname = L"";
+        if (ProModelitemNameGet(f, wname) == PRO_TK_NO_ERROR && wname[0])
+            meta.name = utf8(wname);
+        ProFeatureGeomitemVisit(f, PRO_SURFACE, geom_cb_quiet, nullptr, &meta);
+    }
     return PRO_TK_NO_ERROR;
 }
 static void collect_datum_planes_quiet() {
@@ -1623,8 +1632,12 @@ static J inspection(bool require_healthy) {
     solid_bounds::inspect((ProSolid)board, isasm, length_scale, result);
     collect_datum_planes_quiet();
     J ds = J::array();
-    for (auto p : planes)
-        ds.push_back({{"id", p.id}, {"normal", xyz(p.n)}, {"origin", xyz(p.o)}});
+    for (const auto &p : planes)
+        ds.push_back({{"id", p.id},
+                      {"feature_id", p.feature_id},
+                      {"name", p.name},
+                      {"normal", xyz(p.n)},
+                      {"origin", xyz(p.o)}});
     result["datum_planes"] = ds;
     ProModelitem owner;
     CK(ProMdlToModelitem(board, &owner));
@@ -5215,12 +5228,17 @@ static J extrude_or_revolve(const J &op, bool revolve) {
         ProElement dep = node(root, PRO_E_STD_EXT_DEPTH), from = node(dep, PRO_E_EXT_DEPTH_FROM),
                    to = node(dep, PRO_E_EXT_DEPTH_TO);
         bool through_all = op.value("depth_type", "blind") == "through_all";
+        bool has_depth2 = !through_all && direction != "symmetric" && op.contains("depth2") &&
+                          op["depth2"].is_number();
         // A symmetric through-all cut must pierce both directions; TO_ALL with
         // FROM_NONE only removes material on one side (measured as half the
         // expected volume in the T05 acceptance matrix).
         integer(from, PRO_E_EXT_DEPTH_FROM_TYPE,
                 through_all && direction == "symmetric" ? PRO_EXT_DEPTH_FROM_ALL
+                : has_depth2                            ? PRO_EXT_DEPTH_FROM_BLIND
                                                         : PRO_EXT_DEPTH_FROM_NONE);
+        if (has_depth2)
+            real(from, PRO_E_EXT_DEPTH_FROM_VALUE, op["depth2"].get<double>());
         integer(to, PRO_E_EXT_DEPTH_TO_TYPE,
                 through_all                ? PRO_EXT_DEPTH_TO_ALL
                 : direction == "symmetric" ? PRO_EXT_DEPTH_SYMMETRIC
@@ -6004,6 +6022,28 @@ static J extrude_depth_report(ProFeature &f, const J &op) {
                 block["effective_depth_mm"] = value;
             else
                 block["query_code"] = (int)(path_code ? path_code : PRO_TK_GENERAL_ERROR);
+        }
+        ProError from_code = PRO_TK_NO_ERROR;
+        ProElement from_type_elem = get_optional(
+            tree, {PRO_E_STD_EXT_DEPTH, PRO_E_EXT_DEPTH_FROM, PRO_E_EXT_DEPTH_FROM_TYPE},
+            &from_code);
+        int from_type = 0;
+        if (from_code == PRO_TK_NO_ERROR && from_type_elem &&
+            !ProElementIntegerGet(from_type_elem, nullptr, &from_type) &&
+            from_type == PRO_EXT_DEPTH_FROM_BLIND) {
+            block["requested_depth2_mm"] =
+                op.contains("depth2") && op["depth2"].is_number() ? op["depth2"] : J(nullptr);
+            ProElement from_val_elem = get_optional(
+                tree, {PRO_E_STD_EXT_DEPTH, PRO_E_EXT_DEPTH_FROM, PRO_E_EXT_DEPTH_FROM_VALUE},
+                &from_code);
+            double from_val = 0;
+            if (from_code == PRO_TK_NO_ERROR && from_val_elem &&
+                !ProElementDoubleGet(from_val_elem, nullptr, &from_val)) {
+                block["effective_depth2_mm"] = from_val;
+                if (block["effective_depth_mm"].is_number())
+                    block["effective_total_depth_mm"] =
+                        block["effective_depth_mm"].get<double>() + from_val;
+            }
         }
     } else
         block["query_code"] = (int)(path_code ? path_code : PRO_TK_GENERAL_ERROR);

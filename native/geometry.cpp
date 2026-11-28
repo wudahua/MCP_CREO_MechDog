@@ -198,10 +198,16 @@ static ProFeature create(ProElement root, ProFeatureCreateOptions opt = PRO_FEAT
 
 struct Plane {
     int id;
+    int feature_id = 0;
+    std::string name;
     double n[3], o[3];
 };
+struct DatumPlaneMeta {
+    int feature_id = 0;
+    std::string name;
+};
 static std::vector<Plane> planes;
-static ProError geom_cb(ProGeomitem *gi, ProError status, ProAppData) {
+static ProError geom_cb(ProGeomitem *gi, ProError status, ProAppData data) {
     if (status)
         return PRO_TK_NO_ERROR;
     ProGeomitemdata *d = nullptr;
@@ -211,6 +217,10 @@ static ProError geom_cb(ProGeomitem *gi, ProError status, ProAppData) {
             const ProPlanedata &p = d->data.p_surface_data->srf_shape.plane;
             Plane q = {};
             q.id = gi->id;
+            if (auto *meta = static_cast<const DatumPlaneMeta *>(data)) {
+                q.feature_id = meta->feature_id;
+                q.name = meta->name;
+            }
             memcpy(q.n, p.e3, sizeof(q.n));
             memcpy(q.o, p.origin, sizeof(q.o));
             planes.push_back(q);
@@ -223,8 +233,19 @@ static ProError geom_cb(ProGeomitem *gi, ProError status, ProAppData) {
 }
 static ProError datum_cb(ProFeature *f, ProError status, ProAppData) {
     ProFeattype type;
-    if (!status && ProFeatureTypeGet(f, &type) == PRO_TK_NO_ERROR && type == PRO_FEAT_DATUM)
-        ProFeatureGeomitemVisit(f, PRO_SURFACE, geom_cb, nullptr, nullptr);
+    if (!status && ProFeatureTypeGet(f, &type) == PRO_TK_NO_ERROR && type == PRO_FEAT_DATUM) {
+        DatumPlaneMeta meta = {f->id, ""};
+        ProName wname = L"";
+        if (ProModelitemNameGet(f, wname) == PRO_TK_NO_ERROR && wname[0]) {
+            int len = WideCharToMultiByte(CP_UTF8, 0, wname, -1, nullptr, 0, nullptr, nullptr);
+            if (len > 1) {
+                meta.name.resize(len - 1);
+                WideCharToMultiByte(CP_UTF8, 0, wname, -1, meta.name.data(), len - 1, nullptr,
+                                    nullptr);
+            }
+        }
+        ProFeatureGeomitemVisit(f, PRO_SURFACE, geom_cb, nullptr, &meta);
+    }
     return PRO_TK_NO_ERROR;
 }
 static ProError surf_cb(ProSurface s, ProError status, ProAppData) {

@@ -55,21 +55,54 @@ from creo_mechdog.session_choice import selected as selected_session
 ROOT = SOURCE_PATHS.resource_root
 JOBS = ROOT / "jobs"
 HIDDEN = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+_REAL_POPEN = subprocess.Popen
+
+
+if os.name == "nt":
+    from ctypes import wintypes as _job_wintypes
+
+    _job_kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _get_current_process = _job_kernel32.GetCurrentProcess
+    _get_current_process.argtypes = ()
+    _get_current_process.restype = _job_wintypes.HANDLE
+    _is_process_in_job = _job_kernel32.IsProcessInJob
+    _is_process_in_job.argtypes = (
+        _job_wintypes.HANDLE,
+        _job_wintypes.HANDLE,
+        ctypes.POINTER(_job_wintypes.BOOL),
+    )
+    _is_process_in_job.restype = _job_wintypes.BOOL
+
+
+def _process_in_job(handle: object | None = None) -> bool | None:
+    """True when the current (or given) Windows process is assigned to a Job Object."""
+    if os.name != "nt":
+        return False
+    if handle is None:
+        target = _get_current_process()
+    elif isinstance(handle, int) and not isinstance(handle, bool) and handle > 0:
+        target = _job_wintypes.HANDLE(handle)
+    else:
+        return None
+    in_job = _job_wintypes.BOOL()
+    if not _is_process_in_job(target, None, ctypes.byref(in_job)):
+        return None
+    return bool(in_job.value)
 
 
 def spawn_detached_runner(command: list[str], *, cwd: Path, log_file, popen=None):
-    """BUG-174: spawn a background runner detached from the client Job Object when allowed.
+    """BUG-174/BUG-199: spawn a background runner detached from the client Job Object.
 
-    On Windows, MCP stdio clients (e.g. Electron/Node wrappers) often assign the
-    server process to a Job Object with ``JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE``.
-    When that Job Object permits breakaway, passing ``CREATE_BREAKAWAY_FROM_JOB |
-    CREATE_NEW_PROCESS_GROUP`` lets the runner finish after the client disconnects.
-    When breakaway is denied (WinError 5), falls back cleanly to
-    ``CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP`` and returns
-    ``detached_from_job=False`` so the job receipt can disclose that the runner
-    depends on the client/server staying alive.
+    On Windows, MCP stdio clients often assign the server process to a Job
+    Object with ``JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE``. When running inside a
+    Job Object and launching ``bridge.py run-job``, prefer Explorer-mediated
+    launch so the runner escapes the client Job Object completely; otherwise
+    try ``CREATE_BREAKAWAY_FROM_JOB | CREATE_NEW_PROCESS_GROUP`` and verify via
+    ``IsProcessInJob`` whether the spawned child actually escaped any enclosing
+    Job Object so ``detached_from_job`` is never overstated.
     """
     factory = popen or subprocess.Popen
+    is_real_popen = popen is None or popen is _REAL_POPEN
     if os.name != "nt":
         proc = factory(
             command,
@@ -82,6 +115,30 @@ def spawn_detached_runner(command: list[str], *, cwd: Path, log_file, popen=None
             start_new_session=True,
         )
         return proc, True
+    if (
+        is_real_popen
+        and _process_in_job() is True
+        and os.environ.get("MECHDOG_DISABLE_DESKTOP_DETACH") != "1"
+        and len(command) >= 3
+        and Path(command[1]).name == "bridge.py"
+        and command[2] == "run-job"
+        and isinstance(getattr(log_file, "name", None), str)
+    ):
+        try:
+            launch_mode = config().get("creo_worker_launch", "auto")
+        except (OSError, ValueError):
+            launch_mode = "auto"
+        if launch_mode != "direct":
+            try:
+                from creo_mechdog import desktop_worker
+
+                desktop_worker.launch_detached_command(
+                    [*command, "--log-file", str(log_file.name)],
+                    cwd=cwd,
+                )
+                return None, True
+            except Exception:
+                pass
     new_group = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
     breakaway = getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0x01000000)
     try:
@@ -94,6 +151,10 @@ def spawn_detached_runner(command: list[str], *, cwd: Path, log_file, popen=None
             creationflags=HIDDEN | new_group | breakaway,
             close_fds=True,
         )
+        handle = getattr(proc, "_handle", None)
+        if is_real_popen and isinstance(handle, int):
+            in_job = _process_in_job(handle)
+            return proc, (in_job is False or in_job is None)
         return proc, True
     except OSError as exc:
         if getattr(exc, "winerror", None) != 5 and not isinstance(exc, PermissionError):
@@ -163,8 +224,10 @@ def normalize_model_name(value: str) -> str:
     return normalized
 
 
-JSON_REPLACE_TIMEOUT = 1.0
-JSON_REPLACE_MAX_ATTEMPTS = 25
+JSON_REPLACE_TIMEOUT = 4.0
+JSON_REPLACE_MAX_ATTEMPTS = 100
+JSON_UNLINK_RETRY_TIMEOUT = 0.5
+JSON_UNLINK_MAX_ATTEMPTS = 10
 
 if os.name == "nt":
     from ctypes import wintypes
@@ -268,6 +331,38 @@ def _atomic_replace(temp: Path, path: Path) -> None:
         _close_handle(handle)
 
 
+def _is_readonly_file(target: Path) -> bool:
+    """True only when ``target`` exists and carries FILE_ATTRIBUTE_READONLY.
+
+    Missing destinations (first write) or transient AV/indexer locks on stat()
+    are not proof of a permanent read-only or ACL failure.
+    """
+    try:
+        return bool(target.stat().st_file_attributes & stat.FILE_ATTRIBUTE_READONLY)
+    except OSError:
+        return False
+
+
+def _unlink_with_retry(temp: Path) -> None:
+    """Remove a writer's own temporary file, tolerating brief Windows sharing locks."""
+    deadline = time.monotonic() + JSON_UNLINK_RETRY_TIMEOUT
+    delay = 0.01
+    for attempt in range(1, JSON_UNLINK_MAX_ATTEMPTS + 1):
+        try:
+            temp.unlink(missing_ok=True)
+            return
+        except OSError as exc:
+            winerror = getattr(exc, "winerror", None)
+            retryable = os.name == "nt" and winerror in (5, 32, 33)
+            if retryable and winerror == 5 and _is_readonly_file(temp):
+                retryable = False
+            remaining = deadline - time.monotonic()
+            if not retryable or remaining <= 0 or attempt == JSON_UNLINK_MAX_ATTEMPTS:
+                raise
+            time.sleep(min(delay, remaining))
+            delay = min(delay * 2, 0.05)
+
+
 def _replace_json(temp: Path, path: Path) -> None:
     deadline = time.monotonic() + JSON_REPLACE_TIMEOUT
     delay = 0.005
@@ -278,13 +373,11 @@ def _replace_json(temp: Path, path: Path) -> None:
         except OSError as exc:
             winerror = getattr(exc, "winerror", None)
             retryable = os.name == "nt" and winerror in (5, 32, 33)
-            # WinError 5 also covers permanent ACL/read-only failures. Read-only
-            # is identifiable; ambiguous ACL/external-handle cases share a bound.
+            # WinError 5 also covers permanent ACL/read-only failures. Only a
+            # confirmed FILE_ATTRIBUTE_READONLY on path or temp is non-retryable;
+            # transient AV/indexer locks on stat() keep retryable=True within budget.
             if retryable and winerror == 5:
-                try:
-                    retryable = not (path.stat().st_file_attributes & stat.FILE_ATTRIBUTE_READONLY)
-                except OSError:
-                    retryable = False
+                retryable = not (_is_readonly_file(path) or _is_readonly_file(temp))
             remaining = deadline - time.monotonic()
             if not retryable or remaining <= 0 or attempt == JSON_REPLACE_MAX_ATTEMPTS:
                 exc.add_note(
@@ -312,7 +405,7 @@ def write_json(path: Path, value: dict, *, durable: bool = False) -> None:
     except BaseException as exc:
         if owned:
             try:
-                temp.unlink(missing_ok=True)
+                _unlink_with_retry(temp)
             except OSError as cleanup_error:
                 exc.add_note(
                     f"Could not remove this writer's temporary file {temp}: {cleanup_error}"
@@ -325,9 +418,9 @@ def _write_stamp_text(path: Path, text: str) -> None:
     temp = path.with_suffix(path.suffix + f".{uuid.uuid4().hex}.tmp")
     try:
         temp.write_text(text, encoding="utf-8")
-        os.replace(temp, path)
+        _replace_json(temp, path)
     except BaseException:
-        temp.unlink(missing_ok=True)
+        _unlink_with_retry(temp)
         raise
 
 
@@ -608,6 +701,10 @@ class ToolkitBusy(RuntimeError):
             "retry_guidance": guidance,
             "message": message or "Creo Toolkit is busy with another operation",
         }
+        if "blocking_job_status" in holder:
+            self.payload["blocking_job_status"] = holder["blocking_job_status"]
+        if "blocking_runner_alive" in holder:
+            self.payload["blocking_runner_alive"] = holder["blocking_runner_alive"]
         super().__init__(f"{self.payload['message']}. {guidance}")
 
 
@@ -874,6 +971,7 @@ def build_native() -> Path:
         "creo_startup_psf",
         "creo_startup_args",
         "creo_worker_launch",
+        "utility_worker_timeout_seconds",
     }
     settings = json.dumps(
         {key: value for key, value in c.items() if key not in startup_keys}, sort_keys=True
@@ -1943,26 +2041,49 @@ def create_job(spec: dict) -> dict:
         write_json(directory / "job.json", manifest)
         try:
             with (directory / "runner.log").open("ab") as log:
-                proc = subprocess.Popen(
+                proc, detached_from_job = spawn_detached_runner(
                     [sys.executable, str(ROOT / "bridge.py"), "run-job", job_id],
                     cwd=ROOT,
-                    stdin=subprocess.DEVNULL,
-                    stdout=log,
-                    stderr=subprocess.STDOUT,
-                    creationflags=HIDDEN,
-                    close_fds=True,
+                    log_file=log,
                 )
         except Exception as exc:
             manifest.update(status="failed", message=str(exc), finished_at=now())
             write_json(directory / "job.json", manifest)
             raise
-        write_channel_claim(job_id, operation="create_plate", runner_pid=proc.pid)
+        manifest["runner_detached_from_job"] = detached_from_job
+        if proc is not None and isinstance(getattr(proc, "pid", None), int):
+            manifest["runner_pid"] = proc.pid
+        write_json(directory / "job.json", manifest)
+        write_channel_claim(
+            job_id,
+            operation="create_plate",
+            runner_pid=getattr(proc, "pid", None),
+        )
         return manifest
 
 
 def run_job(job_id: str) -> None:
     try:
         _run_job_dispatch(job_id)
+    except BaseException as exc:
+        # Ensure an unexpected pre-dispatch or uncaught runner exception never
+        # leaves job.json stuck in queued/running with no terminal outcome.
+        try:
+            directory = job_path(job_id)
+            manifest_file = directory / "job.json"
+            if manifest_file.is_file():
+                latest = read_json(manifest_file)
+                if isinstance(latest, dict) and latest.get("status") == "queued":
+                    latest.update(
+                        status="failed",
+                        failure_phase="before_native",
+                        finished_at=now(),
+                        message=f"Runner exited unexpectedly ({type(exc).__name__}): {exc}",
+                    )
+                    write_json(manifest_file, latest, durable=True)
+        except (OSError, ValueError):
+            pass
+        raise
     finally:
         # The channel reservation outlives the submit lock (BUG-100); the
         # runner owns its release whatever terminal state it records.
@@ -1972,8 +2093,24 @@ def run_job(job_id: str) -> None:
 def _run_job_dispatch(job_id: str) -> None:
     directory = job_path(job_id)
     manifest = read_json(directory / "job.json")
-    manifest.update(runner_identity=process_identity(os.getpid()), stage="waiting_for_channel")
+    runner_pid = os.getpid()
+    manifest.update(
+        runner_pid=runner_pid,
+        runner_identity=process_identity(runner_pid),
+        worker_started=bool(manifest.get("worker_started"))
+        if manifest.get("worker_started") is not None
+        else False,
+        stage="waiting_for_channel",
+    )
     write_json(directory / "job.json", manifest)
+    claim = channel_claim()
+    if claim.get("job_id") == job_id and claim.get("runner_pid") != runner_pid:
+        write_channel_claim(
+            job_id,
+            model_id=claim.get("model_id"),
+            operation=claim.get("operation") or "execute_plan",
+            runner_pid=runner_pid,
+        )
     if manifest.get("kind") == "reconciliation":
         from creo_mechdog.reconciliation import run
 
@@ -2183,6 +2320,56 @@ def get_job(
     return view
 
 
+UTILITY_WORKER_MIN_SECONDS = 30
+UTILITY_WORKER_MAX_SECONDS = 3600
+UTILITY_WORKER_DEFAULT_SECONDS = 300
+
+
+def utility_worker_timeout_seconds(
+    *,
+    file_size_bytes: int | None = None,
+    feature_count: int | None = None,
+    timeout_seconds: int | None = None,
+    default_seconds: int = UTILITY_WORKER_DEFAULT_SECONDS,
+) -> int:
+    """Configurable and model-adaptive worker timeout for adopt/open/session tools (BUG-200)."""
+    if timeout_seconds is not None:
+        if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int):
+            raise ValueError(
+                f"timeout_seconds must be an integer from {UTILITY_WORKER_MIN_SECONDS} "
+                f"to {UTILITY_WORKER_MAX_SECONDS}"
+            )
+        if not UTILITY_WORKER_MIN_SECONDS <= timeout_seconds <= UTILITY_WORKER_MAX_SECONDS:
+            raise ValueError(
+                f"timeout_seconds must be between {UTILITY_WORKER_MIN_SECONDS} "
+                f"and {UTILITY_WORKER_MAX_SECONDS}"
+            )
+        return timeout_seconds
+    try:
+        raw_base = config().get("utility_worker_timeout_seconds", default_seconds)
+        base = int(raw_base) if not isinstance(raw_base, bool) else default_seconds
+    except (OSError, TypeError, ValueError):
+        base = default_seconds
+    size_floor = (
+        120 + file_size_bytes // (64 * 1024)
+        if isinstance(file_size_bytes, int)
+        and not isinstance(file_size_bytes, bool)
+        and file_size_bytes > 0
+        else 0
+    )
+    feature_floor = (
+        120 + feature_count // 2
+        if isinstance(feature_count, int)
+        and not isinstance(feature_count, bool)
+        and feature_count > 0
+        else 0
+    )
+    return min(
+        UTILITY_WORKER_MAX_SECONDS,
+        max(UTILITY_WORKER_MIN_SECONDS, base, size_floor, feature_floor),
+    )
+
+
 def expected_lifetime_seconds(manifest: dict) -> float:
     """How long a queued/running job may live before the watchdog calls it unknown.
 
@@ -2193,7 +2380,11 @@ def expected_lifetime_seconds(manifest: dict) -> float:
     if manifest.get("kind") in ("adoption_file", "adoption_file_inspect"):
         from creo_mechdog.file_adoption import lifetime_seconds
 
-        return lifetime_seconds(manifest["item_count"])
+        per_item = manifest.get("timeout_seconds")
+        return lifetime_seconds(
+            manifest["item_count"],
+            per_item_worker_seconds=per_item if isinstance(per_item, int) else None,
+        )
     if manifest.get("kind") in ("generic", "reconciliation", "adoption", "open_file"):
         budget = manifest.get("timeout_seconds")
         if isinstance(budget, bool) or not isinstance(budget, int) or budget <= 0:
@@ -2201,6 +2392,59 @@ def expected_lifetime_seconds(manifest: dict) -> float:
     else:
         budget = config()["native_timeout_seconds"]
     return 120 + 180 + budget + 30
+
+
+def _identity_stopped(recorded: object) -> bool | None:
+    """True when recorded {pid, created} is provably gone, False when alive, None if unknown."""
+    if not isinstance(recorded, dict):
+        return None
+    pid = recorded.get("pid")
+    created = recorded.get("created")
+    if (
+        isinstance(pid, bool)
+        or not isinstance(pid, int)
+        or pid <= 0
+        or not isinstance(created, int)
+    ):
+        return None
+    if os.name != "nt":
+        return not _pid_alive(pid)
+    try:
+        current = process_identity(pid)
+    except OSError:
+        return None
+    if not current or current.get("created") != created:
+        return True
+    return False
+
+
+def _owner_liveness(directory: Path, manifest: dict) -> dict | None:
+    """Read-only owner liveness summary for active queued/running jobs (BUG-199)."""
+    runner_id = manifest.get("runner_identity")
+    runner_stopped = _identity_stopped(runner_id)
+    if runner_stopped is None:
+        return None
+    worker_stopped: bool | None = None
+    owner_file = directory / "native_owner.json"
+    if owner_file.is_file():
+        try:
+            owner_data = read_json(owner_file)
+        except (OSError, ValueError):
+            owner_data = None
+        worker_stopped = _identity_stopped(owner_data)
+    all_dead = runner_stopped and (worker_stopped is None or worker_stopped)
+    payload: dict[str, object] = {
+        "runner_alive": not runner_stopped,
+        "worker_alive": None if worker_stopped is None else not worker_stopped,
+        "all_recorded_owners_dead": all_dead,
+    }
+    if all_dead:
+        payload["next_step"] = (
+            "Recorded runner/worker process is no longer running. Call creo_cancel_job("
+            f"job_id={manifest.get('job_id')!r}) to move this job to a terminal status "
+            "(or creo_reconcile_model if a panel guard or pending reservation remains)."
+        )
+    return payload
 
 
 def _read_job(
@@ -2280,6 +2524,10 @@ def _read_job(
                 status="unknown_outcome",
                 message="Job exceeded its expected lifetime; inspect runner.log and Creo before retrying",
             )
+    if manifest["status"] in ("queued", "running"):
+        liveness = _owner_liveness(directory, manifest)
+        if liveness is not None:
+            manifest["owner_liveness"] = liveness
     if manifest["status"] == "unknown_outcome" or manifest.get("recovery_required"):
         model = None
         if manifest.get("model_id"):
@@ -2469,6 +2717,7 @@ def compact_job(manifest: dict, sections: list[str] | None = None) -> dict:
         "inspection_warnings",
         "native_progress",
         "stall_watchdog",
+        "owner_liveness",
         # BUG-158: the budget pair travels with the compact view too; dropping it
         # here would make the terminal projection disagree with the receipt.
         "budgets",
@@ -2577,9 +2826,16 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("action", choices=["build", "status", "environment", "run-job"])
     parser.add_argument("job_id", nargs="?")
+    parser.add_argument("--log-file", default=None)
     args = parser.parse_args(argv)
     if args.action == "run-job":
-        run_job(args.job_id)
+        if args.log_file:
+            with Path(args.log_file).open("ab") as log_stream:
+                os.dup2(log_stream.fileno(), 1)
+                os.dup2(log_stream.fileno(), 2)
+                run_job(args.job_id)
+        else:
+            run_job(args.job_id)
     elif args.action == "build":
         with toolkit_lock(operation="build_native"):
             print(build_native())

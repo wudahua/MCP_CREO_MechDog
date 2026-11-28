@@ -20,6 +20,9 @@
 #define MECHDOG_PANEL_RUN_H
 
 #include <ProUICmd.h>
+#ifdef _WIN32
+#include <tlhelp32.h>
+#endif
 
 #include <algorithm>
 #include <map>
@@ -905,7 +908,9 @@ inline void generic_surface_loft_panel(const J &op) {
     // The Done command's after-execution bracket is written when its dialog finally
     // closes, which can be a few hundred milliseconds after the last ticket. Wait for
     // that event with a bounded file poll; no Toolkit task is sent.
+    bool exit_bracket_observed = false;
     if (selected >= static_cast<int>(sections.size())) {
+        log("PANEL_DONE_SUBMITTED nonce=%s selected=%d\n", nonce.c_str(), selected);
         const auto exit_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
         while (std::chrono::steady_clock::now() < exit_deadline) {
             const J state = read_panel_state();
@@ -914,9 +919,89 @@ inline void generic_surface_loft_panel(const J &op) {
             const J event = read_bracket_exit();
             if (event.is_object() && event.value("entering", 1) == 0 &&
                 event.value("nonce", "") == nonce && selected_at > 0 &&
-                event.value("at_epoch_ms", 0LL) >= selected_at)
+                event.value("at_epoch_ms", 0LL) >= selected_at) {
+                exit_bracket_observed = true;
                 break;
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        }
+        if (!exit_bracket_observed) {
+            log("PANEL_EXIT_WAIT_TIMEOUT nonce=%s wait_seconds=30\n", nonce.c_str());
+#ifdef _WIN32
+            std::set<DWORD> creo_pids;
+            HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+            if (snap != INVALID_HANDLE_VALUE) {
+                PROCESSENTRY32W entry = {};
+                entry.dwSize = sizeof(entry);
+                if (Process32FirstW(snap, &entry)) {
+                    do {
+                        std::wstring exe_name(entry.szExeFile);
+                        for (auto &ch : exe_name)
+                            ch = towlower(ch);
+                        if (exe_name == L"xtop.exe" || exe_name == L"parametric.exe")
+                            creo_pids.insert(entry.th32ProcessID);
+                    } while (Process32NextW(snap, &entry));
+                }
+                CloseHandle(snap);
+            }
+            struct ModalScan {
+                const std::set<DWORD> *pids;
+                J dialogs;
+            } scan{&creo_pids, J::array()};
+            if (!creo_pids.empty()) {
+                EnumWindows(
+                    [](HWND hwnd, LPARAM lparam) -> BOOL {
+                        auto *ctx = reinterpret_cast<ModalScan *>(lparam);
+                        if (ctx->dialogs.size() >= 8)
+                            return FALSE;
+                        DWORD pid = 0;
+                        GetWindowThreadProcessId(hwnd, &pid);
+                        if (ctx->pids->count(pid) == 0 || !IsWindowVisible(hwnd))
+                            return TRUE;
+                        wchar_t cls[64] = {};
+                        GetClassNameW(hwnd, cls, 64);
+                        bool is_dialog =
+                            wcscmp(cls, L"#32770") == 0 || GetWindow(hwnd, GW_OWNER) != nullptr;
+                        if (!is_dialog)
+                            return TRUE;
+                        std::string title;
+                        if (!IsHungAppWindow(hwnd)) {
+                            wchar_t buf[256] = {};
+                            int len = GetWindowTextW(hwnd, buf, 256);
+                            if (len > 0) {
+                                int utf8_len = WideCharToMultiByte(CP_UTF8, 0, buf, len, nullptr, 0,
+                                                                   nullptr, nullptr);
+                                if (utf8_len > 0) {
+                                    title.resize(utf8_len);
+                                    WideCharToMultiByte(CP_UTF8, 0, buf, len, title.data(),
+                                                        utf8_len, nullptr, nullptr);
+                                    if (title.size() > 120)
+                                        title.resize(120);
+                                }
+                            }
+                        }
+                        std::string cls_utf8;
+                        int cls_len =
+                            WideCharToMultiByte(CP_UTF8, 0, cls, -1, nullptr, 0, nullptr, nullptr);
+                        if (cls_len > 1) {
+                            cls_utf8.resize(cls_len - 1);
+                            WideCharToMultiByte(CP_UTF8, 0, cls, -1, cls_utf8.data(), cls_len - 1,
+                                                nullptr, nullptr);
+                        }
+                        ctx->dialogs.push_back({{"pid", (unsigned long)pid},
+                                                {"class", cls_utf8},
+                                                {"title", title},
+                                                {"hung", (bool)IsHungAppWindow(hwnd)}});
+                        return TRUE;
+                    },
+                    reinterpret_cast<LPARAM>(&scan));
+            }
+            log("PANEL_MODAL_WINDOWS=%s\n", scan.dialogs.dump().c_str());
+            if (!scan.dialogs.empty()) {
+                panel_preopen["modal_dialogs_observed"] = scan.dialogs;
+                stage_preopen();
+            }
+#endif
         }
     }
     stage_panel(selected);

@@ -26,7 +26,7 @@ from creo_mechdog.reconciliation import identity, owned_file
 
 SUPPORTED_TYPES = ("part", "sheetmetal")
 TOKEN_SECONDS = 600
-WORKER_SECONDS = 115
+WORKER_SECONDS = 300
 
 
 class AdoptionRefused(ValueError):
@@ -207,23 +207,70 @@ def _prune_removed_refs(
     return False
 
 
+def _worker_timeout_seconds(directory: Path, manifest: dict) -> int:
+    explicit = manifest.get("timeout_seconds")
+    if explicit is not None:
+        return bridge.utility_worker_timeout_seconds(timeout_seconds=explicit)
+    file_size_bytes = None
+    feature_count = None
+    try:
+        req = bridge.read_json(directory / "request.json")
+    except (OSError, ValueError):
+        req = None
+    if isinstance(req, dict):
+        choice = req.get("adoption") or {}
+        source_identity = choice.get("source_identity")
+        if isinstance(source_identity, dict) and isinstance(source_identity.get("size_bytes"), int):
+            file_size_bytes = source_identity["size_bytes"]
+        elif isinstance(choice.get("origin"), str) and choice["origin"]:
+            try:
+                file_size_bytes = Path(choice["origin"]).stat().st_size
+            except OSError:
+                pass
+        for key in ("live_inspection", "source_inspection", "inspection_summary"):
+            insp = choice.get(key)
+            if isinstance(insp, dict):
+                counts = insp.get("counts")
+                if isinstance(counts, dict) and isinstance(counts.get("features"), int):
+                    feature_count = counts["features"]
+                    break
+        if feature_count is None:
+            summary = inspection_refs.summary_of(req.get("model"))
+            counts = summary.get("counts") if isinstance(summary, dict) else None
+            if isinstance(counts, dict) and isinstance(counts.get("features"), int):
+                feature_count = counts["features"]
+    return bridge.utility_worker_timeout_seconds(
+        file_size_bytes=file_size_bytes,
+        feature_count=feature_count,
+        default_seconds=WORKER_SECONDS,
+    )
+
+
 def _native(directory: Path, manifest: dict) -> dict:
     manifest["worker_started"] = False
+    timeout = _worker_timeout_seconds(directory, manifest)
+    manifest["timeout_seconds"] = timeout
     exe = bridge.build_native()
     manifest.update(stage="adopting_native_model", status="running")
     bridge.write_json(directory / "job.json", manifest, durable=True)
     with (directory / "worker.log").open("wb") as log:
         manifest["worker_started"] = True
         bridge.write_json(directory / "job.json", manifest, durable=True)
-        proc = subprocess.run(
-            [str(exe), "generic", str(directory)],
-            cwd=directory,
-            env=bridge.native_environment(),
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            timeout=WORKER_SECONDS,
-            creationflags=bridge.HIDDEN,
-        )
+        try:
+            proc = subprocess.run(
+                [str(exe), "generic", str(directory)],
+                cwd=directory,
+                env=bridge.native_environment(),
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                timeout=timeout,
+                creationflags=bridge.HIDDEN,
+            )
+        except subprocess.TimeoutExpired:
+            # subprocess.run terminates the child before raising TimeoutExpired;
+            # record that stop proof so reconcile can release adopt_pending.
+            manifest["worker_terminated_on_timeout"] = True
+            raise
     result = _read(
         directory / "native_result.json",
         metadata_kind="native_result",
@@ -746,9 +793,13 @@ def _key(value: str) -> None:
         )
 
 
-def prepare(model_name: str | None, idempotency_key: str) -> dict:
+def prepare(
+    model_name: str | None, idempotency_key: str, *, timeout_seconds: int | None = None
+) -> dict:
     """Freeze a never-saved current model once; only apply can publish it as ready."""
     _key(idempotency_key)
+    if timeout_seconds is not None:
+        timeout_seconds = bridge.utility_worker_timeout_seconds(timeout_seconds=timeout_seconds)
     if model_name is not None:
         model_name = bridge.normalize_model_name(model_name)
     # The key deterministically locates the durable intent even when the caller
@@ -787,6 +838,8 @@ def prepare(model_name: str | None, idempotency_key: str) -> dict:
             "stage": "snapshot_intent_persisted",
             "message": "Snapshot preparation accepted; poll this job_id",
         }
+        if timeout_seconds is not None:
+            manifest["timeout_seconds"] = timeout_seconds
         try:
             (path / "output").mkdir(parents=True)
             model_registry.write_model(path, model)
@@ -811,15 +864,16 @@ def prepare(model_name: str | None, idempotency_key: str) -> dict:
             model.update(pending_job=job_id, last_job=job_id)
             model_registry.write_model(path, model)
             with (directory / "runner.log").open("ab") as log:
-                subprocess.Popen(
+                proc, detached = bridge.spawn_detached_runner(
                     [sys.executable, str(bridge.ROOT / "bridge.py"), "run-job", job_id],
                     cwd=bridge.ROOT,
-                    stdin=subprocess.DEVNULL,
-                    stdout=log,
-                    stderr=subprocess.STDOUT,
-                    creationflags=bridge.HIDDEN,
-                    close_fds=True,
+                    log_file=log,
+                    popen=subprocess.Popen,
                 )
+            manifest["runner_detached_from_job"] = detached
+            if proc is not None and isinstance(getattr(proc, "pid", None), int):
+                manifest["runner_pid"] = proc.pid
+            bridge.write_json(directory / "job.json", manifest, durable=True)
         except Exception as error:
             # No native execution was launched by a failed Popen. Keep an audited
             # failed job usable by abandon_new; never publish ready without proof.
@@ -833,11 +887,18 @@ def prepare(model_name: str | None, idempotency_key: str) -> dict:
 
 
 def apply(
-    model_id: str, evidence_token: str, model_name: str | None = None, idempotency_key: str = ""
+    model_id: str,
+    evidence_token: str,
+    model_name: str | None = None,
+    idempotency_key: str = "",
+    *,
+    timeout_seconds: int | None = None,
 ) -> dict:
     if not bridge.JOB_ID.fullmatch(model_id or ""):
         raise ValueError("Invalid model_id")
     _key(idempotency_key)
+    if timeout_seconds is not None:
+        timeout_seconds = bridge.utility_worker_timeout_seconds(timeout_seconds=timeout_seconds)
     if model_name is not None:
         model_name = bridge.normalize_model_name(model_name)
     arguments = {
@@ -904,6 +965,18 @@ def apply(
                 "revision": model["revision"],
                 "message": "Adoption accepted; poll this job_id",
             }
+            if timeout_seconds is not None:
+                manifest["timeout_seconds"] = timeout_seconds
+            else:
+                manifest["timeout_seconds"] = bridge.utility_worker_timeout_seconds(
+                    file_size_bytes=record.get("file", {}).get("size_bytes"),
+                    feature_count=(
+                        (inspection_refs.summary_of(record.get("live")) or {})
+                        .get("counts", {})
+                        .get("features")
+                    ),
+                    default_seconds=WORKER_SECONDS,
+                )
             bridge.write_json(
                 directory / "request.json", _native_request(model, choice), durable=True
             )
@@ -927,19 +1000,20 @@ def apply(
             model_registry.write_model(general.model_path(model_id), reserved)
             with (directory / "runner.log").open("ab") as log:
                 try:
-                    subprocess.Popen(
+                    proc, detached = bridge.spawn_detached_runner(
                         [sys.executable, str(bridge.ROOT / "bridge.py"), "run-job", job_id],
                         cwd=bridge.ROOT,
-                        stdin=subprocess.DEVNULL,
-                        stdout=log,
-                        stderr=subprocess.STDOUT,
-                        creationflags=bridge.HIDDEN,
-                        close_fds=True,
+                        log_file=log,
+                        popen=subprocess.Popen,
                     )
+                    manifest["runner_detached_from_job"] = detached
+                    if proc is not None and isinstance(getattr(proc, "pid", None), int):
+                        manifest["runner_pid"] = proc.pid
                 except OSError as error:
                     _record_failure(job_id, manifest, file, error, locked=True)
                     launch_error = error
             if launch_error is None:
+                bridge.write_json(directory / "job.json", manifest, durable=True)
                 return manifest
     except Exception as error:
         if launch_error is None:
@@ -1296,9 +1370,13 @@ def adopt(
     evidence_token: str | None = None,
     model_name: str | None = None,
     idempotency_key: str | None = None,
+    timeout_seconds: int | None = None,
 ) -> dict:
     if mode == "inspect":
-        if any(value is not None for value in (evidence_token, model_name, idempotency_key)):
+        if any(
+            value is not None
+            for value in (evidence_token, model_name, idempotency_key, timeout_seconds)
+        ):
             raise ValueError("Inspect takes no parameters; apply requires the inspect results")
         return inspect(model_id)
     if mode == "prepare":
@@ -1306,10 +1384,16 @@ def adopt(
             raise ValueError(
                 "prepare requires idempotency_key, optional model_name; no model_id/token"
             )
-        return prepare(model_name, idempotency_key)
+        return prepare(model_name, idempotency_key, timeout_seconds=timeout_seconds)
     if mode != "apply" or not model_id or not evidence_token or not idempotency_key:
         raise ValueError("apply requires model_id, evidence_token and idempotency_key")
-    return apply(model_id, evidence_token, model_name, idempotency_key)
+    return apply(
+        model_id,
+        evidence_token,
+        model_name,
+        idempotency_key,
+        timeout_seconds=timeout_seconds,
+    )
 
 
 def run_item_locked(job_id: str, manifest: dict, journal: Path) -> dict:

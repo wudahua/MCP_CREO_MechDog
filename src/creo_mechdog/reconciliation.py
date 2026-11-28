@@ -40,7 +40,7 @@ ACTIONS = (
 COMPONENT_ACTIONS = ("restore_baseline", "accept_saved", "accept_live", "abandon_new")
 TERMINAL_FAILURE_STATUSES = ("failed", "unknown_outcome")
 TOKEN_SECONDS = 600
-WORKER_SECONDS = 115
+WORKER_SECONDS = 300
 # BUG-157: the native recovery phase budget. restore_baseline defaults to the
 # faster identity verification; the phase itself is clamped here and again by
 # the executor, so a bad config value can neither disarm nor explode the budget.
@@ -525,6 +525,37 @@ def _owners(
     else:
         if job.get("worker_started") is False and runner["stopped"]:
             worker = {"stopped": True, "reason": "Runner ended before native worker started"}
+        elif job.get("worker_terminated_on_timeout") is True and runner["stopped"]:
+            worker = {
+                "stopped": True,
+                "reason": "Native worker was terminated by runner on timeout",
+            }
+        elif (
+            job.get("worker_started") is None
+            and runner["stopped"]
+            and job.get("stage")
+            in (
+                "queued",
+                "intent_persisted",
+                "waiting_for_channel",
+                "building_worker",
+                "cancel_requested",
+            )
+            and not any(
+                (directory / name).exists()
+                for name in (
+                    "native_owner.json",
+                    "native_checkpoint.json",
+                    "native_result.json",
+                    "worker.log",
+                    "native.log",
+                )
+            )
+        ):
+            worker = {
+                "stopped": True,
+                "reason": "Runner ended before starting any native worker (no ownership artifact)",
+            }
         elif checkpoint.get("native_pid"):
             worker = _stopped({"pid": checkpoint["native_pid"]})
         else:
@@ -822,14 +853,15 @@ def _readonly_pending(model: dict) -> dict | None:
     }
 
 
-def _panel_guard_state(model: dict) -> dict:
+def _panel_guard_state(model: dict, owners: list[dict] | None = None) -> dict:
     """The resident panel guard as it applies to this model.
 
-    BUG-120/D4.4: a guard blocks every Toolkit entry, including the actions above, so
-    the only way out is an action that takes no Toolkit call. It stays model-scoped:
-    the operator confirms a panel that a job of this model opened, and only while that
-    job has already reached a terminal status — a live runner may still be driving the
-    dialog, and confirming a panel shut from here would be a guess.
+    BUG-120/D4.4 + BUG-199: a guard blocks every Toolkit entry, including the
+    actions above, so the only way out is an action that takes no Toolkit call.
+    It stays model-scoped: the operator confirms a panel that a job of this model
+    opened, once that job reached a terminal status OR all recorded owners
+    (starting from runner_identity) are provably stopped so nothing can still
+    drive the dialog.
     """
     guard = panel_session_guard.inspect(bridge.ROOT)
     if guard is None:
@@ -844,6 +876,23 @@ def _panel_guard_state(model: dict) -> dict:
             "reason": guard.get("reason"),
         }
     job_id = guard.get("job_id")
+    mine = guard.get("model_id") == model.get("model_id")
+    owners_recorded = False
+    owners_stopped = False
+    if mine and isinstance(job_id, str) and bridge.JOB_ID.fullmatch(job_id):
+        try:
+            guard_job = bridge.read_json(bridge.job_path(job_id) / "job.json")
+        except (OSError, ValueError):
+            guard_job = None
+        if isinstance(guard_job, dict) and isinstance(guard_job.get("runner_identity"), dict):
+            owners_recorded = True
+            matched = next(
+                (entry for entry in (owners or []) if entry.get("job_id") == job_id),
+                None,
+            )
+            if matched is None:
+                matched = _owners(job_id)
+            owners_stopped = bool(matched.get("stopped"))
     return {
         "active": True,
         "readable": True,
@@ -852,7 +901,9 @@ def _panel_guard_state(model: dict) -> dict:
         "profile_id": guard.get("profile_id"),
         "since": guard.get("created_at"),
         "status": _job_status(job_id),
-        "mine": guard.get("model_id") == model.get("model_id"),
+        "mine": mine,
+        "owners_recorded": owners_recorded,
+        "owners_stopped": owners_stopped,
     }
 
 
@@ -1123,7 +1174,7 @@ def _actions(snapshot: dict, live: dict | None) -> dict:
             "idempotency key required"
         ),
     }
-    guard = _panel_guard_state(model)
+    guard = _panel_guard_state(model, snapshot.get("owners"))
     # BUG-146: a recovery intent that provably never started a runner or worker
     # holds recovery_pending forever, and every other action reports it as an
     # owner that "cannot be proven stopped". Closing it is metadata only: the
@@ -1186,12 +1237,15 @@ def _actions(snapshot: dict, live: dict | None) -> dict:
         "recovery_job_status": rec_job_status,
         "baseline_hash_verified": baseline.get("verified") if has_saved_file else None,
     }
+    panel_job_done_or_dead = guard.get("status") in terminal or (
+        guard.get("owners_recorded") is True and guard.get("owners_stopped") is True
+    )
     states["confirm_panel_closed"] = {
         "available": bool(
             guard.get("active")
             and guard.get("readable")
             and guard.get("mine")
-            and guard.get("status") in terminal
+            and panel_job_done_or_dead
         ),
         "reason": (
             "No resident panel guard holds the Creo session"
@@ -1203,6 +1257,10 @@ def _actions(snapshot: dict, live: dict | None) -> dict:
             if not guard.get("mine")
             else "The panel job has not reached a terminal status, so the dialog may still be "
             "driven; retry after the job ends"
+            if not panel_job_done_or_dead
+            else "Explicit apply with confirm_panel_closed=true, matching evidence, and all "
+            "recorded owners stopped (job still non-terminal; cancel/reconcile pending_job "
+            "afterwards if needed)"
             if guard.get("status") not in terminal
             else "Explicit apply with confirm_panel_closed=true, matching evidence and an "
             "idempotency key required"
@@ -1242,7 +1300,7 @@ def _native(directory: Path, manifest: dict) -> dict:
     bridge.write_json(directory / "job.json", manifest, durable=True)
     # BUG-157: the executor owns the recovery phase budget; this wrapper must
     # not terminate a healthy worker before that budget expires.
-    timeout = WORKER_SECONDS
+    timeout = bridge.utility_worker_timeout_seconds(default_seconds=WORKER_SECONDS)
     try:
         phase = int(bridge.read_json(directory / "request.json").get("recovery_phase_seconds", 0))
     except (OSError, ValueError, TypeError):
@@ -1566,6 +1624,7 @@ def _retire_panel_guard(model_id: str, record: dict, idempotency_key: str) -> di
             f"The active panel guard belongs to model {guard.get('model_id')!r}, not {model_id!r}; "
             "confirm the panel on the model whose job opened it"
         )
+    guard_state = _panel_guard_state(record["snapshot"]["model"], record["snapshot"].get("owners"))
     try:
         retired = panel_session_guard.retire(
             guard["job_id"],
@@ -1579,6 +1638,8 @@ def _retire_panel_guard(model_id: str, record: dict, idempotency_key: str) -> di
                 "guard_nonce": guard.get("nonce"),
                 "guard_profile_id": guard.get("profile_id"),
                 "guard_model_id": guard.get("model_id"),
+                "job_status_at_confirm": guard_state.get("status"),
+                "owners_stopped": guard_state.get("owners_stopped"),
             },
             root=bridge.ROOT,
         )
@@ -2113,6 +2174,8 @@ def apply(
                         popen=subprocess.Popen,
                     )
                 manifest["runner_detached_from_job"] = detached_from_job
+                if process is not None and isinstance(getattr(process, "pid", None), int):
+                    manifest["runner_pid"] = process.pid
                 bridge.write_json(directory / "job.json", manifest, durable=True)
             except Exception as error:
                 _record_failure(

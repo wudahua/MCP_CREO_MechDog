@@ -117,7 +117,11 @@ def _explorer_shell() -> Iterator[object]:
         )
         if desktop is None:
             raise DesktopUnavailable("The interactive Explorer desktop is unavailable")
-        _, pid = win32process.GetWindowThreadProcessId(desktop.HWND)
+        tid, pid = win32process.GetWindowThreadProcessId(desktop.HWND)
+        if not tid or pid <= 0:
+            raise DesktopUnavailable(
+                "Cannot verify the interactive Explorer window from this desktop"
+            )
         if not _same_session(pid):
             raise DesktopUnavailable("Explorer belongs to another Windows session")
         expected = Path(os.environ["SYSTEMROOT"]) / "explorer.exe"
@@ -185,6 +189,25 @@ def _run_request(request: Path) -> None:
     temporary = directory / "result.tmp"
     temporary.write_text(json.dumps(result), encoding="utf-8")
     temporary.replace(directory / "result.json")
+
+
+def launch_detached_command(command: list[str], *, cwd: Path) -> None:
+    """Start a fire-and-forget process via Explorer outside the host Job Object."""
+    if os.name != "nt" or not command:
+        raise DesktopUnavailable("Desktop launch needs Windows and a command")
+    try:
+        with _explorer_shell() as shell:
+            shell.ShellExecute(
+                command[0],
+                subprocess.list2cmdline(command[1:]),
+                str(cwd),
+                "open",
+                0,
+            )
+    except pywintypes.error as exc:
+        raise DesktopUnavailable(
+            f"Explorer detached launch failed (HRESULT={exc.hresult})"
+        ) from None
 
 
 def run(

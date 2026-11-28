@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -149,6 +150,19 @@ def summary(root: Path | None = None) -> dict | None:
     }
 
 
+def _write_guard_record(target: Path, record: dict) -> None:
+    from creo_mechdog import bridge
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_name(f".{uuid.uuid4().hex}.tmp")
+    try:
+        temporary.write_text(json.dumps(record, indent=2, sort_keys=True), encoding="utf-8")
+        bridge._replace_json(temporary, target)
+    except BaseException:
+        bridge._unlink_with_retry(temporary)
+        raise
+
+
 def reserve(
     job_id: str,
     *,
@@ -198,10 +212,7 @@ def reserve(
         "state": "active",
     }
     target = guard_path(root)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_suffix(".tmp")
-    temporary.write_text(json.dumps(record, indent=2, sort_keys=True), encoding="utf-8")
-    os.replace(temporary, target)
+    _write_guard_record(target, record)
     return {**record, "status": "active"}
 
 
@@ -277,7 +288,5 @@ def retire(
         "retire_evidence": evidence,
     }
     target = guard_path(root)
-    temporary = target.with_suffix(".tmp")
-    temporary.write_text(json.dumps(record, indent=2, sort_keys=True), encoding="utf-8")
-    os.replace(temporary, target)
+    _write_guard_record(target, record)
     return record

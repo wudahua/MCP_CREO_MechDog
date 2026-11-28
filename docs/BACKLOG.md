@@ -8,13 +8,13 @@
 
 诊断交付不等于根因修复；部分交付不关整卡；缺其他版本证据不自动判未修。观察项等自然新现场，不制造故障。已完成且无保留范围的行移入 [完成档案](BACKLOG_COMPLETED.md#已完成事项)。原进展/证据保留日期，不再回填第二份待办。小修复沿用卡与证据，复杂跨模块任务才另建完整计划。
 
-当前唯一 ID **276**（BUG **143**、FEAT **89**、DEV **44**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
+当前唯一 ID **281**（BUG **147**、FEAT **90**、DEV **44**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
 
 | 当前分类 | 唯一 ID 数 |
 | --- | --- |
 | 仍需修复 | 3 |
 | 待复现/待核实 | 31 |
-| 已有修复但待验收 | 88 |
+| 已有修复但待验收 | 93 |
 | 观察中 | 3 |
 | 其它 agent 处理范围 | 20 |
 | 开发中 | 0 |
@@ -74,6 +74,11 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
+| [BUG-198](work-items/BUG-198.md) | P1 | 已有修复但待验收 | 0.49.0 | 修复 Windows JSON 原子替换把缺失目标/瞬时 `stat` 锁误判为永久 WinError 5 及 `.tmp` 清理失败，`dev_check` 4592 单测通过；剩：真实索引器/杀软锁与 WorkBuddy 黑盒。 |
+| [BUG-199](work-items/BUG-199.md) | P0 | 已有修复但待验收 | 0.49.0 | 补全 Job Object 实测探测/Explorer 脱离、`tid==0` 防护、`owner_liveness`、`cancel_job` PID/128、`confirm_panel_closed` 死所有者解锁及模态框日志，Creo 10 断连清锁通过；剩：`WinSta0\Default` 断连保活、Creo 9/12.4 与 WorkBuddy 黑盒。 |
+| [BUG-200](work-items/BUG-200.md) | P1 | 已有修复但待验收 | 0.49.0 | 移除 115 s 硬编码超时，落地可配/自适应 `utility_worker_timeout_seconds`（300–3600 s）及超时强杀证据，单测通过；剩：大模型实机加载与 WorkBuddy 黑盒。 |
+| [BUG-201](work-items/BUG-201.md) | P2 | 已有修复但待验收 | 0.49.0 | 统一 `creo_capabilities` `direct_blend_callback.readiness` 口径、消歧 `startup_in_progress`、强制 UTF-8 stderr 及提示完善，单测与契约通过；剩：Creo 9/12.4 与 WorkBuddy 黑盒。 |
+| [FEAT-093](work-items/FEAT-093.md) | P1 | 已有修复但待验收 | 0.49.0 | 交付 `ExtrudeOp.depth2` 双向不等深拉伸、`datum_planes[].name` 及 `cut_scope` 边界说明，Creo 10 增/切与重载验收通过；剩：Creo 9/12.4 与 WorkBuddy 黑盒。 |
 | [BUG-196](work-items/BUG-196.md) | P1 | 已有修复但待验收 | 0.48.1 | 0.48.0 交付 `creo_refresh_model(write_back_snapshot=True)` 无版本破坏只读快照回写与 `stale_fields`/`refresh_hint`，0.48.1 补修分拆 `inspection_ref` 快照 `surfaces[].area_mm2` 检出与装配 `merged_counts` 误报；Creo 10 退化快照实机与单测通过。剩：Creo 9/12.4、WorkBuddy 黑盒与 0.39.0 原模型复验。 |
 | [BUG-197](work-items/BUG-197.md) | P2 | 已有修复但待验收 | 0.48.0 | 已交付 `bounding_box_status` `basis`/`query_code`、`compact_job` 巡检摘要、`creo_round`/`creo_chamfer` 参数示例与 `session_health` 连接/保存双子块拆分；Creo 10 实机与单测通过。剩：Creo 9/12.4 与 WorkBuddy 黑盒。 |
 | [BUG-194](work-items/BUG-194.md) | P1 | 已有修复但待验收 | 0.47.0 | `auto` 求解器恢复将 `b_spline`/`arc`/`spline`/`ellipse` 路由到 `autodim`；失败回执补 `dimensioning='autodim'`/`geometry_tolerance_mm=<cap>` 自助提示；Creo 10 实机通过。剩：Creo 9/12.4 与 WorkBuddy 黑盒。 |

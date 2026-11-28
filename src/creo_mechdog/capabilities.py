@@ -617,6 +617,11 @@ def project_worker_availability(
             "check_tool": "creo_callback_status",
             "reason": panel_doc.get("reason") or tree_admission.get("reason"),
         }
+    elif entry["runtime_ready"] and "runtime_admission" not in entry:
+        entry["runtime_admission_note"] = (
+            "runtime_admission is null or omitted when all runtime admission checks passed; "
+            "query creo_callback_status to confirm readiness='ready' and reason='live_identity_verified'"
+        )
     return families_doc
 
 
@@ -635,7 +640,7 @@ KNOWN_LIMITATIONS = (
         "release": "Creo 10/12.4 native body branch exposes one PRO_E_BODY_SELECT (blind and through_all cuts supported)",
         "evidence": "B4/F08 2026-11-10; BUG-150 2026-11-22; FEAT-075 through_all+scope 2026-11-23",
         "configurable": False,
-        "effect": "shape limits are refused before the job (one target body per cut, split the rest into further cuts); a body id the part does not hold, or a created feature that does not carry the requested scope, fails the job with F08_SCOPE_RESOLVE_FAILED and rolls back; a non-target body that changed fails with F08_SCOPE_NON_TARGET_CHANGED",
+        "effect": "shape limits are refused before the job (one target body per cut, split the rest into further cuts); cuts always apply at body granularity and cannot scope to a single merged feature without separating it via new_body=true first (then boolean_bodies union); a body id the part does not hold, or a created feature that does not carry the requested scope, fails the job with F08_SCOPE_RESOLVE_FAILED and rolls back; a non-target body that changed fails with F08_SCOPE_NON_TARGET_CHANGED",
     },
     {
         "id": "surface_loft_sdk_header",

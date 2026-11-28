@@ -79,6 +79,7 @@ def _selection() -> str:
 
 def _probe(directory: Path, manifest: dict) -> dict:
     exe = bridge.build_native()
+    timeout = bridge.utility_worker_timeout_seconds()
     with (directory / "worker.log").open("wb") as log:
         proc = subprocess.run(
             [str(exe), "generic", str(directory)],
@@ -86,7 +87,7 @@ def _probe(directory: Path, manifest: dict) -> dict:
             env=bridge.native_environment(),
             stdout=log,
             stderr=subprocess.STDOUT,
-            timeout=115,
+            timeout=timeout,
             creationflags=bridge.HIDDEN,
         )
     result = bridge.read_json(directory / "native_result.json")

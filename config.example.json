@@ -4,6 +4,7 @@
   "vcvars64_env": null,
   "native_timeout_seconds": 180,
   "generic_timeout_seconds": 600,
+  "utility_worker_timeout_seconds": 300,
   "creo_session_id": "",
   "auto_start_creo": true,
   "creo_startup_timeout_seconds": 120,

@@ -1,0 +1,30 @@
+{
+  "archived_at": "2026-11-28",
+  "feedback_versions": [
+    "0.47.1",
+    "0.48.3"
+  ],
+  "files": [
+    {
+      "source_filename": "2026-11-27_CREO_0.48.3_JSON原子替换WinError5被误判为永久ACL失败致全测偶发2errors.md",
+      "archived_path": "originals/v0483-json-replace-winerror5.md",
+      "bytes": 7912,
+      "sha256": "2cfe9b2d1e689cd591fceb5860477dc114fdbb1fa0de6d434e948e9bc530da91",
+      "work_items": [
+        "BUG-198"
+      ]
+    },
+    {
+      "source_filename": "2026-11-27+CREO+0.47.1+runner随stdio会话断开即死导致作业永久queued并锁死模型.md",
+      "archived_path": "originals/v0471-runner-disconnect-panel-lock.md",
+      "bytes": 57131,
+      "sha256": "d4b272319a6f07f52b6698062ccc3dffb0263c7f4f0e62cfb72a95ee25fa36d9",
+      "work_items": [
+        "BUG-199",
+        "BUG-200",
+        "BUG-201",
+        "FEAT-093"
+      ]
+    }
+  ]
+}

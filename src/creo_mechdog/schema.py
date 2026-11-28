@@ -430,6 +430,15 @@ class Rectangle(StrictModel):
     max: Point2
     construction: bool = False
 
+    @model_validator(mode="before")
+    @classmethod
+    def reject_corner_aliases(cls, data: Any) -> Any:
+        if isinstance(data, dict) and ("corner1" in data or "corner2" in data):
+            raise ValueError(
+                "Rectangle uses 'min' and 'max' [u, v] corners, not 'corner1'/'corner2'"
+            )
+        return data
+
     @model_validator(mode="after")
     def corners(self):
         if self.max[0] <= self.min[0] or self.max[1] <= self.min[1]:
@@ -1050,6 +1059,9 @@ class ExtrudeOp(StrictModel):
     #: plan reaches the worker; ``sketch`` must then be the source label string.
     region: SketchRegionSelector | None = None
     depth: Positive = 1
+    #: FEAT-093: optional blind depth in mm along the opposite of ``direction``
+    #: (PRO_EXT_DEPTH_FROM_BLIND) for two-sided asymmetric extrusions.
+    depth2: Positive | None = None
     mode: Literal["add", "cut", "surface"] = "add"
     direction: Literal["positive", "negative", "symmetric"] = "positive"
     depth_type: Literal["blind", "through_all"] = "blind"
@@ -1061,6 +1073,15 @@ class ExtrudeOp(StrictModel):
     def through_cut(self):
         if self.depth_type == "through_all" and self.mode != "cut":
             raise ValueError("through_all is supported for cuts")
+        if self.depth2 is not None:
+            if self.depth_type != "blind":
+                raise ValueError("depth2 requires depth_type='blind'")
+            if self.direction == "symmetric":
+                raise ValueError(
+                    "depth2 cannot be combined with direction='symmetric'; use "
+                    "direction='positive' or 'negative' with depth and depth2, or "
+                    "direction='symmetric' with total depth alone"
+                )
         if self.region is not None:
             if not isinstance(self.sketch, str):
                 raise ValueError(
@@ -3624,9 +3645,9 @@ def validate_operations(operations: list[dict]) -> list[dict]:
             entry = producers.get(label)
             if entry is None:
                 raise ValueError(
-                    f"{where}: through_points label '{label}' must be created by a "
-                    "datum_points operation earlier in the same plan; this plan does "
-                    "not create it"
+                    f"{where}: through_points label '{label}': this plan does not create it "
+                    "(must be created by a single-point datum_points operation earlier in the same "
+                    "plan; multi-point datum_points operations do not expose per-point labels)"
                 )
             producer_index, producer_op, point_count = entry
             if producer_index == index:

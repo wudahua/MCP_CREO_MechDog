@@ -25,7 +25,7 @@ import win32com.client
 import win32process
 import win32security
 
-from creo_mechdog import bridge, session_candidates, session_choice
+from creo_mechdog import bridge, panel_session_guard, session_candidates, session_choice
 from creo_mechdog.lock_files import open_lock_file
 from creo_mechdog.startup_state import StartupStateError, archive_preboot_state, read_startup_state
 from creo_mechdog.window_observations import connection_guidance, window_observations
@@ -303,7 +303,11 @@ def launch_creo(settings: Settings, directory: Path) -> DesktopLaunch:
             raise RuntimeError(
                 "The interactive Explorer desktop is unavailable; open Creo manually"
             )
-        _, pid = win32process.GetWindowThreadProcessId(desktop.HWND)
+        tid, pid = win32process.GetWindowThreadProcessId(desktop.HWND)
+        if not tid or pid <= 0:
+            raise RuntimeError(
+                "Cannot verify the interactive Explorer window from this desktop; open Creo manually"
+            )
         session_id = wintypes.DWORD()
         if not _session(pid, ctypes.byref(session_id)) or session_id.value != windows_session():
             raise RuntimeError("Explorer belongs to another Windows session; open Creo manually")
@@ -1226,6 +1230,22 @@ class CreoStartup:
                 "Native build/preparation subprocess exceeded its budget; inspect build logs and retry after preparation has returned. No Creo process was closed.",
                 subprocess_budget_seconds=exc.timeout,
                 shared=False,
+            )
+        except panel_session_guard.PanelSessionLocked as exc:
+            LOG.warning("Creo startup blocked by resident panel guard")
+            holder = exc.holder if isinstance(exc.holder, dict) else {}
+            model_id = holder.get("model_id")
+            hint = (
+                f"Call creo_reconcile_model(model_id={model_id!r}, mode='inspect') and "
+                "confirm_panel_closed once no Creo panel dialog is open."
+                if model_id
+                else "Check Creo for an open panel dialog and retire the panel session guard."
+            )
+            self._publish(
+                "panel_session_locked",
+                f"{exc} {hint}",
+                shared=False,
+                panel_session_guard=holder or None,
             )
         except Exception as exc:
             # Exceptions may carry local paths; never echo raw launch environment,

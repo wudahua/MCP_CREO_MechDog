@@ -152,9 +152,11 @@ def prepare_callback(
             "protocol-2 registration requires one explicit migration. A changed loader/SDK "
             "generation needs a fresh Creo startup reading the same persistent registry "
             "file; a session-only registration may need selecting that file again. Query "
-            "creo_callback_status before a direct Blend; only readiness=ready allows it "
-            "(seed lofts via creo_new_loft_part need no callback). MCP never changes "
-            "security policy."
+            "creo_callback_status before a direct Blend or resident_panel; "
+            "only readiness=ready confirms it is usable (after manually starting "
+            "in Creo Auxiliary Applications, confirm readiness='ready' and "
+            "reason='live_identity_verified'; seed lofts via creo_new_loft_part need no callback). "
+            "MCP never changes security policy."
         ),
     }
     bootstrap_file = directory / "callback_bootstrap.json"

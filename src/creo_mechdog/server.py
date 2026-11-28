@@ -66,7 +66,17 @@ from creo_mechdog.sheetmetal import project_wall_contour
 from creo_mechdog.validation_errors import ValidationMCPServer
 from version import VERSION
 
-logging.basicConfig(level=logging.WARNING)
+
+def _configure_utf8_stderr() -> None:
+    if hasattr(sys.stderr, "reconfigure"):
+        try:
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            pass
+
+
+_configure_utf8_stderr()
+logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
 startup = creo_startup.CreoStartup()
 updates = update_check.UpdateChecker()
 _CODE_ROOT = SOURCE_PATHS.resource_root
@@ -342,7 +352,12 @@ async def creo_callback_status() -> dict[str, Any]:
     state = startup.status()
     if state.get("coordinator_running"):
         return unknown_readiness(
-            callback_setup_status(bridge.ROOT / "build"), "startup_in_progress", startup=state
+            callback_setup_status(bridge.ROOT / "build"),
+            "startup_in_progress",
+            startup=state,
+            startup_in_progress=True,
+            readiness_phase="starting",
+            next_action="wait_for_startup_then_requery_callback_status",
         )
     result = await invoke(bridge.callback_status)
     result["service"] = {
@@ -692,9 +707,23 @@ async def creo_adopt_current_model(
         default=None,
         description="Prepare/apply: unique 8-80 letters, digits, underscores or hyphens; use different keys for the two steps.",
     ),
+    timeout_seconds: Annotated[
+        int | None,
+        Field(
+            ge=30,
+            le=3600,
+            description=(
+                "Optional native worker timeout in seconds (30-3600). Defaults to "
+                "config.json utility_worker_timeout_seconds (300 s) scaled adaptively by "
+                "model file size and feature count."
+            ),
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """Explicitly adopt the current window model as a managed copy; the original is never saved, erased or renamed. File sources use read-only inspect then evidence-bound apply. A never-saved model requires prepare with an idempotency_key: poll its job and review result.adoption, then apply that model_id/evidence_token with a new key. prepare freezes a copy at native execution time without switching the current window; status stays adopt_pending/revision=0. Confirmation adopts that frozen snapshot at revision=1, displays the managed copy and excludes later edits to the original. inspect(model_id=...) renews ten-minute snapshot evidence without copying. Same-key replay never repeats native execution. Supported: healthy independent part/sheetmetal, millimeters, no external dependencies. Poll accepted jobs only; uncertain outcomes keep protection and resolve through reconcile abandon_new. Upgrade source code then restart the MCP connector and verify runtime identity/tool list before using new modes."""
-    return await invoke(adopt, mode, model_id, evidence_token, model_name, idempotency_key)
+    return await invoke(
+        adopt, mode, model_id, evidence_token, model_name, idempotency_key, timeout_seconds
+    )
 
 
 @mcp.tool(annotations=CREATE)
@@ -703,9 +732,23 @@ async def creo_adopt_file(
     mode: Literal["inspect", "apply"] = "inspect",
     evidence_token: str | None = None,
     idempotency_key: str | None = None,
+    timeout_seconds: Annotated[
+        int | None,
+        Field(
+            ge=30,
+            le=3600,
+            description=(
+                "Optional per-item native worker timeout in seconds (30-3600) for apply mode. "
+                "Defaults to config.json utility_worker_timeout_seconds (300 s) scaled adaptively "
+                "by model file size."
+            ),
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """Adopt 1?20 ordered disk paths without displaying or switching windows. Inspect selects an exact numeric version or highest version, reports source provenance and per-item findings, and returns a 600-second evidence token. Apply takes the same paths, token and an 8?80 character idempotency key, returning one parent job_id; poll only that job. Healthy millimeter independent parts/sheetmetal only. Existing unmodified exact-origin resident sources are explicitly labeled existing_resident: disk/resident content equality before inspection is unknown. Absent names are retrieved without display, with any added resident reported. Source files/models are never saved, erased or renamed. Each successful item saves/reloads a separate managed copy at revision 1. Duplicate origins are refused with duplicate_of; already managed origins give reuse guidance. Known refusals continue; unknown execution or commit stops remaining items and retains protection. Replay never executes native work; changed ordered paths, selected bytes or evidence under the key refuse."""
-    return await invoke(adopt_file, file_path, mode, evidence_token, idempotency_key)
+    return await invoke(
+        adopt_file, file_path, mode, evidence_token, idempotency_key, timeout_seconds
+    )
 
 
 @mcp.tool(annotations=READ)
@@ -740,9 +783,21 @@ async def creo_plan_assembly_rebuild(
 async def creo_open_file(
     file_path: str,
     idempotency_key: str,
+    timeout_seconds: Annotated[
+        int | None,
+        Field(
+            ge=30,
+            le=3600,
+            description=(
+                "Optional native worker timeout in seconds (30-3600). Defaults to "
+                "config.json utility_worker_timeout_seconds (300 s) scaled adaptively by "
+                "file size."
+            ),
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """Retrieve an existing on-disk .prt/.asm into the connected Creo session and display it, read-only. file_path is a Windows absolute path; append an explicit numeric version (e.g. .prt.3) to open exactly that file, otherwise the highest numeric version in the directory is selected and only the extension-only file is used when no numeric version exists. idempotency_key (8-80 letters/digits/underscores/hyphens) replays the same job for the same path and rejects a different path. Submission returns a job_id; poll creo_get_job. The file is never saved, erased, renamed or adopted: a successful open returns model_id=null/adopted=false and creates no managed revision. Same-name/same-type session models cause rejection, and assemblies additionally require a session without parts/assemblies; both checks and the retrieval share one Toolkit channel. An incomplete assembly fails with any residual session objects reported and missing components marked unknown; a display failure is reported separately from retrieval. Source-file identity is recorded at submit and after the job. Opened models are not MCP-managed: adopt with creo_adopt_current_model first if managed editing is needed."""
-    return await invoke(submit_open_file, file_path, idempotency_key)
+    return await invoke(submit_open_file, file_path, idempotency_key, timeout_seconds)
 
 
 @mcp.tool(annotations=CREATE)
@@ -898,6 +953,7 @@ def _capabilities_payload(tool_entries: list[dict[str, Any]]) -> dict[str, Any]:
         "extrude_modes": ["add", "cut", "surface"],
         "extrude_depth_types": ["blind", "through_all"],
         "extrude_directions": ["positive", "negative", "symmetric"],
+        "extrude_two_sided_asymmetric": True,
         "extrude_through_all_modes": ["cut"],
         "revolve_modes": ["add", "cut", "surface"],
         "thin_features": True,
@@ -913,7 +969,9 @@ def _capabilities_payload(tool_entries: list[dict[str, Any]]) -> dict[str, Any]:
             "flip=true is supplied, and emit frame_warning (code='frame_mismatch') when an "
             "implicit axis-aligned support normal is opposite to frames.XY/XZ/YZ. "
             "Sketch coordinates deviation tolerance is configured via SketchOp.geometry_tolerance_mm "
-            "(not deviation_tolerance_mm); bounding_box_mm is tessellation-based; use "
+            "(not deviation_tolerance_mm); bounding_box_mm is tessellation-based with an inward "
+            "method_error_bound_mm relative to legacy_regeneration_outline_mm; runtime_admission=null "
+            "alongside runtime_ready=true means all runtime checks passed; use "
             "creo_get_mass_properties_batch for multi-model mass queries."
         ),
         "tools": tool_entries,
@@ -924,13 +982,24 @@ def _capabilities_payload(tool_entries: list[dict[str, Any]]) -> dict[str, Any]:
         "support_status": _support_status(),
         "complete_creo_coverage": False,
         "seed_library": seeds.list_seeds(),
-        "direct_blend_callback": artifacts,
+        "direct_blend_callback": (
+            {
+                **artifacts,
+                **{
+                    k: cb_admission[k]
+                    for k in ("readiness", "reason", "next_action", "checked_at")
+                    if k in cb_admission
+                },
+            }
+            if (cb_admission := bridge.callback_admission_status(artifacts))
+            else artifacts
+        ),
         "release_status": release_status(VERSION),
         "families": project_worker_availability(
             families(),
             bridge.surface_loft_admission_identity(),
             bridge.channel_health().get("surface_loft_runtime"),
-            bridge.callback_admission_status(artifacts),
+            cb_admission,
         ),
         "known_limitations": list(KNOWN_LIMITATIONS),
         "plan_examples": list(PLAN_EXAMPLES),
@@ -1552,18 +1621,21 @@ async def creo_extrude(
     new_body: bool = False,
     thin: float | None = None,
     scope: dict[str, Any] | None = None,
+    depth2: float | None = None,
 ) -> dict[str, Any]:
-    """Create native extrusion from a sketch label/ID. Supports protrusion, pocket, through cut, symmetric, surface and thin modes.
+    """Create native extrusion from a sketch label/ID. Supports protrusion, pocket, through cut, symmetric, two-sided asymmetric, surface and thin modes.
     Principal plane normals for direction ("positive" follows normal, "negative" opposes it):
       - XY: normal=+Z (u=+X, v=+Y); XZ: normal=-Y (u=+X, v=+Z, so +Y is "negative"); YZ: normal=+X (u=+Y, v=+Z).
     depth_type is "blind" (depth in mm, any mode) or "through_all" (cut mode only; depth is ignored);
-    direction is "positive", "negative" or "symmetric". These enums are the same as the plan
-    operation {"op":"extrude",...}: this tool submits exactly that operation, so the standalone
-    tool and the execute_plan entry accept the same values.
+    direction is "positive", "negative" or "symmetric". Optional depth2 (mm, blind + positive/negative only)
+    extrudes an independent second-side distance opposite to direction (PRO_EXT_DEPTH_FROM_BLIND) in one feature.
+    These enums are the same as the plan operation {"op":"extrude",...}: this tool submits exactly that
+    operation, so the standalone tool and the execute_plan entry accept the same values.
     Omitting depth or depth_type keeps the existing defaults (1 mm, blind) but is reported honestly:
     the result operation carries extrude_depth with requested_depth_type/requested_depth_mm (null
     when omitted), effective_depth_type/effective_depth_mm read from the created feature tree,
-    defaulted_fields and source/query_code. through_all never reports a fabricated blind depth.
+    defaulted_fields and source/query_code (plus effective_depth2_mm/effective_total_depth_mm when depth2 is used).
+    through_all never reports a fabricated blind depth.
     A cut that removes no material (disjoint sketch, wrong direction or already-removed region) fails and rolls back;
     a successful cut reports material_removed_mm3 in its operation details. The profile block's
     material_area_mm2 is the analytic input-sketch area (method=analytic-input), not a kernel-measured
@@ -1571,8 +1643,9 @@ async def creo_extrude(
     circular multi-contour profile can differ by about 2% (2026-11-08 Creo 10 feedback).
     scope limits a cut to one target body: {kind:'bodies', body_ids:[N]} with the body ID from
     creo_inspect_model (positive or -5778 for Creo's initial body). It applies to mode='cut'
-    (blind or through_all, any direction) with no new_body; feature-label scope, several targets
-    per cut, revolve cuts and new_body are refused before a job is dispatched. The successful
+    (blind or through_all, any direction) with no new_body; feature-label scope inside a merged single body,
+    several targets per cut, revolve cuts and new_body are refused before a job is dispatched (to scope a cut
+    to one sub-part, build that region with new_body=true, cut with scope, then boolean_bodies union). The successful
     operation reports scope_applied with the requested/applied body ids read back from the feature
     tree plus non_target_bodies_unchanged, which covers the other bodies' surface counts and
     bounding boxes (null when a query could not complete, never true on missing evidence). A
@@ -1590,6 +1663,8 @@ async def creo_extrude(
         op["scope"] = scope
     if depth is not None:
         op["depth"] = depth
+    if depth2 is not None:
+        op["depth2"] = depth2
     if depth_type is not None:
         op["depth_type"] = depth_type
     if thin is not None:
@@ -4070,6 +4145,7 @@ for _unavailable in UNAVAILABLE_OPERATIONS:
 def main(*, entry_file: str | Path = _CODE_ROOT / "server.py") -> None:
     from creo_mechdog.stdio_lifecycle import StdioExitGuard
 
+    _configure_utf8_stderr()
     global _SERVER_ENTRY
     _SERVER_ENTRY = Path(entry_file).resolve()
     # BUG-092: watch the wire stdin and bound self-exit after client EOF, so a

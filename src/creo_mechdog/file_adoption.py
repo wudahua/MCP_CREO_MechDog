@@ -22,11 +22,16 @@ from creo_mechdog.reconciliation import HASH_SECONDS, identity
 MAX_ITEMS = 20
 
 
-def lifetime_seconds(count: int) -> int:
+def lifetime_seconds(count: int, per_item_worker_seconds: int | None = None) -> int:
     """Fixed bound: admission, per-item build/native/hashes, metadata margin."""
     if not 1 <= count <= MAX_ITEMS:
         raise ValueError("Invalid path-adoption item count")
-    return 120 + count * (180 + adoption.WORKER_SECONDS + 5 * HASH_SECONDS + 30) + 30
+    worker_budget = (
+        per_item_worker_seconds
+        if isinstance(per_item_worker_seconds, int) and per_item_worker_seconds > 0
+        else adoption.WORKER_SECONDS
+    )
+    return 120 + count * (180 + worker_budget + 5 * HASH_SECONDS + 30) + 30
 
 
 def _store() -> Path:
@@ -283,8 +288,10 @@ def _arguments(paths: list[str], token: str) -> dict:
     return {"paths": paths, "selection": _selection(selected), "evidence_token": token}
 
 
-def apply(paths: list[str], token: str, key: str) -> dict:
+def apply(paths: list[str], token: str, key: str, *, timeout_seconds: int | None = None) -> dict:
     adoption._key(key)
+    if timeout_seconds is not None:
+        timeout_seconds = bridge.utility_worker_timeout_seconds(timeout_seconds=timeout_seconds)
     if not isinstance(token, str) or not re.fullmatch(r"[0-9a-f]{32}", token):
         raise ValueError("Invalid path-adoption evidence_token")
     pointer = _store() / f"intent-{adoption.digest(key)}.json"
@@ -320,6 +327,21 @@ def apply(paths: list[str], token: str, key: str) -> dict:
             "stage": "intent_persisted",
             "message": "Batch accepted; poll this parent job_id only",
         }
+        if timeout_seconds is not None:
+            manifest["timeout_seconds"] = timeout_seconds
+        else:
+            max_size = max(
+                (
+                    i["file"]["size_bytes"]
+                    for i in items
+                    if isinstance(i.get("file"), dict)
+                    and isinstance(i["file"].get("size_bytes"), int)
+                ),
+                default=None,
+            )
+            manifest["timeout_seconds"] = bridge.utility_worker_timeout_seconds(
+                file_size_bytes=max_size, default_seconds=adoption.WORKER_SECONDS
+            )
         # The parent intent is durable before reservations. A launch failure is
         # terminal; a repeated key cannot execute it again.
         bridge.write_json(directory / "batch.json", {"items": items}, durable=True)
@@ -328,15 +350,16 @@ def apply(paths: list[str], token: str, key: str) -> dict:
         bridge.write_json(pointer, {"job_id": job_id, "arguments": arguments}, durable=True)
         try:
             with (directory / "runner.log").open("ab") as log:
-                subprocess.Popen(
+                proc, detached = bridge.spawn_detached_runner(
                     [sys.executable, str(bridge.ROOT / "bridge.py"), "run-job", job_id],
                     cwd=bridge.ROOT,
-                    stdin=subprocess.DEVNULL,
-                    stdout=log,
-                    stderr=subprocess.STDOUT,
-                    creationflags=bridge.HIDDEN,
-                    close_fds=True,
+                    log_file=log,
+                    popen=subprocess.Popen,
                 )
+            manifest["runner_detached_from_job"] = detached
+            if proc is not None and isinstance(getattr(proc, "pid", None), int):
+                manifest["runner_pid"] = proc.pid
+            _publish(job_id, manifest)
         except Exception as error:
             manifest.update(
                 status="failed",
@@ -383,6 +406,8 @@ def _reserve(parent: dict, item: dict) -> tuple[dict, Path]:
         "idempotency_key": parent["idempotency_key"],
         "revision": 0,
     }
+    if isinstance(parent.get("timeout_seconds"), int):
+        manifest["timeout_seconds"] = parent["timeout_seconds"]
     journal = adoption._journal(model["model_id"], parent["idempotency_key"])
     bridge.write_json(
         directory / "request.json",
@@ -564,10 +589,13 @@ def adopt_file(
     mode: str = "inspect",
     evidence_token: str | None = None,
     idempotency_key: str | None = None,
+    timeout_seconds: int | None = None,
 ) -> dict:
     paths = _paths(file_path)
     if mode == "inspect" and evidence_token is None and idempotency_key is None:
+        if timeout_seconds is not None:
+            raise ValueError("timeout_seconds applies only to apply mode")
         return inspect(paths)
     if mode == "apply" and evidence_token and idempotency_key:
-        return apply(paths, evidence_token, idempotency_key)
+        return apply(paths, evidence_token, idempotency_key, timeout_seconds=timeout_seconds)
     raise ValueError("inspect takes paths only; apply requires evidence_token and idempotency_key")

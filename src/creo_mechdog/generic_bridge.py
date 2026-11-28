@@ -704,17 +704,30 @@ def _terminate_process_tree(pid: object) -> dict:
         completed = subprocess.run(
             command,
             capture_output=True,
-            text=True,
             timeout=TERMINATION_SECONDS,
             creationflags=bridge.HIDDEN,
         )
     except Exception as exc:  # noqa: BLE001 - reported as termination evidence
         return {"attempted": True, "pid": pid, "error": str(exc)}
-    output = (completed.stdout or completed.stderr or "").strip()
+    raw = completed.stdout or completed.stderr or b""
+    encoding = "mbcs" if os.name == "nt" else "utf-8"
+    output = (
+        raw.decode(encoding, errors="replace").strip()
+        if isinstance(raw, bytes)
+        else str(raw).strip()
+    )
+    reason = (
+        "terminated"
+        if completed.returncode == 0
+        else "process_not_found"
+        if os.name == "nt" and completed.returncode == 128
+        else "termination_failed"
+    )
     return {
         "attempted": True,
         "pid": pid,
         "returncode": completed.returncode,
+        "reason": reason,
         "output": output[-400:],
     }
 
@@ -741,18 +754,63 @@ def _job_readonly(manifest: dict, request: dict) -> bool:
     return request.get("readonly") is True
 
 
+def _identity_alive(recorded: object) -> bool | None:
+    """Check {pid, created} liveness; None if recorded lacks creation timestamp."""
+    if not isinstance(recorded, dict):
+        return None
+    pid = recorded.get("pid")
+    created = recorded.get("created")
+    if (
+        isinstance(pid, bool)
+        or not isinstance(pid, int)
+        or pid <= 0
+        or not isinstance(created, int)
+    ):
+        return None
+    if os.name != "nt":
+        return bridge._pid_alive(pid)
+    try:
+        current = bridge.process_identity(pid)
+    except OSError:
+        return True
+    return bool(current and current.get("created") == created)
+
+
 def _live_job_owners(job_id: str, manifest: dict, directory: Path) -> list[dict]:
     """Recorded runner/worker pids of this job that are provably still alive."""
-    candidates: list[tuple[str, object]] = [("job_runner", manifest.get("runner_pid"))]
+    candidates: list[tuple[str, object, object]] = []
+    runner_id = manifest.get("runner_identity")
+    runner_id_pid = runner_id.get("pid") if isinstance(runner_id, dict) else None
+    if isinstance(runner_id_pid, int) and not isinstance(runner_id_pid, bool) and runner_id_pid > 0:
+        candidates.append(("runner_identity", runner_id_pid, runner_id))
+    manifest_pid = manifest.get("runner_pid")
+    if manifest_pid != runner_id_pid or runner_id is None:
+        candidates.append(("job_runner", manifest_pid, None))
     claim = bridge.channel_claim()
     if claim.get("job_id") == job_id:
-        candidates.append(("channel_runner", claim.get("runner_pid")))
-    candidates.append(("native_worker", _worker_owner_pid(directory)))
+        claim_pid = claim.get("runner_pid")
+        if claim_pid != runner_id_pid or runner_id is None:
+            candidates.append(("channel_runner", claim_pid, None))
+    owner_file = directory / "native_owner.json"
+    owner_record = None
+    if owner_file.is_file():
+        try:
+            owner_record = bridge.read_json(owner_file)
+        except (OSError, ValueError):
+            owner_record = None
+    worker_pid = (
+        owner_record.get("pid") if isinstance(owner_record, dict) else _worker_owner_pid(directory)
+    )
+    candidates.append(("native_worker", worker_pid, owner_record))
     alive = []
-    for role, pid in candidates:
-        if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+    seen_pids: set[int] = set()
+    for role, pid, identity in candidates:
+        if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0 or pid in seen_pids:
             continue
-        if bridge._pid_alive(pid):
+        seen_pids.add(pid)
+        id_alive = _identity_alive(identity)
+        is_alive = id_alive if id_alive is not None else bridge._pid_alive(pid)
+        if is_alive:
             alive.append({"role": role, "pid": pid})
     return alive
 
@@ -871,12 +929,30 @@ def cancel_job(job_id: str) -> dict:
     manifest["cancel_requested_at"] = requested_at
     bridge.write_json(manifest_file, manifest, durable=True)
     claim = bridge.channel_claim()
-    runner_pid = manifest.get("runner_pid")
-    if not isinstance(runner_pid, int) and claim.get("job_id") == job_id:
+    runner_id = manifest.get("runner_identity")
+    runner_pid = runner_id.get("pid") if isinstance(runner_id, dict) else None
+    if isinstance(runner_pid, bool) or not isinstance(runner_pid, int) or runner_pid <= 0:
+        runner_pid = manifest.get("runner_pid")
+    if (
+        isinstance(runner_pid, bool) or not isinstance(runner_pid, int) or runner_pid <= 0
+    ) and claim.get("job_id") == job_id:
         runner_pid = claim.get("runner_pid")
-    started = bool(manifest.get("worker_started"))
+    if isinstance(runner_pid, bool) or not isinstance(runner_pid, int) or runner_pid <= 0:
+        runner_pid = None
+    has_native_artifacts = any(
+        (directory / name).exists()
+        for name in ("native_owner.json", "native_checkpoint.json", "native_result.json")
+    )
+    started = bool(manifest.get("worker_started")) or has_native_artifacts
     termination = _terminate_process_tree(runner_pid)
+    worker_pid = _worker_owner_pid(directory)
+    if worker_pid is not None and worker_pid != runner_pid and bridge._pid_alive(worker_pid):
+        termination["worker_termination"] = _terminate_process_tree(worker_pid)
     confirmed = termination.get("returncode") == 0 or runner_pid is None
+    if not confirmed and os.name == "nt" and termination.get("returncode") == 128:
+        if not _live_job_owners(job_id, manifest, directory):
+            confirmed = True
+            termination["already_exited"] = True
     if readonly and runner_pid is None:
         # A missing runner pid is not evidence that the runner stopped. The
         # read-only release below is metadata-only, so it may only run on the
@@ -935,7 +1011,7 @@ def cancel_job(job_id: str) -> dict:
         },
     )
     bridge.write_json(manifest_file, manifest, durable=True)
-    if termination.get("returncode") == 0:
+    if termination.get("returncode") == 0 or confirmed:
         bridge.clear_channel_claim(job_id)
     if not started:
         # BUG-120/D4.4: a job cancelled before any worker existed cannot have opened a
@@ -1399,6 +1475,20 @@ def submit(
                     "recovery_pending" if recovery_id and not pending_id else "pending_job"
                 )
                 blocking_id = recovery_id or pending_id
+                blocking_job_status = None
+                blocking_runner_alive = None
+                if isinstance(blocking_id, str) and bridge.JOB_ID.fullmatch(blocking_id):
+                    try:
+                        bjob = bridge.read_json(bridge.job_path(blocking_id) / "job.json")
+                    except (OSError, ValueError):
+                        bjob = None
+                    if isinstance(bjob, dict):
+                        blocking_job_status = bjob.get("status")
+                        runner_id = bjob.get("runner_identity")
+                        if isinstance(runner_id, dict):
+                            blocking_runner_alive = _identity_alive(runner_id)
+                        elif isinstance(bjob.get("runner_pid"), int):
+                            blocking_runner_alive = bridge._pid_alive(bjob["runner_pid"])
                 busy_message = (
                     f"Model has a pending recovery job (recovery_pending={recovery_id}; "
                     "pending_job=null). Inspect with creo_reconcile_model and pass "
@@ -1406,16 +1496,24 @@ def submit(
                     if blocking_op == "recovery_pending"
                     else "Model has a pending job"
                 )
-                raise bridge.ToolkitBusy(
-                    busy_message,
-                    holder={
-                        "job_id": blocking_id,
-                        "model_id": model_id,
-                        "operation": blocking_op,
-                        "pending_job": pending_id,
-                        "recovery_pending": recovery_id,
-                    },
-                )
+                if blocking_op == "pending_job" and blocking_runner_alive is False:
+                    busy_message += (
+                        f" (blocking_job_id={blocking_id}, status={blocking_job_status!r}, "
+                        "runner_alive=false). Call creo_cancel_job(job_id=...) or "
+                        "creo_reconcile_model(model_id=...) to clear the reservation."
+                    )
+                holder_payload = {
+                    "job_id": blocking_id,
+                    "model_id": model_id,
+                    "operation": blocking_op,
+                    "pending_job": pending_id,
+                    "recovery_pending": recovery_id,
+                }
+                if blocking_job_status is not None:
+                    holder_payload["blocking_job_status"] = blocking_job_status
+                if blocking_runner_alive is not None:
+                    holder_payload["blocking_runner_alive"] = blocking_runner_alive
+                raise bridge.ToolkitBusy(busy_message, holder=holder_payload)
             if model["status"] != "ready":
                 raise ValueError("Model is not ready; inspect its last job before recovery")
             if expected_revision is None and not readonly:
@@ -1715,6 +1813,7 @@ def submit(
             "kind": "generic",
             "model_id": model_id,
             "status": "queued",
+            "worker_started": False,
             "readonly": readonly,
             "readonly_source": readonly_source,
             "write_back_snapshot": write_back_snapshot,
@@ -1844,10 +1943,16 @@ def submit(
         # Still inside the submit lock: the reservation is visible to the next
         # admission before this call returns (BUG-100).
         manifest["runner_detached_from_job"] = detached_from_job
+        if proc is not None and isinstance(getattr(proc, "pid", None), int):
+            manifest["runner_pid"] = proc.pid
         if not detached_from_job:
             manifest["runner_lifecycle_note"] = (
                 "Host Job Object denied CREATE_BREAKAWAY_FROM_JOB; this job's runner "
                 "depends on the MCP server/client staying alive until completion."
+            )
+            manifest["message"] = (
+                f"{manifest['message'].rstrip('.')}. Keep this MCP session connected until the job "
+                "reaches a terminal status because the host Job Object prevents runner detachment."
             )
         bridge.write_json(directory / "job.json", manifest)
         bridge.write_channel_claim(

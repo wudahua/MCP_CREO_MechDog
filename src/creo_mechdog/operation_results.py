@@ -1046,6 +1046,13 @@ def annotate_cut_volume_check(
             if isinstance(depth_block, dict)
             else _finite_number(source.get("depth"))
         )
+        depth2 = (
+            _finite_number(depth_block.get("effective_depth2_mm"))
+            if isinstance(depth_block, dict)
+            else _finite_number(source.get("depth2"))
+        )
+        if depth_type == "blind" and depth is not None and depth2 is not None and depth2 > 0:
+            depth = depth + depth2
         if depth_type not in ("blind", "symmetric") or depth is None or depth <= 0:
             continue
         sketch_ref = source.get("sketch")
@@ -1470,6 +1477,14 @@ def normalize_extrude_depth(block: Any) -> dict[str, Any]:
         effective_type if effective_type in EXTRUDE_DEPTH_TYPES else None
     )
     entry["effective_depth_mm"] = _finite_scalar(block.get("effective_depth_mm"))
+    for extra_key in (
+        "requested_depth2_mm",
+        "effective_depth2_mm",
+        "effective_total_depth_mm",
+    ):
+        val = _finite_scalar(block.get(extra_key))
+        if val is not None:
+            entry[extra_key] = val
     defaulted = block.get("defaulted_fields")
     if isinstance(defaulted, list):
         entry["defaulted_fields"] = [

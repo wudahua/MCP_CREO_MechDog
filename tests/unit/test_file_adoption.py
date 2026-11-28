@@ -598,7 +598,7 @@ class PathAdoption(unittest.TestCase):
         tool = next(t for t in schemas if t.name == "creo_adopt_file")
         self.assertEqual(
             set(tool.input_schema["properties"]),
-            {"file_path", "mode", "evidence_token", "idempotency_key"},
+            {"file_path", "mode", "evidence_token", "idempotency_key", "timeout_seconds"},
         )
         self.assertIn("src/creo_mechdog/file_adoption.py", server._SOURCE_NAMES)
         self.assertIn("native/adoption_source.h", server._SOURCE_NAMES)

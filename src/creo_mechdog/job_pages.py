@@ -63,6 +63,7 @@ _SUMMARY_KEYS = (
     "failure_phase",
     "recovery_required",
     "stall_watchdog",
+    "owner_liveness",
     "runner_detached_from_job",
     "runner_lifecycle_note",
     # R04/0.14.0: ``operations_input`` pages read the persisted manifest plan,

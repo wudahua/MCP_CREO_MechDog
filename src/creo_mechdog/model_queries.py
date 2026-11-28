@@ -70,7 +70,15 @@ def qualify_bounding_box(snapshot: dict[str, Any]) -> dict[str, Any]:
         **snapshot,
         "bounding_box_mm": None,
         "bounding_box_source": "legacy_regeneration_outline",
-        "bounding_box_status": {"state": "unavailable", "reason": "legacy_snapshot"},
+        "bounding_box_status": {
+            "state": "unavailable",
+            "reason": "legacy_snapshot",
+            "refresh_hint": (
+                "Call creo_refresh_model(model_id=..., write_back_snapshot=true) or save a new "
+                "revision to obtain tessellated bounding_box_mm (inward within "
+                "method_error_bound_mm relative to legacy_regeneration_outline_mm)."
+            ),
+        },
         "legacy_regeneration_outline_mm": snapshot["bounding_box_mm"],
     }
 
