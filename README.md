@@ -1,8 +1,8 @@
-# MCP_CREO_MechDog 0.49.0
+# MCP_CREO_MechDog 0.50.0
 
-![version](https://img.shields.io/badge/version-0.49.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
+![version](https://img.shields.io/badge/version-0.50.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.49.0**（MINOR，公开工具 112）。交付 [BUG-198](docs/work-items/BUG-198.md)–[BUG-201](docs/work-items/BUG-201.md) 与 [FEAT-093](docs/work-items/FEAT-093.md)（Windows JSON 原子替换 WinError 5 重试、runner Job Object 脱离/诚实回执与死作业/面板锁解套、可配自适应 worker 超时、能力回执一致与 UTF-8 stderr、拉伸双向不等深 `depth2` 及 `datum_planes[].name`）。[版本说明](docs/release-notes/RELEASE_NOTES_0.49.0.md) · [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.49.0)
+当前正式版 **0.50.0**（MINOR，公开工具 112）。交付 [BUG-202](docs/work-items/BUG-202.md)–[BUG-209](docs/work-items/BUG-209.md)、[DEV-113](docs/work-items/DEV-113.md)、[FEAT-094](docs/work-items/FEAT-094.md) 与 [FEAT-095](docs/work-items/FEAT-095.md)（面板锁恢复指引与无会话拒绝、重试同刻度确定性同步、草图焊接公开输入分离、Creo 10 回调状态一致性与 `element_tree` 前置拒绝、种子矩阵、`coordinates` 椭圆标注与 `auto` 回退、布尔初始体 `-5778` 支持、轮廓冲突披露及状态轮询 `compact` 精简输出）。[版本说明](docs/release-notes/RELEASE_NOTES_0.50.0.md) · [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.50.0)
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 

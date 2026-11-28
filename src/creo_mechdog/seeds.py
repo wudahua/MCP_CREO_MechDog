@@ -30,10 +30,13 @@ CALLBACK_FREE_ROUTE = {
     "callback_required": False,
     "preflight_tools": ["creo_list_seeds", "creo_validate_seed"],
     "scope": "native_blend_seed_rebinding",
+    "target_scope": "new_part_only",
+    "supports_existing_model": False,
     "note": (
-        "Direct creo_loft requires a resident DLL callback; the seed route "
-        "creates a new part without one. Seed bytes must still match the plan's "
-        "section count and interpolation before submission."
+        "Direct creo_loft requires a resident DLL callback; creo_new_loft_part is new_part_only "
+        "(cannot append to an existing model) and uses bundled seeds for 2/3/4/6 straight and "
+        "2/3/4/5/6 smooth (5/straight is not bundled; 7-20 sections require an explicit "
+        "compatible seed_file and seed_feature_id)."
     ),
 }
 
@@ -119,15 +122,57 @@ def manifest_entry_by_digest(digest: str) -> dict | None:
     return None
 
 
+def verified_seed_matrix(entries: list[dict]) -> list[dict]:
+    """Return exact section_count x interpolation combinations from seed entries."""
+    return [
+        {
+            "seed_name": row.get("name", ""),
+            "section_count": row.get("section_count"),
+            "interpolation": row.get("interpolation"),
+            "available": bool(row.get("available")),
+        }
+        for row in sorted(
+            entries,
+            key=lambda item: (
+                item.get("section_count") if isinstance(item.get("section_count"), int) else 0,
+                str(item.get("interpolation") or ""),
+                str(item.get("name") or ""),
+            ),
+        )
+    ]
+
+
 def list_seeds() -> dict:
     entries = []
     roots = library_directories()
     for entry in manifest()["seeds"]:
         candidates = [_checked_seed(root, entry) for root in roots]
         entries.append(next((row for row in candidates if row["available"]), candidates[0]))
+    matrix = verified_seed_matrix(entries)
+    available_combos = [
+        f"{row['section_count']}/{row['interpolation']} ({row['seed_name']})"
+        for row in matrix
+        if row["available"] and row["interpolation"]
+    ]
+    bundled_pairs = {
+        (row["section_count"], row["interpolation"])
+        for row in matrix
+        if row["interpolation"] in ("straight", "smooth")
+    }
+    missing_gaps = [
+        {"section_count": count, "interpolation": mode}
+        for count in range(2, 7)
+        for mode in ("straight", "smooth")
+        if (count, mode) not in bundled_pairs
+    ]
     return {
         "seeds": entries,
         "available_count": sum(s["available"] for s in entries),
+        "verified_combinations": matrix,
+        "available_combinations": available_combos,
+        "missing_bundled_combinations": missing_gaps,
+        "explicit_seed_section_range": [2, 20],
+        "target_scope": "new_part_only",
         "library_directories": [str(p) for p in roots],
         "validation": "SHA256 and published metadata; native type/count/mode are checked during creation",
         "available_scope": AVAILABLE_SCOPE,
@@ -153,7 +198,11 @@ def select_seed(section_count: int, interpolation: str, seed_name: str | None = 
             for s in candidates
         )
         raise ValueError(
-            f"No verified local seed matches {section_count} sections/{interpolation}. Installed choices: {supported}. Use creo_install_seed_library or supply an explicit compatible seed."
+            f"No verified local seed matches {section_count} sections/{interpolation}. "
+            f"Installed choices: {supported}. "
+            "Note: bundled seeds cover 2/3/4/6 straight and 2/3/4/5/6 smooth only "
+            "(5/straight is not bundled, and 7-20 sections require an explicit seed_file and "
+            "seed_feature_id). Use creo_install_seed_library or supply an explicit compatible seed."
         )
     return available
 

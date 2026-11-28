@@ -20,7 +20,11 @@ from creo_mechdog import generic_bridge as general
 from creo_mechdog.adoption import adopt
 from creo_mechdog.appearance import preview_recolor, submit_recolor
 from creo_mechdog.assembly_replay import plan_assembly_rebuild
-from creo_mechdog.blend_callback import callback_setup_status, unknown_readiness
+from creo_mechdog.blend_callback import (
+    callback_guidance,
+    callback_setup_status,
+    unknown_readiness,
+)
 from creo_mechdog.capabilities import (
     KNOWN_LIMITATIONS,
     PLAN_EXAMPLES,
@@ -63,6 +67,7 @@ from creo_mechdog.session_erase import erase_session_models
 from creo_mechdog.session_health import snapshot as session_health
 from creo_mechdog.session_models import list_session_models
 from creo_mechdog.sheetmetal import project_wall_contour
+from creo_mechdog.status_projection import compact_status_response
 from creo_mechdog.validation_errors import ValidationMCPServer
 from version import VERSION
 
@@ -319,8 +324,8 @@ async def creo_check_environment() -> dict[str, Any]:
 
 
 @mcp.tool(annotations=READ)
-async def creo_session_status() -> dict[str, Any]:
-    """Check the configured/unique Creo session through Toolkit using the configured probe timeout, without rebuilding. Every return branch carries server_version. An active panel guard returns its model_id and reconciliation steps. Busy returns its occupying job; probe_timeout returns recovery guidance. During startup return its snapshot promptly without starting another probe. connected=true requires verification; ambiguous/stale session selections never fall back to a random session. Includes a read-only creo_process_snapshot (pid/name/created_at/matches) so a failed probe can be interpreted alongside observed processes. Use creo_startup_status(retry=true) for a bounded recheck of an unconfirmed connection. session_health reuses this completed probe plus already recorded job results; it never adds a connection, save or session probe."""
+async def creo_session_status(detail: Literal["full", "compact"] = "full") -> dict[str, Any]:
+    """Check the configured/unique Creo session through Toolkit using the configured probe timeout, without rebuilding. Every return branch carries server_version. An active panel guard returns its model_id and reconciliation steps. Busy returns its occupying job; probe_timeout returns recovery guidance. During startup return its snapshot promptly without starting another probe. connected=true requires verification; ambiguous/stale session selections never fall back to a random session. Includes a read-only creo_process_snapshot (pid/name/created_at/matches) so a failed probe can be interpreted alongside observed processes. Use creo_startup_status(retry=true) for a bounded recheck of an unconfirmed connection. session_health reuses this completed probe plus already recorded job results; it never adds a connection, save or session probe. Pass detail='compact' for a bounded status summary keeping blockers, panel guard and next steps."""
     result = await invoke(startup.session_status)
     try:
         health = session_health(refresh=True)
@@ -343,21 +348,31 @@ async def creo_session_status() -> dict[str, Any]:
                 "toolkit_code": result.get("toolkit_code", 0),
             },
         }
-    return {**result, "server_version": VERSION, "session_health": health}
+    payload = {**result, "server_version": VERSION, "session_health": health}
+    return (
+        compact_status_response(payload, tool_name="creo_session_status")
+        if detail == "compact"
+        else payload
+    )
 
 
 @mcp.tool(annotations=READ)
-async def creo_callback_status() -> dict[str, Any]:
-    """Read resident Blend readiness without building, loading a DLL, launching Creo or changing models. The native probe has a 9-second budget and verifies a fresh nonce, module/loader hashes, protocol, command and resource root. Returns ready/not_loaded/version_mismatch/unknown with identities, checked_at and next steps. not_loaded is provable (never loaded, or registered but not running) and its instruction leads with the one-time registration entry; unknown means the loaded state cannot be confirmed. GUI registration stays unknown; busy, unreachable and timeout never imply unregistered. Old protocol-2 registration requires a one-time migration; stable loader upgrades normally require a Creo restart and starting the same registration. Do not replay unknown_outcome."""
+async def creo_callback_status(detail: Literal["full", "compact"] = "full") -> dict[str, Any]:
+    """Read resident Blend readiness without building, loading a DLL, launching Creo or changing models. The native probe has a 9-second budget and verifies a fresh nonce, module/loader hashes, protocol, command and resource root. Returns ready/not_loaded/version_mismatch/unknown with identities, checked_at, affected_operations, unaffected_alternatives and recovery_steps. not_loaded is provable (never loaded, or registered but not running) and its instruction leads with the one-time registration entry; unknown means the loaded state cannot be confirmed. GUI registration stays unknown; busy, unreachable and timeout never imply unregistered. Old protocol-2 registration requires a one-time migration; stable loader upgrades normally require a Creo restart and starting the same registration. Do not replay unknown_outcome. Pass detail='compact' for a bounded summary."""
     state = startup.status()
     if state.get("coordinator_running"):
-        return unknown_readiness(
+        payload = unknown_readiness(
             callback_setup_status(bridge.ROOT / "build"),
             "startup_in_progress",
             startup=state,
             startup_in_progress=True,
             readiness_phase="starting",
             next_action="wait_for_startup_then_requery_callback_status",
+        )
+        return (
+            compact_status_response(payload, tool_name="creo_callback_status")
+            if detail == "compact"
+            else payload
         )
     result = await invoke(bridge.callback_status)
     result["service"] = {
@@ -381,7 +396,12 @@ async def creo_callback_status() -> dict[str, Any]:
             reason="service_source_changed",
             instruction="Restart this MCP service to load the deployed code, then query again. Preserve unknown jobs/models.",
         )
-    return result
+    result = {**result, **callback_guidance(result)}
+    return (
+        compact_status_response(result, tool_name="creo_callback_status")
+        if detail == "compact"
+        else result
+    )
 
 
 @mcp.tool(
@@ -406,8 +426,9 @@ async def creo_startup_status(
     session_id: str | None = None,
     clear_session_id: bool = False,
     force_new_session: bool = False,
+    detail: Literal["full", "compact"] = "full",
 ) -> dict[str, Any]:
-    """Read a background snapshot with verified_at, verification_age_seconds and stale. retry=true rechecks the channel within 180s preparation plus configured startup budget; overlapping retries share coordination. In automatic discovery, a running Creo process with toolkit_code=-4 (PRO_TK_E_NOT_FOUND) stays waiting_for_connection with diagnosis='session_not_ready' while the coordinator retries within the connection deadline. Repeated lookup failures for an existing session at the deadline report timeout and diagnosis='stale_session_needs_restart'. probe_attempts counts completed connection probes within that startup attempt. For persistent failure, next_steps include retry=true with force_new_session=true to explicitly launch a fresh session while preserving existing processes. session_id with retry=true selects the Creo session to connect to for this process (FEAT-072): it is validated by that connection, applies to every following worker, is never written to config.json, never survives a restart and is never replaced by another session when it is absent; clear_session_id=true with retry=true drops the selection and falls back to config.json. session_selection reports which source applies and its fingerprint (the raw id is never echoed); session_candidates lists the observed Creo processes as diagnostic_only (selectable_by_pid=false), because a Toolkit session id cannot be derived from a Windows PID. force_ready=true is an operator override that opens modeling admission despite a non-ready snapshot (sets force_ready/force_ready_at; verify Toolkit connectivity before modeling); force_ready=false clears it. Unreadable startup history can be archived/rebuilt only when it predates a verified Windows reboot, both recovery locks are held and no Creo session exists; startup_recovery identifies the backup. Same-boot/unverified history requires manual reconciliation. waiting_for_channel includes busy details. Never closes Creo, clears unknown job/model reservations or replays jobs. Poll until ready; inspect recovery guidance otherwise. session_health is a read-only evidence summary (unknown/suspected_damage/no_failure_observed) built from recorded save/connection results; it opens no connection, saves nothing and is not a health guarantee."""
+    """Read a background snapshot with verified_at, verification_age_seconds and stale. retry=true rechecks the channel within 180s preparation plus configured startup budget; overlapping retries share coordination. In automatic discovery, a running Creo process with toolkit_code=-4 (PRO_TK_E_NOT_FOUND) stays waiting_for_connection with diagnosis='session_not_ready' while the coordinator retries within the connection deadline. Repeated lookup failures for an existing session at the deadline report timeout and diagnosis='stale_session_needs_restart'. probe_attempts counts completed connection probes within that startup attempt. For persistent failure, next_steps include retry=true with force_new_session=true to explicitly launch a fresh session while preserving existing processes. session_id with retry=true selects the Creo session to connect to for this process (FEAT-072): it is validated by that connection, applies to every following worker, is never written to config.json, never survives a restart and is never replaced by another session when it is absent; clear_session_id=true with retry=true drops the selection and falls back to config.json. session_selection reports which source applies and its fingerprint (the raw id is never echoed); session_candidates lists the observed Creo processes as diagnostic_only (selectable_by_pid=false), because a Toolkit session id cannot be derived from a Windows PID. force_ready=true is an operator override that opens modeling admission despite a non-ready snapshot (sets force_ready/force_ready_at; verify Toolkit connectivity before modeling); force_ready=false clears it. Unreadable startup history can be archived/rebuilt only when it predates a verified Windows reboot, both recovery locks are held and no Creo session exists; startup_recovery identifies the backup. Same-boot/unverified history requires manual reconciliation. waiting_for_channel includes busy details. Never closes Creo, clears unknown job/model reservations or replays jobs. Poll until ready; inspect recovery guidance otherwise. session_health is a read-only evidence summary (unknown/suspected_damage/no_failure_observed) built from recorded save/connection results; it opens no connection, saves nothing and is not a health guarantee. Pass detail='compact' for a bounded summary keeping state, blockers, panel guard, callback advisory and next steps."""
     if force_ready and (session_id is not None or clear_session_id or force_new_session):
         raise ValueError(
             "session_id, clear_session_id and force_new_session control connection/launch "
@@ -425,12 +446,17 @@ async def creo_startup_status(
         result = await invoke(startup.start, retry=True)
     else:
         result = await invoke(startup.status)
-    return {
+    payload = {
         **result,
         **await asyncio.to_thread(startup.session_keys),
         "update": updates.snapshot(),
         "session_health": session_health(),
     }
+    return (
+        compact_status_response(payload, tool_name="creo_startup_status")
+        if detail == "compact"
+        else payload
+    )
 
 
 @mcp.tool(annotations=NETWORK_READ)
@@ -540,7 +566,7 @@ async def creo_get_job(
         ),
     ] = 0,
 ) -> dict[str, Any]:
-    """Read modeling progress/result. Use detail=compact for polling: status/revision/files/hash/volume/counts/operation outcomes held to a 32 KiB response budget (bounded samples keep total/truncated markers; failure reasons, revision, rollback and save/reload evidence are never cut); full includes complete geometry, aliases and validation. Each operation result carries a zero-based index plus execution_status and effect_status, which separate whether the operation ran from whether the plan committed. Compact keeps the measured surface-chain criteria (surface_trim area_before/area_after with their status and kept_side_basis, surface_offset source_area/measured_offset_distance/direction/offset_method, project_curve length/endpoints/curve/helper/route and the solidify closure) but omits raw log text; full_detail_hint names the paginated full read (detail="full", section="operations_result", limit, cursor). Full remains the compatibility default: small jobs return the whole view inline, large jobs return one page of section records (operations_input/operations_result/result_entries) with complete and next_cursor - repeat with the same section, limit and cursor to fetch remaining pages; a terminal job's pages stay retrievable. section/cursor require detail=full. Recovery failures may include reason, failure_phase and recovery_pending_released; success normally omits failure_phase, so use status and the public server version to interpret absent fields. detail=compact accepts an optional sections array naming result blocks (operations, preview, inspection, recolor, geometry_deviation, feature_errors and per-operation blocks such as extrude_depth, profile, parameters); only named blocks remain, outcome/revision/rollback/save-reload evidence and operation identity always stay, and the response reports sections_applied plus omitted_sections. An empty array keeps only that evidence. sections require detail=compact; an unknown block name is rejected with isError listing every known name, without reading or changing the job. wait_seconds (0-300, default 0) long-polls the persisted job record only: terminal statuses return immediately, expiry returns the current status with wait_seconds/waited_seconds/wait_expired, and the wait never creates a job, holds the Toolkit channel lock, changes a timeout, resubmits or cancels the job when interrupted."""
+    """Read modeling progress/result. Use detail=compact for polling: status/revision/files/hash/volume/counts/operation outcomes held to a 32 KiB response budget (bounded samples keep total/truncated markers; failure reasons, revision, rollback and save/reload evidence are never cut); full includes complete geometry, aliases and validation. For status polling, creo_session_status, creo_callback_status and creo_startup_status also accept detail='compact'. For multi-view renders pass format='jpeg' and jpeg_options={'view': 'top'|'right'|'back'|'iso'|...} to creo_export_model. Each operation result carries a zero-based index plus execution_status and effect_status, which separate whether the operation ran from whether the plan committed. Compact keeps the measured surface-chain criteria (surface_trim area_before/area_after with their status and kept_side_basis, surface_offset source_area/measured_offset_distance/direction/offset_method, project_curve length/endpoints/curve/helper/route and the solidify closure) but omits raw log text; full_detail_hint names the paginated full read (detail="full", section="operations_result", limit, cursor). Full remains the compatibility default: small jobs return the whole view inline, large jobs return one page of section records (operations_input/operations_result/result_entries) with complete and next_cursor - repeat with the same section, limit and cursor to fetch remaining pages; a terminal job's pages stay retrievable. section/cursor require detail=full. Recovery failures may include reason, failure_phase and recovery_pending_released; success normally omits failure_phase, so use status and the public server version to interpret absent fields. detail=compact accepts an optional sections array naming result blocks (operations, preview, inspection, recolor, geometry_deviation, feature_errors and per-operation blocks such as extrude_depth, profile, parameters); only named blocks remain, outcome/revision/rollback/save-reload evidence and operation identity always stay, and the response reports sections_applied plus omitted_sections. An empty array keeps only that evidence. sections require detail=compact; an unknown block name is rejected with isError listing every known name, without reading or changing the job. wait_seconds (0-300, default 0) long-polls the persisted job record only: terminal statuses return immediately, expiry returns the current status with wait_seconds/waited_seconds/wait_expired, and the wait never creates a job, holds the Toolkit channel lock, changes a timeout, resubmits or cancels the job when interrupted."""
     return await invoke(
         bridge.get_job, job_id, detail, section, limit, cursor, sections, wait_seconds
     )
@@ -1061,28 +1087,29 @@ async def creo_new_loft_part(
     assertions: dict[str, Any] | None = None,
     interpolation: Literal["straight", "smooth"] = "straight",
 ) -> dict[str, Any]:
-    """Create a NEW part with a native ordinary Blend by rebinding a saved seed.
+    """Create a NEW part (target_scope='new_part_only') with a native ordinary Blend by rebinding a saved seed.
 
     Omit seed_file and seed_feature_id to automatically select a hash-verified
-    installed seed matching section count and interpolation. Alternatively supply
+    bundled seed matching section count and interpolation. Verified bundled
+    combinations are straight (2, 3, 4, 6 sections) and smooth (2, 3, 4, 5, 6
+    sections); notably 5-section straight is NOT bundled. Alternatively supply
     both explicit values for a local .prt/.prt.N containing one solid Blend with exactly the same
-    number of independent XY sketch sections, created and selected low Z first,
+    number of independent XY sketch sections (2-20), created and selected low Z first,
     plus its native feature ID. interpolation must match the saved seed's
     straight/smooth setting: it validates the mode, never converts the seed.
     Use a dedicated solid seed in mm with one body. The file is
     snapshotted and never edited. sections must contain 2 to 20 sketch ops
     on XY with strictly increasing Z offsets; their geometry and dimensions drive the
-    result. Five-section smooth rectangles and spline airfoils have been verified.
-    Two-section rectangles, circles and triangles are also supported. This preserves
+    result. This preserves
     a native parametric Blend; it is seed reuse, not direct element-tree creation.
     The native mode is checked after creation, edits and saved-file reload.
     A failed native load keeps the original API, error code and stage plus the seed
     identity, SHA256 and the session release; the error alone never names the cause.
-    External Creo 9 reported the tested seeds failing with -16 and a Creo 10
-    three-section success is on record; the current session and the other seeds are
-    unverified, so no minimum Creo version is promised.
-    It does not increase the seed's section count. No existing-target insertion, cut/surface modes or
-    editable tangency/curvature controls; endpoint settings are inherited.
+    External Creo 9 reported the tested seeds failing with -16 and Creo 10
+    bundled combinations are verified against this build; call creo_list_seeds
+    for the exact verified matrix.
+    It does not increase the seed's section count or append to an existing part
+    (use creo_loft with a ready resident callback for existing parts).
     Poll the returned job_id and use the resulting model_id for later features.
     """
     return await invoke(
@@ -1569,8 +1596,10 @@ async def creo_create_sketch(
     For revolve include exactly one construction centerline, or supply an explicit external
     axis to creo_revolve: {kind:'datum_axis_feature',label:'axis_label'} or {kind:'axis',id:N}.
     On any valid sketch plane, auto selects coordinates for supported profiles without explicit
-    dimensions or constraints, including single circles and native B-splines. Spline, ellipse and explicitly dimensioned or
-    constrained profiles in auto use autodim. Explicit coordinates forces coordinate dimensioning.
+    dimensions or constraints, including single circles and native B-splines; if autodim fails
+    to solve an unconstrained coordinate-supported profile, the worker falls back to coordinates
+    and reports fallback_from='autodim'. Spline in auto uses autodim. Explicit coordinates
+    forces coordinate dimensioning (including ellipse via x_radius/y_radius/center).
     Centerlines are verified as infinite lines (direction and offset); skewed centerlines
     carry no endpoint dimensions.
     Multiple disjoint or nested closed loops are supported in one sketch. The result
@@ -3972,7 +4001,8 @@ async def creo_boolean_bodies(
 ) -> dict[str, Any]:
     """Create a parametric multi-body Boolean feature using {kind:'body',id:...}.
 
-    Negative IDs reported by inspection are not supported by this feature path.
+    Active primary/legacy body id=-5778 reported by creo_inspect_model is supported when active;
+    empty bodies (-5778 with zero volume/surfaces) and all other negative body IDs are rejected.
     Sheetmetal-to-solid fusion is unverified even with positive IDs; separate
     new_body solids are not a promise of a later union into the sheetmetal body.
     """

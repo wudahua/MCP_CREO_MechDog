@@ -20,4 +20,5 @@
 - 实机 `tools/test_feedback0430_live.py`（报告 `build/feedback0430_live_report.json`，Creo 10.0.0.0 / release 42）：
   - `S2_jpeg_orthographic_and_matrix`：3 mm 厚 60×40 mm YZ 薄板分别渲染 `right`（作业 `857a5d6fd3094303a166b10eee321236`，20,877 字节，肉眼核验呈现完整 60×40 正视轮廓）、`left`（`e8b942d5f6574f27a8f4b76c38838dff`）、`front`（`ed6dad6e9ce04c41a29b0f5d00ac3d0a`，呈 3 mm 薄边）及 45° 自定义 `view_matrix`（`24e16910e62e4f658cd0ee1ea812f65f`），四项均 `view_matrix_matches=true`。
 - 单元测试：`tests/unit/test_feedback0400_bspline_view.py::Feat082JpegOrthographicAndMatrixTests` 全部通过。
+- 2026-11-28（`0.50.0` 基线补充）：在 `creo_get_job` 文档中补充 `creo_export_model(format="jpeg", jpeg_options={"view": ...})` 视角引导提升可发现性；Creo 10 实机在非对称 `120×60×30` 零件（带偏置 Ø20 凸台与 `25×20` 角切口，模型 `61fa8cc0f2524817bd7134ba3832c9a3`）导出 `top` / `right` / `back`（`800×600`）三视图 `view_matrix_matches=true`，人工视觉核验三方向可清晰辨别。
 - 未验范围：Creo 9/12、装配体多视角与 WorkBuddy 黑盒。

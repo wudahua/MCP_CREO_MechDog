@@ -554,7 +554,7 @@ def callback_setup_status(build: Path) -> dict:
 
 def unknown_readiness(artifacts: dict, reason: str, **details) -> dict:
     """Never infer GUI registration or runtime load state from a failed probe."""
-    return {
+    payload = {
         **artifacts,
         "readiness": "unknown",
         "reason": reason,
@@ -567,3 +567,95 @@ def unknown_readiness(artifacts: dict, reason: str, **details) -> dict:
         ),
         **details,
     }
+    return {**payload, **callback_guidance(payload)}
+
+
+def callback_guidance(payload: dict) -> dict:
+    """BUG-204: structured affected operations, alternatives, and recovery steps."""
+    readiness = payload.get("readiness") if isinstance(payload, dict) else "unknown"
+    if readiness == "ready":
+        return {
+            "affected_operations": [],
+            "unaffected_alternatives": {},
+            "recovery_steps": [],
+        }
+    registry_file = payload.get("registry_file") or "build/blend_callback_protk.dat"
+    persistent_cfg = (
+        payload.get("persistent_registration_config") or "build/blend_callback.config.pro"
+    )
+    reason = payload.get("reason")
+    if reason == "startup_in_progress":
+        steps = [
+            "Wait for Creo startup coordination to finish (poll creo_startup_status).",
+            "Re-query creo_callback_status once startup reaches ready.",
+        ]
+    elif payload.get("artifact_status") != "prepared":
+        steps = [
+            "Run bridge.py build (or build the native worker) to prepare callback DLL artifacts.",
+            f"Register {registry_file} in Creo Auxiliary Applications and click Start.",
+            "Call creo_callback_status to confirm readiness='ready'.",
+        ]
+    else:
+        steps = [
+            (
+                f"In Creo Auxiliary Applications, register {registry_file} (if not listed; "
+                f"for persistence across restarts merge {persistent_cfg} into config.pro). "
+                "Note: delay_start=true means cold-started Creo registers the app as not active "
+                "until started."
+            ),
+            "Select the registered MCP_CREO_MechDog application and click Start (approve the DLL prompt).",
+            "Call creo_callback_status and confirm readiness='ready' and reason='live_identity_verified'.",
+        ]
+    return {
+        "affected_operations": [
+            "loft (creo_loft)",
+            "surface_loft with creation_route='resident_panel' (creo_surface_loft)",
+        ],
+        "unaffected_alternatives": {
+            "creo_new_loft_part": {
+                "scope": "new_part_only",
+                "callback_required": False,
+                "note": (
+                    "Creates a NEW solid Blend part using verified bundled seeds "
+                    "(2/3/4/6 straight, 2/3/4/5/6 smooth) or an explicit seed_file; "
+                    "cannot append to an existing part."
+                ),
+            }
+        },
+        "recovery_steps": steps,
+    }
+
+
+def callback_advisory(admission: dict | None) -> dict:
+    """Non-blocking read-only callback summary for startup_status without a 9s probe."""
+    if not isinstance(admission, dict) or not admission:
+        readiness = "unknown"
+        reason = "callback_status_unavailable"
+    else:
+        readiness = admission.get("readiness") or "unknown"
+        reason = admission.get("reason")
+    ready = readiness == "ready"
+    advisory: dict = {
+        "readiness": readiness,
+        "ready_for_direct_loft": ready,
+        "reason": reason,
+        "affected_operations": (
+            []
+            if ready
+            else [
+                "loft (creo_loft)",
+                "surface_loft with creation_route='resident_panel'",
+            ]
+        ),
+        "unaffected_alternative": (
+            None if ready else "creo_new_loft_part (new_part_only; call creo_list_seeds)"
+        ),
+        "check_tool": "creo_callback_status",
+    }
+    if not ready:
+        advisory["note"] = (
+            "Creo Toolkit session is connected, but the resident Blend callback is not verified "
+            "ready. Direct creo_loft and resident_panel creo_surface_loft require starting the "
+            "registered application in Creo Auxiliary Applications and confirming creo_callback_status."
+        )
+    return advisory

@@ -205,6 +205,7 @@ def child_serve(directory: Path) -> None:
     with ExitStack() as stack:
         stack.enter_context(patch.object(subprocess, "Popen", side_effect=route))
         stack.enter_context(patch.object(rec, "_deployment", return_value=DEPLOYMENT_FIXTURE))
+        stack.enter_context(patch.object(rec, "_check_recovery_session"))
         stack.enter_context(patch.object(server.startup, "start"))
         stack.enter_context(patch.object(server.updates, "start"))
         server.mcp.run()

@@ -10,13 +10,13 @@
 // discover the callback-free seed route at the point of failure. This is guidance
 // only; it never loads a DLL and never changes Creo security settings.
 static const char *const SEED_ROUTE_NOTE =
-    "Callback-free alternative: creo_new_loft_part creates a NEW part by rebinding a "
-    "published native Blend seed and does not need a resident DLL callback. Call "
-    "creo_list_seeds to read callback_free_route and compare section_count, "
-    "interpolation and seed_feature_id with the plan before submitting; "
-    "creo_validate_seed checks the installed bytes. This route cannot append a Blend "
-    "to an existing model, and available seeds do not prove the current Creo session "
-    "can load them.";
+    "Callback-free alternative: creo_new_loft_part (new_part_only) creates a NEW part by "
+    "rebinding a published native Blend seed and does not need a resident DLL callback. Bundled "
+    "seeds cover 2/3/4/6 straight and 2/3/4/5/6 smooth (5/straight is not bundled; 7-20 sections "
+    "require an explicit compatible seed_file and seed_feature_id). Call creo_list_seeds to read "
+    "verified_combinations and callback_free_route, and creo_validate_seed to check installed "
+    "bytes. This route cannot append a Blend to an existing model, and available seeds do not "
+    "prove the current Creo session can load them.";
 
 static ProToolkitDllHandle resident_blend_callback(const std::filesystem::path &build,
                                                    std::string &command) {

@@ -128,7 +128,7 @@ class TestFeedback0451Round2(unittest.TestCase):
 
         caps = server._capabilities_payload([])
         limits = caps["families"]["sketch_dimensioning"]["limits"]
-        self.assertIn("b_spline/arc also route to autodim under dimensioning='auto'", limits)
+        self.assertIn("while b_spline/arc/ellipse try autodim first in auto mode", limits)
 
 
 if __name__ == "__main__":

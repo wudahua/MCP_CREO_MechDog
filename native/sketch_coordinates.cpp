@@ -16,13 +16,15 @@ static J profile_dimensioning_choice(const J &op) {
         return choice("autodim", "supplied_dimensions_or_constraints");
     for (const auto &e : op.at("entities")) {
         const auto &type = e.at("type").get_ref<const std::string &>();
-        // BUG-194: Creo coordinate dimensioning quantizes b_spline control points
-        // and arc center_radius_angles to ~1e-4..1e-3 mm, exceeding the 1e-5 mm
-        // coordinate cap. Auto mode routes b_spline/arc/spline/ellipse to autodim
-        // while explicit dimensioning="coordinates" still supports exact b_spline/arc.
+        // BUG-194 / BUG-207: Creo coordinate dimensioning can quantize b_spline
+        // control points or arc angles past 1e-5 mm. Auto mode tries autodim first
+        // for curved entities (falling back to coordinates if autodim fails), while
+        // reporting an accurate selection_reason.
+        if (type == "spline")
+            return choice("autodim", "unsupported_coordinate_entity");
         if (type != "line" && type != "centerline" && type != "rectangle" && type != "polyline" &&
             type != "circle")
-            return choice("autodim", "unsupported_coordinate_entity");
+            return choice("autodim", "autodim_preferred_for_curved_entity");
     }
     return choice("coordinates", "unconstrained_coordinate_profile");
 }
@@ -139,6 +141,14 @@ static J coordinate_dimensions(ProSection section, int origin,
                               {"xy", {arc->center[0], arc->center[1]}}}};
             row["radius"] = arc->radius;
             row["angles"] = {arc->start_angle, arc->end_angle};
+        } else if (def->type == PRO_2D_ELLIPSE) {
+            auto ellipse = (Pro2dEllipsedef *)def;
+            row["points"] = {{{"sense", PRO_ENT_CENTER},
+                              {"key", "center"},
+                              {"xy", {ellipse->origin[0], ellipse->origin[1]}}}};
+            row["radii"] = {ellipse->x_radius, ellipse->y_radius};
+            row["x_radius"] = ellipse->x_radius;
+            row["y_radius"] = ellipse->y_radius;
         } else if (def->type == PRO_2D_B_SPLINE) {
             // BUG-160: an exact B-spline is defined by its control points, so
             // coordinate dimensioning records them for the verification pass and
@@ -164,8 +174,9 @@ static J coordinate_dimensions(ProSection section, int origin,
                 row["weights"] = weights;
             }
         } else
-            throw std::runtime_error("Coordinate dimensioning accepts lines, polylines, "
-                                     "rectangles, circles, arcs and exact B-splines only");
+            throw std::runtime_error(
+                "Coordinate dimensioning accepts lines, polylines, "
+                "rectangles, circles, arcs, ellipses and exact B-splines only");
         snapshot.push_back(row);
     }
     // The solve treats a construction centerline as an infinite axis: it slides
@@ -303,6 +314,24 @@ static J coordinate_dimensions(ProSection section, int origin,
                 dimensions[prefix + "_" + key] = dim;
             }
         }
+        if (row.contains("x_radius") && row.contains("y_radius")) {
+            ProSectionPointType whole = PRO_ENT_WHOLE;
+            int dim_x = -1, dim_y = -1;
+            double cx = row["points"][0]["xy"][0].get<double>();
+            double cy = row["points"][0]["xy"][1].get<double>();
+            double xr = row["x_radius"].get<double>();
+            double yr = row["y_radius"].get<double>();
+            Pro2dPnt place_x = {cx + xr, cy};
+            Pro2dPnt place_y = {cx, cy + yr};
+            CK(ProSecdimCreate(section, &entity, &whole, 1, PRO_TK_DIM_ELLIPSE_X_RADIUS, place_x,
+                               &dim_x));
+            CK(ProSecdimValueSet(section, dim_x, xr));
+            dimensions[prefix + "_x_radius"] = dim_x;
+            CK(ProSecdimCreate(section, &entity, &whole, 1, PRO_TK_DIM_ELLIPSE_Y_RADIUS, place_y,
+                               &dim_y));
+            CK(ProSecdimValueSet(section, dim_y, yr));
+            dimensions[prefix + "_y_radius"] = dim_y;
+        }
     }
     return {{"dimension_ids", dimensions}, {"targets", snapshot}, {"origin_id", origin}};
 }
@@ -402,6 +431,8 @@ static J verify_coordinate_plan(ProSection section, const J &targets, int origin
                 actual = ((Pro2dCircledef *)def)->center;
             else if (def->type == PRO_2D_ARC)
                 actual = ((Pro2dArcdef *)def)->center;
+            else if (def->type == PRO_2D_ELLIPSE)
+                actual = ((Pro2dEllipsedef *)def)->origin;
             else
                 actual = point["sense"].get<int>() == PRO_ENT_START ? ((Pro2dLinedef *)def)->end1
                                                                     : ((Pro2dLinedef *)def)->end2;
@@ -438,6 +469,12 @@ static J verify_coordinate_plan(ProSection section, const J &targets, int origin
                                      row["radius"].get<double>() *
                                          fabs(remainder(actual[i] - row["angles"][i].get<double>(),
                                                         2 * acos(-1.0))));
+        }
+        if (row.contains("x_radius") && row.contains("y_radius")) {
+            auto ellipse = (Pro2dEllipsedef *)def;
+            deviation =
+                std::max({deviation, fabs(ellipse->x_radius - row["x_radius"].get<double>()),
+                          fabs(ellipse->y_radius - row["y_radius"].get<double>())});
         }
     }
     // BUG-108: separate a whole-profile translation from a deformation. The

@@ -20,26 +20,32 @@ WORKER_SHA = "b95cd7c2655b0799bb8efb6f68e21ac891157af970b42d78c135f53e5326864a"
 
 
 def identity(**feature):
+    rel = feature.pop("release_numeric", 44)
+    ev = feature.pop(
+        "evidence",
+        {
+            "release_numeric": rel,
+            "create_code": 0,
+            "extract_code": -18,
+            "feature_incomplete": True,
+        },
+    )
     entry = {
         "available": True,
         "state": "compiled",
         "kernel_completion": "unsupported",
         "worker_sha256": WORKER_SHA,
-        "release_numeric": 42,
+        "release_numeric": rel,
         "job_id": "be450d6a74bb4868acc1ddd3d897cd63",
         "observed_at": "2026-11-13T00:00:00+08:00",
-        "evidence": {
-            "release_numeric": 42,
-            "create_code": 0,
-            "extract_code": -18,
-            "feature_incomplete": True,
-        },
+        "evidence": ev,
     }
     entry.update(feature)
     return {
         "identity_status": "verified",
         "identity_source": "creo_worker.exe build-info",
         "worker_sha256": WORKER_SHA,
+        "release_numeric": rel,
         "features": {"surface_loft": entry},
     }
 
@@ -96,8 +102,14 @@ class KernelAdmissionRules(unittest.TestCase):
 
     def test_explicit_geometry_only_completion_bypasses_the_refusal(self):
         capabilities.require_kernel_completion(
-            [{**loft(), "accept_unverified_completion": True}], identity()
+            [{**loft(), "accept_unverified_completion": True}], identity(release_numeric=44)
         )
+
+    def test_creo10_refuses_element_tree_even_with_accept_unverified_completion(self):
+        creo10 = identity(release_numeric=42, kernel_completion="unknown", evidence=None)
+        for op in (loft(), {**loft(), "accept_unverified_completion": True}):
+            with self.assertRaisesRegex(ValueError, "resident_panel"):
+                capabilities.require_kernel_completion([op], creo10)
 
     def test_an_unflagged_operation_in_the_same_plan_keeps_the_refusal(self):
         with self.assertRaisesRegex(ValueError, "refused before a job"):

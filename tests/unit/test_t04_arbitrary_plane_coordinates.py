@@ -56,10 +56,24 @@ class ArbitraryPlaneCoordinateValidation(unittest.TestCase):
         self.assertEqual(dumped["entities"][0]["name"], "ax")
 
     def test_entity_and_dimension_exclusions_apply_on_any_plane(self):
-        for entities in (
-            [{"type": "ellipse", "name": "e", "center": [0, 0], "x_radius": 2, "y_radius": 1}],
-            [{"type": "spline", "name": "s", "points": [[0, 0], [1, 1]]}],
-        ):
+        ellipse_op = validate_operations(
+            [
+                sketch(
+                    DICTIONARY_PLANE,
+                    entities=[
+                        {
+                            "type": "ellipse",
+                            "name": "e",
+                            "center": [0, 0],
+                            "x_radius": 2,
+                            "y_radius": 1,
+                        }
+                    ],
+                )
+            ]
+        )[0]
+        self.assertEqual(ellipse_op["dimensioning"], "coordinates")
+        for entities in ([{"type": "spline", "name": "s", "points": [[0, 0], [1, 1]]}],):
             with self.subTest(entities=entities):
                 with self.assertRaisesRegex(ValueError, "Coordinate dimensioning supports"):
                     validate_operations([sketch(DICTIONARY_PLANE, entities=entities)])

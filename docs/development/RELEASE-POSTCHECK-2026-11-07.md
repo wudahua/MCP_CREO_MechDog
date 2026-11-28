@@ -2,6 +2,17 @@
 
 本文件补记 [DEV-075](../work-items/DEV-075.md) 指出的缺口：`RELEASING.md` 第 7 步要求「发布后用 `gh release view` 或 `tools/check_release_assets.py --tag <tag>` 核对远端恰有四个附件、两个 sidecar 与对应远端 ZIP 摘要一致，核对结果写入发布记录」，但此前只在各版 `RELEASE-*.md` 里记结论，没有可复核的发布后留存。原有小节记录**发布之后**对远端实际对象的重新下载与重算结果；2026-11-08新增小节另标历史索引、外部元数据和未核验事实；发布前的本地打包、CI 与验收结论仍以各版版本说明和发布记录为准。
 
+## v0.50.0（2026-11-28，打包时点）
+
+交付 [BUG-202](../work-items/BUG-202.md)–[BUG-209](../work-items/BUG-209.md)、[DEV-113](../work-items/DEV-113.md)、[FEAT-094](../work-items/FEAT-094.md) 与 [FEAT-095](../work-items/FEAT-095.md)（面板锁与无会话恢复、重试单测事件同步、草图公开 `weld_pairs` 分离、Creo 10 回调冷启动与 `element_tree` 前置拒绝、种子矩阵、`coordinates` 椭圆标注与 `auto` 回退、布尔初始体 `-5778` 支持、轮廓冲突前置披露与状态轮询 `compact` 精简输出）。[版本说明](../release-notes/RELEASE_NOTES_0.50.0.md) · [发布记录](../validation/RELEASE-0.50.0.md)
+
+- `MCP_CREO_MechDog-0.50.0-source.zip`
+- `MCP_CREO_MechDog-0.50.0-source.zip.sha256`
+- `MCP_CREO_MechDog-0.50.0-seed-library.zip`
+- `MCP_CREO_MechDog-0.50.0-seed-library.zip.sha256`
+
+种子包 SHA256 为 `b0f87bb3eac0240f66147d417c84e3e34661b283c0b1e8e8e3e3c0a6c85dc6da`。源码包和种子包的摘要分别记录在同名 sidecar。远端校验发布后执行，当前未验证。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.50.0)
+
 ## v0.49.0（2026-11-28，打包时点）
 
 交付 [BUG-198](../work-items/BUG-198.md)–[BUG-201](../work-items/BUG-201.md) 与 [FEAT-093](../work-items/FEAT-093.md)（Windows JSON 原子替换 WinError 5 重试、runner Job Object 脱离与死作业/面板锁解套、可配自适应 worker 超时、能力回执一致与 UTF-8 stderr、拉伸双向不等深 `depth2` 及 `datum_planes[].name`）。[版本说明](../release-notes/RELEASE_NOTES_0.49.0.md) · [发布记录](../validation/RELEASE-0.49.0.md)

@@ -500,8 +500,8 @@ class Bug097SectionLocationTests(unittest.TestCase):
         self.assertIn('use_frame_basis ? "frame_basis" : "location_matrix"', source)
         # The frame-basis branch projects with the placement frame, not with loc.
         body = source[source.index("auto project = [&](const J &p, double *out) {") :]
-        self.assertIn("out[0] = dot(d, frame.u);", body[:600])
-        self.assertIn("out[1] = dot(d, frame.v);", body[:600])
+        self.assertIn("out[0] = dot(d, frame.u);", body[:700])
+        self.assertIn("out[1] = dot(d, frame.v);", body[:700])
 
 
 if __name__ == "__main__":

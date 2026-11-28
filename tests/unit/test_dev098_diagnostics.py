@@ -209,7 +209,7 @@ class DocumentationContractTests(unittest.TestCase):
     def test_capabilities_name_the_limits_and_b_spline_coordinates_exclusion(self):
         text = CAPABILITIES.read_text(encoding="utf-8")
         for phrase in (
-            "spline/ellipse use autodim",
+            "spline uses autodim",
             "sketch_profile_partial_counts",
             "quilt_closure_not_solidifiable",
             "hidden_hung_window_scope",

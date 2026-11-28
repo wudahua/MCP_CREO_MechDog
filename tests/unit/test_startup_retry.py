@@ -206,22 +206,65 @@ class StartupRetry(unittest.TestCase):
 
     def test_new_retry_gets_new_id_even_within_same_clock_tick(self):
         self.fixture.inventory.return_value = self.fixture.existing()
-        self.fixture.probe.return_value = startup_tests.READY
         controller = self.controller()
+        original_publish = controller._publish
+
+        for_round = {"round": 1}
+        probe_entered = {1: threading.Event(), 2: threading.Event()}
+        probe_release = {1: threading.Event(), 2: threading.Event()}
+        terminal_published = {1: threading.Event(), 2: threading.Event()}
+
+        def controlled_probe(**kwargs):
+            idx = for_round["round"]
+            probe_entered[idx].set()
+            self.assertTrue(probe_release[idx].wait(30), f"round {idx} probe release timeout")
+            return startup_tests.READY
+
+        def observed_publish(state, message, *args, **kwargs):
+            result = original_publish(state, message, *args, **kwargs)
+            if state == "ready":
+                terminal_published[for_round["round"]].set()
+            return result
+
+        self.fixture.probe.side_effect = controlled_probe
+
+        def run_controlled_round(idx):
+            for_round["round"] = idx
+            completed = threading.Event()
+            orig_run = controller._run
+
+            def observed_run(*args):
+                try:
+                    orig_run(*args)
+                finally:
+                    completed.set()
+
+            with patch.object(controller, "_run", side_effect=observed_run):
+                accepted = controller.start(retry=True)
+                thread = controller._thread
+                self.assertTrue(probe_entered[idx].wait(30), f"round {idx} probe did not enter")
+                probe_release[idx].set()
+                self.assertTrue(
+                    terminal_published[idx].wait(30), f"round {idx} terminal state not published"
+                )
+                self.assertTrue(completed.wait(60), f"round {idx} coordinator did not finish")
+                thread.join()
+            return accepted, thread
+
         with (
             patch.object(bridge, "now", return_value="2026-11-27T12:00:00+00:00"),
             patch.object(creo_startup.time, "monotonic_ns", return_value=123456789),
             patch.object(creo_startup.time, "perf_counter_ns", return_value=987654321),
+            patch.object(controller, "_publish", side_effect=observed_publish),
         ):
-            self.run_retry(controller)
-            first_thread = controller._thread
+            _, first_thread = run_controlled_round(1)
             self.assertFalse(first_thread.is_alive())
             first = controller.status()
             self.assertEqual(first["retry_id"], controller.status()["retry_id"])
-            accepted = self.run_retry(controller)
-            self.assertIsNot(controller._thread, first_thread)
+            accepted, second_thread = run_controlled_round(2)
+            self.assertIsNot(second_thread, first_thread)
             self.assertNotEqual(first["retry_id"], accepted["retry_id"])
-            self.assertFalse(controller._thread.is_alive())
+            self.assertFalse(second_thread.is_alive())
             second = controller.status()
         self.assertNotEqual(first["retry_id"], second["retry_id"])
         self.assertEqual(second["retry_id"], accepted["retry_id"])

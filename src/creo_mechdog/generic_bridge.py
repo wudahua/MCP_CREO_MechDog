@@ -1407,7 +1407,9 @@ def submit(
             and not cb.get("admit_to_worker")
         ):
             route_hint = (
-                " callback_free_route=creo_new_loft_part (use creo_list_seeds)."
+                " callback_free_route=creo_new_loft_part (scope=new_part_only; bundled seeds "
+                "cover 2/3/4/6 straight & 2/3/4/5/6 smooth; use creo_list_seeds; cannot append "
+                "to an existing part)."
                 if loft_requests
                 else ""
             )

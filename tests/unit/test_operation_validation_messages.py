@@ -40,7 +40,7 @@ class OperationValidationMessages(unittest.TestCase):
                     "op": "boolean_bodies",
                     "label": "secret_project",
                     "method": "union",
-                    "targets": [{"kind": "body", "id": -5778}],
+                    "targets": [{"kind": "body", "id": -1}],
                     "tools": [{"kind": "body", "id": 115}],
                 }
             ]

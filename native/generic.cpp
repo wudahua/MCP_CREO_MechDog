@@ -3281,21 +3281,14 @@ static J bspline_polyline_points(const J &entity, int segments) {
     return points;
 }
 
-static J sketch(J op) {
-    J approximations = J::array();
-    for (auto &entity : op.at("entities")) {
-        if (entity.value("type", "") != "b_spline" || !entity.contains("approximation_segments") ||
-            entity["approximation_segments"].is_null())
-            continue;
-        const int segments = entity.at("approximation_segments");
-        const J name = entity.at("name");
-        J points = bspline_polyline_points(entity, segments);
-        entity = {{"type", "polyline"},
-                  {"name", name},
-                  {"points", std::move(points)},
-                  {"construction", entity.value("construction", false)}};
-        approximations.push_back({{"entity", name}, {"segments", segments}});
-    }
+static void delete_feature_quiet(int feat_id);
+
+struct SketchAutodimSolveFailed : std::runtime_error {
+    using std::runtime_error::runtime_error;
+};
+
+static J sketch_attempt(const J &op, const J &approximations, const char *force_mode,
+                        const std::string &fallback_from, const std::string &autodim_error) {
     Frame frame = sketch_frame(op);
     if (!frame.orientation_exact) {
         log("SKETCH_ORIENTATION_HELPER=1 support=%d\n", frame.surface);
@@ -3339,586 +3332,693 @@ static J sketch(J op) {
     integer(setup, PRO_E_STD_SEC_PLANE_VIEW_DIR, PRO_SEC_VIEW_DIR_SIDE_ONE);
     integer(setup, PRO_E_STD_SEC_PLANE_ORIENT_DIR, PRO_SEC_ORIENT_DIR_UP);
     ref(setup, PRO_E_STD_SEC_PLANE_ORIENT_REF, orient);
-    ProFeature f = create(root, PRO_FEAT_CR_INCOMPLETE_FEAT);
-    CK(ProElementFree(&root));
-    CK(ProFeatureElemtreeExtract(&f, nullptr, PRO_FEAT_EXTRACT_NO_OPTS, &root));
-    ProElement sk = get(root, {PRO_E_STD_SECTION, PRO_E_SKETCHER});
-    ProSection section = nullptr;
-    CK(ProElementSpecialvalueGet(sk, nullptr, (ProAppData *)&section));
-    int projected;
-    CK(ProSectionEntityFromProjection(section, orient, &projected));
-    std::vector<int> coordinate_anchors = {projected};
-    collect_datum_planes_quiet();
-    // BUG-087 + BUG-173: order candidate datum planes so planes perpendicular
-    // to both support and orientation (including any helper anchor just built)
-    // are tried first, followed by planes perpendicular to the support, and
-    // finally general non-parallel planes as a last resort. This avoids
-    // hundreds of guaranteed PRO_TK_BAD_INPUTS (-2) calls on oblique planes.
-    for (const auto &p : planes)
-        if (p.id == frame.orientation)
-            orient_normal = normalized(V{p.n[0], p.n[1], p.n[2]});
-    std::vector<int> tier0, tier1, tier2;
-    for (const auto &p : planes) {
-        V n = normalized(V{p.n[0], p.n[1], p.n[2]});
-        if (p.id == frame.orientation || fabs(dot(n, frame.n)) >= 0.95)
-            continue;
-        double to_orientation = fabs(dot(n, orient_normal));
-        if (to_orientation >= 1 - 1e-6) {
-            log("SKETCH_ANCHOR_SKIPPED=%d parallel_to_orientation=%.9f\n", p.id, to_orientation);
-            continue;
-        }
-        double to_support = fabs(dot(n, frame.n));
-        if (p.id == helper_anchor_surface_id)
-            tier0.insert(tier0.begin(), p.id);
-        else if (to_support < 1e-5 && to_orientation < 1e-5)
-            tier0.push_back(p.id);
-        else if (to_support < 1e-4)
-            tier1.push_back(p.id);
-        else
-            tier2.push_back(p.id);
-    }
-    auto try_anchor_planes = [&](const std::vector<int> &ids) {
-        for (int pid : ids) {
-            if (coordinate_anchors.size() >= 2)
-                return;
-            ProSelection s = selection(pid, PRO_SURFACE);
-            ProError e = ProSectionEntityFromProjection(section, s, &projected);
-            ProSelectionFree(&s);
-            log("PROJECT_REFERENCE=%d code=%d entity=%d\n", pid, e, projected);
-            if (!e) {
-                coordinate_anchors.push_back(projected);
-                log("SKETCH_ANCHOR_PLANE=%d\n", pid);
-                return;
-            }
-        }
-    };
-    try_anchor_planes(tier0);
-    try_anchor_planes(tier1);
-    try_anchor_planes(tier2);
-    if (coordinate_anchors.size() == 1) {
-        // No usable datum plane existed, so the section carries only the
-        // orientation reference and ProSectionSolve fails. Fall back to a
-        // datum axis parallel to the support plane; its projection is a line
-        // reference. An oblique axis would project to a point and is skipped.
-        V orient_line = cross(frame.n, orient_normal);
-        double length = sqrt(dot(orient_line, orient_line));
-        axis_refs.clear();
-        CK(ProSolidFeatVisit((ProSolid)board, axis_feat_cb, nullptr, nullptr));
-        for (auto &a : axis_refs) {
-            if (fabs(dot(a.direction, frame.n)) > 1e-6)
+    ProFeature f = {};
+    bool root_extracted = false;
+    bool feature_committed = false;
+    bool in_solve = false;
+    bool fallback_eligible = false;
+    try {
+        f = create(root, PRO_FEAT_CR_INCOMPLETE_FEAT);
+        CK(ProElementFree(&root));
+        root = nullptr;
+        CK(ProFeatureElemtreeExtract(&f, nullptr, PRO_FEAT_EXTRACT_NO_OPTS, &root));
+        root_extracted = true;
+        ProElement sk = get(root, {PRO_E_STD_SECTION, PRO_E_SKETCHER});
+        ProSection section = nullptr;
+        CK(ProElementSpecialvalueGet(sk, nullptr, (ProAppData *)&section));
+        int projected;
+        CK(ProSectionEntityFromProjection(section, orient, &projected));
+        std::vector<int> coordinate_anchors = {projected};
+        collect_datum_planes_quiet();
+        // BUG-087 + BUG-173: order candidate datum planes so planes perpendicular
+        // to both support and orientation (including any helper anchor just built)
+        // are tried first, followed by planes perpendicular to the support, and
+        // finally general non-parallel planes as a last resort. This avoids
+        // hundreds of guaranteed PRO_TK_BAD_INPUTS (-2) calls on oblique planes.
+        for (const auto &p : planes)
+            if (p.id == frame.orientation)
+                orient_normal = normalized(V{p.n[0], p.n[1], p.n[2]});
+        std::vector<int> tier0, tier1, tier2;
+        for (const auto &p : planes) {
+            V n = normalized(V{p.n[0], p.n[1], p.n[2]});
+            if (p.id == frame.orientation || fabs(dot(n, frame.n)) >= 0.95)
                 continue;
-            if (length > 1e-9 && fabs(dot(a.direction, orient_line)) / length > 1 - 1e-6)
+            double to_orientation = fabs(dot(n, orient_normal));
+            if (to_orientation >= 1 - 1e-6) {
+                log("SKETCH_ANCHOR_SKIPPED=%d parallel_to_orientation=%.9f\n", p.id,
+                    to_orientation);
                 continue;
-            ProSelection s = selection(a.id, PRO_AXIS);
-            ProError e = ProSectionEntityFromProjection(section, s, &projected);
-            ProSelectionFree(&s);
-            log("PROJECT_REFERENCE_AXIS=%d code=%d entity=%d\n", a.id, e, projected);
-            if (!e) {
-                coordinate_anchors.push_back(projected);
-                log("SKETCH_ANCHOR_AXIS=%d\n", a.id);
-                break;
             }
+            double to_support = fabs(dot(n, frame.n));
+            if (p.id == helper_anchor_surface_id)
+                tier0.insert(tier0.begin(), p.id);
+            else if (to_support < 1e-5 && to_orientation < 1e-5)
+                tier0.push_back(p.id);
+            else if (to_support < 1e-4)
+                tier1.push_back(p.id);
+            else
+                tier2.push_back(p.id);
         }
-        if (coordinate_anchors.size() == 1)
-            log("SKETCH_REFERENCE_INCOMPLETE axes=%d\n", (int)axis_refs.size());
-    }
-    ProMatrix loc;
-    CK(ProSectionLocationGet(section, loc));
-    for (int row = 0; row < 4; row++)
-        log("SECTION_MATRIX_%d=%.9f,%.9f,%.9f,%.9f\n", row, loc[row][0], loc[row][1], loc[row][2],
-            loc[row][3]);
-    // BUG-097 L1: on an incomplete feature over an oblique support,
-    // ProSectionLocationGet has been observed returning the identity while the
-    // sketch is placed on a plane where the identity cannot be the true
-    // location: a true identity would mean the section coordinate system is
-    // the world axes with the section plane at world Z=0 through the origin.
-    // Mapping world coordinates through that placeholder writes world XY into
-    // the section. Detect the full 4x4 identity, but only fall back to the
-    // placement frame basis when the identity is actually impossible for this
-    // sketch; on a support where identity is a legitimate placement (world XY
-    // through the origin, e.g. the named XY plane) the location matrix keeps
-    // the mapping and the two projections coincide there anyway. This is not
-    // the external patch pasted in: the plausibility guard and diagnostics are
-    // derived from the current source and the frame semantics above.
-    const bool loc_is_identity = [&]() {
+        auto try_anchor_planes = [&](const std::vector<int> &ids) {
+            for (int pid : ids) {
+                if (coordinate_anchors.size() >= 2)
+                    return;
+                ProSelection s = selection(pid, PRO_SURFACE);
+                ProError e = ProSectionEntityFromProjection(section, s, &projected);
+                ProSelectionFree(&s);
+                log("PROJECT_REFERENCE=%d code=%d entity=%d\n", pid, e, projected);
+                if (!e) {
+                    coordinate_anchors.push_back(projected);
+                    log("SKETCH_ANCHOR_PLANE=%d\n", pid);
+                    return;
+                }
+            }
+        };
+        try_anchor_planes(tier0);
+        try_anchor_planes(tier1);
+        try_anchor_planes(tier2);
+        if (coordinate_anchors.size() == 1) {
+            // No usable datum plane existed, so the section carries only the
+            // orientation reference and ProSectionSolve fails. Fall back to a
+            // datum axis parallel to the support plane; its projection is a line
+            // reference. An oblique axis would project to a point and is skipped.
+            V orient_line = cross(frame.n, orient_normal);
+            double length = sqrt(dot(orient_line, orient_line));
+            axis_refs.clear();
+            CK(ProSolidFeatVisit((ProSolid)board, axis_feat_cb, nullptr, nullptr));
+            for (auto &a : axis_refs) {
+                if (fabs(dot(a.direction, frame.n)) > 1e-6)
+                    continue;
+                if (length > 1e-9 && fabs(dot(a.direction, orient_line)) / length > 1 - 1e-6)
+                    continue;
+                ProSelection s = selection(a.id, PRO_AXIS);
+                ProError e = ProSectionEntityFromProjection(section, s, &projected);
+                ProSelectionFree(&s);
+                log("PROJECT_REFERENCE_AXIS=%d code=%d entity=%d\n", a.id, e, projected);
+                if (!e) {
+                    coordinate_anchors.push_back(projected);
+                    log("SKETCH_ANCHOR_AXIS=%d\n", a.id);
+                    break;
+                }
+            }
+            if (coordinate_anchors.size() == 1)
+                log("SKETCH_REFERENCE_INCOMPLETE axes=%d\n", (int)axis_refs.size());
+        }
+        ProMatrix loc;
+        CK(ProSectionLocationGet(section, loc));
         for (int row = 0; row < 4; row++)
-            for (int col = 0; col < 4; col++)
-                if (fabs(loc[row][col] - (row == col ? 1.0 : 0.0)) > 1e-12)
-                    return false;
-        return true;
-    }();
-    const bool identity_plausible = fabs(frame.n[0]) < 1e-9 && fabs(frame.n[1]) < 1e-9 &&
-                                    fabs(frame.n[2] - 1) < 1e-9 && fabs(frame.origin[0]) < 1e-9 &&
-                                    fabs(frame.origin[1]) < 1e-9 && fabs(frame.origin[2]) < 1e-9;
-    const bool use_frame_basis = loc_is_identity && !identity_plausible;
-    log("SECTION_LOCATION_IDENTITY=%d using_%s identity_plausible=%d\n", loc_is_identity ? 1 : 0,
-        use_frame_basis ? "frame_basis" : "location_matrix", identity_plausible ? 1 : 0);
-    J section_location = {{"matrix_identity", loc_is_identity},
-                          {"identity_plausible", identity_plausible},
-                          {"uv_mapping", use_frame_basis ? "frame_basis" : "location_matrix"}};
-    // The inverse mapping used by the arc/round-trip reports must mirror the
-    // projection above: with the frame-basis fallback the location matrix is a
-    // placeholder, so report against the placement frame itself instead of the
-    // meaningless identity.
-    ProMatrix effective_loc;
-    if (use_frame_basis) {
-        for (int col = 0; col < 3; col++) {
-            effective_loc[0][col] = frame.u[col];
-            effective_loc[1][col] = frame.v[col];
-            effective_loc[2][col] = frame.n[col];
-            effective_loc[3][col] = frame.origin[col];
-        }
-        effective_loc[0][3] = effective_loc[1][3] = effective_loc[2][3] = 0.0;
-        effective_loc[3][3] = 1.0;
-    } else
-        memcpy(effective_loc, loc, sizeof(effective_loc));
-    const bool mirrored =
-        use_frame_basis ? false : dot(V{loc[2][0], loc[2][1], loc[2][2]}, frame.n) < 0;
-    arc_endpoint_swapped.clear();
-    arc_logical_swapped.clear();
-    auto project = [&](const J &p, double *out) {
-        V w = add(frame.origin, add(scale(frame.u, p.at(0).get<double>()),
-                                    scale(frame.v, p.at(1).get<double>())));
+            log("SECTION_MATRIX_%d=%.9f,%.9f,%.9f,%.9f\n", row, loc[row][0], loc[row][1],
+                loc[row][2], loc[row][3]);
+        // BUG-097 L1: on an incomplete feature over an oblique support,
+        // ProSectionLocationGet has been observed returning the identity while the
+        // sketch is placed on a plane where the identity cannot be the true
+        // location: a true identity would mean the section coordinate system is
+        // the world axes with the section plane at world Z=0 through the origin.
+        // Mapping world coordinates through that placeholder writes world XY into
+        // the section. Detect the full 4x4 identity, but only fall back to the
+        // placement frame basis when the identity is actually impossible for this
+        // sketch; on a support where identity is a legitimate placement (world XY
+        // through the origin, e.g. the named XY plane) the location matrix keeps
+        // the mapping and the two projections coincide there anyway. This is not
+        // the external patch pasted in: the plausibility guard and diagnostics are
+        // derived from the current source and the frame semantics above.
+        const bool loc_is_identity = [&]() {
+            for (int row = 0; row < 4; row++)
+                for (int col = 0; col < 4; col++)
+                    if (fabs(loc[row][col] - (row == col ? 1.0 : 0.0)) > 1e-12)
+                        return false;
+            return true;
+        }();
+        const bool identity_plausible =
+            fabs(frame.n[0]) < 1e-9 && fabs(frame.n[1]) < 1e-9 && fabs(frame.n[2] - 1) < 1e-9 &&
+            fabs(frame.origin[0]) < 1e-9 && fabs(frame.origin[1]) < 1e-9 &&
+            fabs(frame.origin[2]) < 1e-9;
+        const bool use_frame_basis = loc_is_identity && !identity_plausible;
+        log("SECTION_LOCATION_IDENTITY=%d using_%s identity_plausible=%d\n",
+            loc_is_identity ? 1 : 0, use_frame_basis ? "frame_basis" : "location_matrix",
+            identity_plausible ? 1 : 0);
+        J section_location = {{"matrix_identity", loc_is_identity},
+                              {"identity_plausible", identity_plausible},
+                              {"uv_mapping", use_frame_basis ? "frame_basis" : "location_matrix"}};
+        // The inverse mapping used by the arc/round-trip reports must mirror the
+        // projection above: with the frame-basis fallback the location matrix is a
+        // placeholder, so report against the placement frame itself instead of the
+        // meaningless identity.
+        ProMatrix effective_loc;
         if (use_frame_basis) {
-            // The location matrix is a placeholder, so project with the exact
-            // frame the sketch was placed with: the section coordinates are the
-            // user's own frame coordinates until the kernel reports otherwise.
-            V d = add(w, scale(frame.origin, -1));
-            out[0] = dot(d, frame.u);
-            out[1] = dot(d, frame.v);
-            return;
-        }
-        for (int i = 0; i < 2; i++)
-            out[i] = (w[0] - loc[3][0]) * loc[i][0] + (w[1] - loc[3][1]) * loc[i][1] +
-                     (w[2] - loc[3][2]) * loc[i][2];
-    };
-    CK(ProSectionIntentManagerModeSet(section, PRO_B_FALSE));
-    Pro2dCoordSysdef cs = {};
-    cs.type = PRO_2D_COORD_SYS;
-    int csid;
-    CK(ProSectionEntityAdd(section, (Pro2dEntdef *)&cs, &csid));
-    std::map<std::string, int> entities;
-    auto add_line = [&](const std::string &name, const J &a, const J &b, bool centerline,
-                        bool construction) {
-        Pro2dLinedef l = {};
-        l.type = centerline ? PRO_2D_CENTER_LINE : PRO_2D_LINE;
-        project(a, l.end1);
-        project(b, l.end2);
-        log("LINE_%s=%.9f,%.9f -> %.9f,%.9f\n", name.c_str(), l.end1[0], l.end1[1], l.end2[0],
-            l.end2[1]);
-        int id;
-        CK(ProSectionEntityAdd(section, (Pro2dEntdef *)&l, &id));
-        if (!centerline)
+            for (int col = 0; col < 3; col++) {
+                effective_loc[0][col] = frame.u[col];
+                effective_loc[1][col] = frame.v[col];
+                effective_loc[2][col] = frame.n[col];
+                effective_loc[3][col] = frame.origin[col];
+            }
+            effective_loc[0][3] = effective_loc[1][3] = effective_loc[2][3] = 0.0;
+            effective_loc[3][3] = 1.0;
+        } else
+            memcpy(effective_loc, loc, sizeof(effective_loc));
+        const bool mirrored =
+            use_frame_basis ? false : dot(V{loc[2][0], loc[2][1], loc[2][2]}, frame.n) < 0;
+        arc_endpoint_swapped.clear();
+        arc_logical_swapped.clear();
+        auto project = [&](const J &p, double *out) {
+            V w = add(frame.origin, add(scale(frame.u, p.at(0).get<double>()),
+                                        scale(frame.v, p.at(1).get<double>())));
+            if (use_frame_basis) {
+                // The location matrix is a placeholder, so project with the exact
+                // frame the sketch was placed with: the section coordinates are the
+                // user's own frame coordinates until the kernel reports otherwise.
+                V d = add(w, scale(frame.origin, -1));
+                out[0] = dot(d, frame.u);
+                out[1] = dot(d, frame.v);
+                return;
+            }
+            for (int i = 0; i < 2; i++)
+                out[i] = (w[0] - loc[3][0]) * loc[i][0] + (w[1] - loc[3][1]) * loc[i][1] +
+                         (w[2] - loc[3][2]) * loc[i][2];
+        };
+        CK(ProSectionIntentManagerModeSet(section, PRO_B_FALSE));
+        Pro2dCoordSysdef cs = {};
+        cs.type = PRO_2D_COORD_SYS;
+        int csid;
+        CK(ProSectionEntityAdd(section, (Pro2dEntdef *)&cs, &csid));
+        std::map<std::string, int> entities;
+        auto add_line = [&](const std::string &name, const J &a, const J &b, bool centerline,
+                            bool construction) {
+            Pro2dLinedef l = {};
+            l.type = centerline ? PRO_2D_CENTER_LINE : PRO_2D_LINE;
+            project(a, l.end1);
+            project(b, l.end2);
+            log("LINE_%s=%.9f,%.9f -> %.9f,%.9f\n", name.c_str(), l.end1[0], l.end1[1], l.end2[0],
+                l.end2[1]);
+            int id;
+            CK(ProSectionEntityAdd(section, (Pro2dEntdef *)&l, &id));
+            if (!centerline)
+                CK(ProSectionEntityConstructionSet(section, id,
+                                                   construction ? PRO_B_TRUE : PRO_B_FALSE));
+            entities[name] = id;
+        };
+        // FEAT-039/W01: a controlled weld regularises the request coordinates
+        // before anything is written, so the move is bounded by construction.
+        J spec = op.at("entities");
+        J weld_report = apply_endpoint_weld(op, spec);
+        for (auto e : spec) {
+            std::string type = e.at("type"), name = e.at("name");
+            bool construction = e.value("construction", false);
+            int id = -1;
+            if (type == "line" || type == "centerline") {
+                add_line(name, e["start"], e["end"], type == "centerline", construction);
+                continue;
+            }
+            if (type == "rectangle" || type == "polyline") {
+                J points;
+                if (type == "rectangle") {
+                    auto a = e["min"], b = e["max"];
+                    points = J::array({a, J::array({b[0], a[1]}), b, J::array({a[0], b[1]})});
+                } else
+                    points = e["points"];
+                int count = (int)points.size(),
+                    segments =
+                        count - 1 + ((type == "rectangle" || e.value("closed", false)) ? 1 : 0);
+                for (int i = 0; i < segments; i++)
+                    add_line(name + "_" + std::to_string(i), points[i], points[(i + 1) % count],
+                             false, construction);
+                continue;
+            }
+            if (type == "circle") {
+                Pro2dCircledef c = {};
+                c.type = PRO_2D_CIRCLE;
+                project(e["center"], c.center);
+                c.radius = e["radius"];
+                CK(ProSectionEntityAdd(section, (Pro2dEntdef *)&c, &id));
+            } else if (type == "arc") {
+                Pro2dArcdef a = {};
+                a.type = PRO_2D_ARC;
+                project(e["center"], a.center);
+                a.radius = e["radius"];
+                double start = e["start_angle"].get<double>() * acos(-1.0) / 180,
+                       end = e["end_angle"].get<double>() * acos(-1.0) / 180;
+                double p[2], q[2];
+                J center = e["center"];
+                project(J::array({center[0].get<double>() + a.radius * cos(start),
+                                  center[1].get<double>() + a.radius * sin(start)}),
+                        p);
+                project(J::array({center[0].get<double>() + a.radius * cos(end),
+                                  center[1].get<double>() + a.radius * sin(end)}),
+                        q);
+                ArcRepresentation rep = arc_representation(
+                    atan2(p[1] - a.center[1], p[0] - a.center[0]),
+                    atan2(q[1] - a.center[1], q[0] - a.center[0]), arc_direction(e), mirrored);
+                a.start_angle = rep.start_angle;
+                a.end_angle = rep.end_angle;
+                CK(ProSectionEntityAdd(section, (Pro2dEntdef *)&a, &id));
+                arc_endpoint_swapped[id] = rep.swapped;
+                arc_logical_swapped[name] = rep.swapped;
+            } else if (type == "spline") {
+                auto points = e["points"];
+                std::vector<std::array<double, 2>> xy(points.size());
+                for (size_t i = 0; i < xy.size(); i++)
+                    project(points[i], xy[i].data());
+                Pro2dSplinedef s = {};
+                s.type = PRO_2D_SPLINE;
+                s.tangency_type =
+                    e.value("closed", false) ? PRO_2D_SPLINE_TAN_PERIODIC : PRO_2D_SPLINE_TAN_NONE;
+                s.n_points = (unsigned)xy.size();
+                s.point_arr = (Pro2dPnt *)xy.data();
+                CK(ProSectionEntityAdd(section, (Pro2dEntdef *)&s, &id));
+            } else if (type == "b_spline") {
+                id = add_section_bspline(section, e, project);
+            } else if (type == "ellipse") {
+                Pro2dEllipsedef ell = {};
+                ell.type = PRO_2D_ELLIPSE;
+                project(e["center"], ell.origin);
+                // Under the frame-basis fallback the location matrix is a
+                // placeholder; the alignment check then follows the assumed
+                // section axes (the placement frame) instead of the identity.
+                double align = fabs(
+                    dot(frame.u, V{effective_loc[0][0], effective_loc[0][1], effective_loc[0][2]}));
+                if (align > 0.99999) {
+                    ell.x_radius = e["x_radius"];
+                    ell.y_radius = e["y_radius"];
+                } else if (align < 0.00001) {
+                    ell.x_radius = e["y_radius"];
+                    ell.y_radius = e["x_radius"];
+                } else
+                    throw std::runtime_error("Ellipse axes must align with the section axes");
+                CK(ProSectionEntityAdd(section, (Pro2dEntdef *)&ell, &id));
+            } else
+                throw std::runtime_error("Unknown sketch entity type");
             CK(ProSectionEntityConstructionSet(section, id,
                                                construction ? PRO_B_TRUE : PRO_B_FALSE));
-        entities[name] = id;
-    };
-    // FEAT-039/W01: a controlled weld regularises the request coordinates
-    // before anything is written, so the move is bounded by construction.
-    J spec = op.at("entities");
-    J weld_report = apply_endpoint_weld(op, spec);
-    for (auto e : spec) {
-        std::string type = e.at("type"), name = e.at("name");
-        bool construction = e.value("construction", false);
-        int id = -1;
-        if (type == "line" || type == "centerline") {
-            add_line(name, e["start"], e["end"], type == "centerline", construction);
-            continue;
+            entities[name] = id;
         }
-        if (type == "rectangle" || type == "polyline") {
-            J points;
-            if (type == "rectangle") {
-                auto a = e["min"], b = e["max"];
-                points = J::array({a, J::array({b[0], a[1]}), b, J::array({a[0], b[1]})});
-            } else
-                points = e["points"];
-            int count = (int)points.size(),
-                segments = count - 1 + ((type == "rectangle" || e.value("closed", false)) ? 1 : 0);
-            for (int i = 0; i < segments; i++)
-                add_line(name + "_" + std::to_string(i), points[i], points[(i + 1) % count], false,
-                         construction);
-            continue;
-        }
-        if (type == "circle") {
-            Pro2dCircledef c = {};
-            c.type = PRO_2D_CIRCLE;
-            project(e["center"], c.center);
-            c.radius = e["radius"];
-            CK(ProSectionEntityAdd(section, (Pro2dEntdef *)&c, &id));
-        } else if (type == "arc") {
-            Pro2dArcdef a = {};
-            a.type = PRO_2D_ARC;
-            project(e["center"], a.center);
-            a.radius = e["radius"];
-            double start = e["start_angle"].get<double>() * acos(-1.0) / 180,
-                   end = e["end_angle"].get<double>() * acos(-1.0) / 180;
-            double p[2], q[2];
-            J center = e["center"];
-            project(J::array({center[0].get<double>() + a.radius * cos(start),
-                              center[1].get<double>() + a.radius * sin(start)}),
-                    p);
-            project(J::array({center[0].get<double>() + a.radius * cos(end),
-                              center[1].get<double>() + a.radius * sin(end)}),
-                    q);
-            ArcRepresentation rep = arc_representation(
-                atan2(p[1] - a.center[1], p[0] - a.center[0]),
-                atan2(q[1] - a.center[1], q[0] - a.center[0]), arc_direction(e), mirrored);
-            a.start_angle = rep.start_angle;
-            a.end_angle = rep.end_angle;
-            CK(ProSectionEntityAdd(section, (Pro2dEntdef *)&a, &id));
-            arc_endpoint_swapped[id] = rep.swapped;
-            arc_logical_swapped[name] = rep.swapped;
-        } else if (type == "spline") {
-            auto points = e["points"];
-            std::vector<std::array<double, 2>> xy(points.size());
-            for (size_t i = 0; i < xy.size(); i++)
-                project(points[i], xy[i].data());
-            Pro2dSplinedef s = {};
-            s.type = PRO_2D_SPLINE;
-            s.tangency_type =
-                e.value("closed", false) ? PRO_2D_SPLINE_TAN_PERIODIC : PRO_2D_SPLINE_TAN_NONE;
-            s.n_points = (unsigned)xy.size();
-            s.point_arr = (Pro2dPnt *)xy.data();
-            CK(ProSectionEntityAdd(section, (Pro2dEntdef *)&s, &id));
-        } else if (type == "b_spline") {
-            id = add_section_bspline(section, e, project);
-        } else if (type == "ellipse") {
-            Pro2dEllipsedef ell = {};
-            ell.type = PRO_2D_ELLIPSE;
-            project(e["center"], ell.origin);
-            // Under the frame-basis fallback the location matrix is a
-            // placeholder; the alignment check then follows the assumed
-            // section axes (the placement frame) instead of the identity.
-            double align = fabs(
-                dot(frame.u, V{effective_loc[0][0], effective_loc[0][1], effective_loc[0][2]}));
-            if (align > 0.99999) {
-                ell.x_radius = e["x_radius"];
-                ell.y_radius = e["y_radius"];
-            } else if (align < 0.00001) {
-                ell.x_radius = e["y_radius"];
-                ell.y_radius = e["x_radius"];
-            } else
-                throw std::runtime_error("Ellipse axes must align with the section axes");
-            CK(ProSectionEntityAdd(section, (Pro2dEntdef *)&ell, &id));
-        } else
-            throw std::runtime_error("Unknown sketch entity type");
-        CK(ProSectionEntityConstructionSet(section, id, construction ? PRO_B_TRUE : PRO_B_FALSE));
-        entities[name] = id;
-    }
-    if (!op.value("constraints", J::array()).empty()) {
-        CK(ProSectionIntentManagerModeSet(section, PRO_B_TRUE));
-        std::map<std::string, ProConstraintType> ct = {
-            {"coincident", PRO_CONSTRAINT_SAME_POINT},
-            {"horizontal", PRO_CONSTRAINT_HORIZONTAL_ENT},
-            {"vertical", PRO_CONSTRAINT_VERTICAL_ENT},
-            {"point_on", PRO_CONSTRAINT_PNT_ON_ENT},
-            {"tangent", PRO_CONSTRAINT_TANGENT_ENTS},
-            {"perpendicular", PRO_CONSTRAINT_ORTHOG_ENTS},
-            {"equal_radius", PRO_CONSTRAINT_EQUAL_RADII},
-            {"parallel", PRO_CONSTRAINT_PARALLEL_ENTS},
-            {"equal_length", PRO_CONSTRAINT_EQUAL_SEGMENTS},
-            {"collinear", PRO_CONSTRAINT_COLLINEAR_LINES}};
-        for (auto c : op["constraints"]) {
-            std::vector<ProSelection> refs;
-            for (auto r : c["refs"]) {
-                ProSelection s = selected(section, entities.at(r["entity"].get<std::string>()),
-                                          point_type(r.value("point", "whole")));
-                refs.push_back(s);
-            }
-            int cid;
-            ProError err = ProSectionConstraintCreate(section, refs.data(), (int)refs.size(),
-                                                      ct.at(c["type"]), &cid);
-            for (auto s : refs)
-                ProSelectionFree(&s);
-            if (err != PRO_TK_E_FOUND)
-                check(err, "CreateSketchConstraint");
-        }
-        CK(ProSectionIntentManagerModeSet(section, PRO_B_FALSE));
-    }
-    std::map<std::string, ProSecdimType> dt = {{"length", PRO_TK_DIM_LINE},
-                                               {"radius", PRO_TK_DIM_RAD},
-                                               {"diameter", PRO_TK_DIM_DIA},
-                                               {"distance", PRO_TK_DIM_PNT_PNT},
-                                               {"horizontal", PRO_TK_DIM_PNT_PNT_HORIZ},
-                                               {"vertical", PRO_TK_DIM_PNT_PNT_VERT},
-                                               {"line_distance", PRO_TK_DIM_LINE_LINE},
-                                               {"angle", PRO_TK_DIM_LINES_ANGLE},
-                                               {"arc_angle", PRO_TK_DIM_ARC_ANGLE},
-                                               {"ellipse_x_radius", PRO_TK_DIM_ELLIPSE_X_RADIUS},
-                                               {"ellipse_y_radius", PRO_TK_DIM_ELLIPSE_Y_RADIUS}};
-    J dims = J::object();
-    J coordinate_plan;
-    J solving_op = op;
-    last_sketch_solver_info = profile_dimensioning_choice(op);
-    solving_op["dimensioning"] = last_sketch_solver_info["used"];
-    // FEAT-010/BUG-049: resolve the deviation policy before solving so a
-    // malformed explicit tolerance fails before any mutation.
-    const DeviationPolicy deviation_policy =
-        resolve_geometry_tolerance(op, solving_op["dimensioning"].get<std::string>());
-    const char *deviation_context = std::string(deviation_policy.source) == "request"
-                                        ? "geometry_tolerance_mm"
-                                        : "Coordinate dimensioning";
-    J deviation_targets;
-    last_sketch_reference_info = {
-        {"anchor_count", (int)coordinate_anchors.size()},
-        {"reference_incomplete", coordinate_anchors.size() < 2},
-        {"helper_orientation_created", !frame.orientation_exact},
-        {"helper_anchor_created", helper_anchor_surface_id >= 0},
-        {"entity_count", (int)entities.size()},
-        {"origin_pin_u", nullptr},
-        {"origin_pin_v", nullptr},
-        {"origin_pin_available", nullptr},
-    };
-    if (solving_op["dimensioning"] == "coordinates") {
-        if (!op.value("dimensions", J::array()).empty() ||
-            !op.value("constraints", J::array()).empty())
-            throw std::runtime_error(
-                "Coordinate dimensioning cannot be combined with supplied dimensions/constraints");
-        // The section axes are whatever Creo picked for the support plane and its
-        // orientation reference; the sketch u axis may meet them at any angle.
-        // Coordinate dimensions are created and verified in native section
-        // coordinates either way, so name the input u/v components after their
-        // dominant section axis instead of rejecting unaligned frames. Under
-        // the frame-basis fallback the assumed section x axis is frame.u, so
-        // the effective matrix (not the placeholder identity) answers here.
-        double u_to_section_x =
-            dot(frame.u, V{effective_loc[0][0], effective_loc[0][1], effective_loc[0][2]});
-        std::array<int, 2> axes =
-            fabs(u_to_section_x) >= sqrt(0.5) ? std::array<int, 2>{0, 1} : std::array<int, 2>{1, 0};
-        log("COORDINATE_AXES u_to_section_x=%.9f axes=%d,%d\n", u_to_section_x, axes[0], axes[1]);
-        coordinate_plan = coordinate_dimensions(section, csid, entities, axes, coordinate_anchors);
-        dims = coordinate_plan["dimension_ids"];
-        deviation_targets = coordinate_plan["targets"];
-    }
-    for (auto d : op.value("dimensions", J::array())) {
-        std::vector<int> ids;
-        std::vector<ProSectionPointType> senses;
-        for (auto r : d["refs"]) {
-            ids.push_back(entities.at(r["entity"].get<std::string>()));
-            senses.push_back(logical_point(ids.back(), point_type(r.value("point", "whole"))));
-        }
-        double place[2];
-        project(d["position"], place);
-        int id;
-        CK(ProSecdimCreate(section, ids.data(), senses.data(), (int)ids.size(), dt.at(d["type"]),
-                           place, &id));
-        CK(ProSecdimValueSet(section, id, d["value"]));
-        dims[d["name"].get<std::string>()] = id;
-    }
-    // Non-coordinates modes snapshot the pre-solve section so the solved
-    // geometry can be measured against the same named entities afterwards.
-    if (deviation_targets.is_null())
-        deviation_targets = section_target_snapshot(section, entities);
-    J solver_info = solve_profile(section, solving_op);
-    solver_info["requested"] = op.value("dimensioning", "auto");
-    J deviation_regenerate = geometry_deviation_stage(section, deviation_targets, deviation_policy);
-    // FEAT-039/W01: the weld residual is read back while the solved section is
-    // still the one the entities were written into.
-    double weld_residual = -1.0;
-    if (weld_report.value("applied_pairs", 0) > 0)
-        weld_residual = endpoint_weld_residual(section, entities, weld_report);
-    solver_info["section_location"] = section_location;
-    if (!coordinate_plan.is_null())
-        solver_info["coordinate_geometry"] = verify_coordinate_plan(
-            section, coordinate_plan["targets"], coordinate_plan["origin_id"], deviation_policy);
-    CK(ProElementSpecialvalueSet(sk, (ProAppData)section));
-    redefine(&f, root);
-    CK(ProFeatureElemtreeFree(&f, root));
-    ProSelectionFree(&plane_ref);
-    ProSelectionFree(&orient);
-    ProSection saved = nullptr;
-    ProError copy_code = ProFeatureSectionCopy(&f, 0, &saved);
-    J native_section = {{"available", false}, {"query_code", copy_code}};
-    J arc_geometry = J::array();
-    J deviation_feature;
-    if (!copy_code) {
-        try {
-            native_section = section_profile_summary(saved, "sketch");
-            arc_geometry =
-                arc_geometry_report(saved, copy_code, op["entities"], entities, frame.origin,
-                                    frame.u, frame.v, effective_loc, mirrored);
-            if (!coordinate_plan.is_null())
-                solver_info["coordinate_geometry_after_creation"] =
-                    verify_coordinate_plan(saved, coordinate_plan["targets"],
-                                           coordinate_plan["origin_id"], deviation_policy);
-            deviation_feature =
-                geometry_deviation_stage(saved, deviation_targets, deviation_policy);
-        } catch (...) {
-            ProSectionFree(&saved);
-            throw;
-        }
-        CK(ProSectionFree(&saved));
-    } else if (!coordinate_plan.is_null())
-        check(copy_code, "CopySketchSection");
-    else {
-        log("SECTION_PROFILE_UNAVAILABLE phase=sketch copy_code=%d\n", copy_code);
-        deviation_feature =
-            unavailable_deviation_stage("the solved feature section could not be copied (code " +
-                                        std::to_string((int)copy_code) + ")");
-    }
-    if (arc_geometry.empty())
-        arc_geometry = arc_geometry_report(nullptr, copy_code, op["entities"], entities,
-                                           frame.origin, frame.u, frame.v, effective_loc, mirrored);
-    solver_info["native_section"] = native_section;
-    // FEAT-010/BUG-049: publish the two-stage fidelity report on the
-    // operation result; an enforced policy rejects before the feature ships.
-    J geometry_deviation = geometry_deviation_report(
-        deviation_regenerate, deviation_feature, deviation_policy.tolerance,
-        deviation_policy.enforce, deviation_policy.source);
-    // BUG-108: publish the shift verdict next to geometry_deviation before the
-    // policy is enforced, so the coordinates verdict is the one the shape gate
-    // sees. A deformed sketch is still rejected; a provable rigid translation
-    // inside the limit is accepted and says so.
-    J sketch_shifted;
-    if (!coordinate_plan.is_null()) {
-        const J &verification = solver_info.contains("coordinate_geometry_after_creation")
-                                    ? solver_info["coordinate_geometry_after_creation"]
-                                    : solver_info["coordinate_geometry"];
-        sketch_shifted = sketch_shift_block(verification, deviation_policy);
-        geometry_deviation["shift_detected"] = sketch_shifted["detected"];
-        geometry_deviation["accepted_by_request"] = sketch_shifted["accepted_by_request"];
-        geometry_deviation["accepted_rigid"] = sketch_shifted["accepted_rigid"];
-        if (sketch_shifted["rigid"].is_boolean()) {
-            geometry_deviation["rigid"] = sketch_shifted["rigid"];
-            geometry_deviation["translation_mm"] = sketch_shifted["translation_mm"];
-            geometry_deviation["translation_magnitude_mm"] =
-                sketch_shifted["translation_magnitude_mm"];
-            if (sketch_shifted["residual_mm"].is_number()) {
-                geometry_deviation["shape_deviation_mm"] = sketch_shifted["residual_mm"];
-                geometry_deviation["residual_mm"] = sketch_shifted["residual_mm"];
-            }
-        }
-    } else {
-        geometry_deviation["shift_detected"] = nullptr;
-        geometry_deviation["accepted_by_request"] = nullptr;
-        // Only a measured coordinates solve can prove a rigid translation.
-        geometry_deviation["accepted_rigid"] = false;
-    }
-    enforce_geometry_deviation(geometry_deviation, deviation_policy, deviation_context);
-    solver_info["geometry_deviation"] = geometry_deviation;
-    solver_info["sketch_shifted"] = sketch_shifted;
-    J ids = J::object();
-    for (auto item : entities)
-        ids[item.first] = item.second;
-    remember(
-        op, f,
-        {{"feature_id", (int)f.id},
-         {"entity_ids", ids},
-         {"dimension_ids", dims},
-         {"solver", solver_info},
-         {"geometry", spec},
-         {"geometry_stale", false},
-         {"last_dimensioning", op.value("dimensioning", "auto")},
-         {"surface_id", frame.surface},
-         {"normal", frame.n},
-         {"origin", frame.origin},
-         {"u_axis", frame.u},
-         {"v_axis", frame.v},
-         {"section_normal_sign",
-          use_frame_basis ? 1 : (dot(V{loc[2][0], loc[2][1], loc[2][2]}, frame.n) > 0 ? 1 : -1)}});
-    if (op.contains("profile"))
-        aliases[op["label"].get<std::string>()]["airfoil"] = op["profile"];
-    // FEAT-008/T09B: publish the section entity ids on the operation record so
-    // the reported revolve_axis.id for an internal centerline is verifiable
-    // from the client-visible result (same id space, no guessing).
-    // BUG-120/T2-B: the curves this section actually owns, read one by one. T2 on
-    // Creo 10 showed one straight line reporting two curve-type items (43/45) plus a
-    // third non-curve entry (44), and nothing in the public inspect output says which
-    // is which. These facts use the same calls the panel route uses, so a client can
-    // see why a position has more than one candidate id instead of guessing.
-    J curve_facts = J::array();
-    {
-        J owned = J::array();
-        if (!ProFeatureGeomitemVisit(&f, PRO_CURVE, collect_geom_ids, nullptr, &owned))
-            for (auto &entry : owned) {
-                const int owned_id = entry.value("id", 0);
-                ProCurve owned_curve;
-                if (ProCurveInit((ProSolid)board, owned_id, &owned_curve) != PRO_TK_NO_ERROR) {
-                    curve_facts.push_back({{"id", owned_id}, {"readable", false}});
-                    continue;
+        if (!op.value("constraints", J::array()).empty()) {
+            CK(ProSectionIntentManagerModeSet(section, PRO_B_TRUE));
+            std::map<std::string, ProConstraintType> ct = {
+                {"coincident", PRO_CONSTRAINT_SAME_POINT},
+                {"horizontal", PRO_CONSTRAINT_HORIZONTAL_ENT},
+                {"vertical", PRO_CONSTRAINT_VERTICAL_ENT},
+                {"point_on", PRO_CONSTRAINT_PNT_ON_ENT},
+                {"tangent", PRO_CONSTRAINT_TANGENT_ENTS},
+                {"perpendicular", PRO_CONSTRAINT_ORTHOG_ENTS},
+                {"equal_radius", PRO_CONSTRAINT_EQUAL_RADII},
+                {"parallel", PRO_CONSTRAINT_PARALLEL_ENTS},
+                {"equal_length", PRO_CONSTRAINT_EQUAL_SEGMENTS},
+                {"collinear", PRO_CONSTRAINT_COLLINEAR_LINES}};
+            for (auto c : op["constraints"]) {
+                std::vector<ProSelection> refs;
+                for (auto r : c["refs"]) {
+                    ProSelection s = selected(section, entities.at(r["entity"].get<std::string>()),
+                                              point_type(r.value("point", "whole")));
+                    refs.push_back(s);
                 }
-                ProEnttype owned_kind = (ProEnttype)0;
-                const ProError kind_code = ProCurveTypeGet(owned_curve, &owned_kind);
-                double owned_length = 0.0;
-                const ProError length_code = ProCurveLengthEval(owned_curve, &owned_length);
-                curve_facts.push_back(
-                    {{"id", owned_id},
-                     {"readable", true},
-                     {"type", kind_code == PRO_TK_NO_ERROR ? J((int)owned_kind) : J(nullptr)},
-                     {"type_code", (int)kind_code},
-                     {"composite",
-                      kind_code == PRO_TK_NO_ERROR ? J(owned_kind == PRO_ENT_CMP_CRV) : J(nullptr)},
-                     {"length_mm", length_code == PRO_TK_NO_ERROR ? J(owned_length) : J(nullptr)},
-                     {"length_code", (int)length_code}});
+                int cid;
+                ProError err = ProSectionConstraintCreate(section, refs.data(), (int)refs.size(),
+                                                          ct.at(c["type"]), &cid);
+                for (auto s : refs)
+                    ProSelectionFree(&s);
+                if (err != PRO_TK_E_FOUND)
+                    check(err, "CreateSketchConstraint");
             }
-    }
-    J sketch_result = {{"feature_id", (int)f.id},
-                       {"curve_facts", curve_facts},
-                       {"surface_id", frame.surface},
-                       {"solver", sketch_solver_receipt(solver_info)},
-                       {"section_references", last_sketch_reference_info},
-                       {"origin", frame.origin},
-                       {"normal", frame.n},
-                       {"u_axis", frame.u},
-                       {"v_axis", frame.v},
-                       {"native_section", native_section},
-                       {"arc_geometry", arc_geometry},
-                       {"geometry_deviation", geometry_deviation},
-                       {"section_location", section_location},
-                       {"entity_ids", ids}};
-    // BUG-187: warn when an implicit dictionary sketch plane (no explicit
-    // v_axis and no flip=true) resolves to the opposite normal of one of the
-    // canonical principal frames (XY=+Z, XZ=-Y, YZ=+X), preventing silent
-    // v_axis/extrusion sign inversion.
-    if (!op.at("plane").is_string() && !op.at("plane").contains("v_axis") &&
-        !op.at("plane").value("flip", false)) {
-        struct PrincipalFrameSpec {
-            const char *name;
-            V normal;
-            V v_axis;
-        };
-        static const PrincipalFrameSpec kCanonicalFrames[] = {
-            {"XY", {0, 0, 1}, {0, 1, 0}},
-            {"XZ", {0, -1, 0}, {0, 0, 1}},
-            {"YZ", {1, 0, 0}, {0, 0, 1}},
-        };
-        for (const auto &spec_frame : kCanonicalFrames) {
-            if (dot(frame.n, spec_frame.normal) < -1.0 + 1e-6) {
-                sketch_result["frame_warning"] = {
-                    {"code", "frame_mismatch"},
-                    {"principal_frame", spec_frame.name},
-                    {"canonical_normal", xyz(spec_frame.normal.data())},
-                    {"canonical_v_axis", xyz(spec_frame.v_axis.data())},
-                    {"actual_normal", frame.n},
-                    {"actual_v_axis", frame.v},
-                    {"message",
-                     std::string("Dictionary sketch plane normal is opposite to frames.") +
-                         spec_frame.name +
-                         " canonical normal; pass explicit v_axis or flip=true if you intended "
-                         "the canonical frame orientation."}};
-                break;
+            CK(ProSectionIntentManagerModeSet(section, PRO_B_FALSE));
+        }
+        std::map<std::string, ProSecdimType> dt = {
+            {"length", PRO_TK_DIM_LINE},
+            {"radius", PRO_TK_DIM_RAD},
+            {"diameter", PRO_TK_DIM_DIA},
+            {"distance", PRO_TK_DIM_PNT_PNT},
+            {"horizontal", PRO_TK_DIM_PNT_PNT_HORIZ},
+            {"vertical", PRO_TK_DIM_PNT_PNT_VERT},
+            {"line_distance", PRO_TK_DIM_LINE_LINE},
+            {"angle", PRO_TK_DIM_LINES_ANGLE},
+            {"arc_angle", PRO_TK_DIM_ARC_ANGLE},
+            {"ellipse_x_radius", PRO_TK_DIM_ELLIPSE_X_RADIUS},
+            {"ellipse_y_radius", PRO_TK_DIM_ELLIPSE_Y_RADIUS}};
+        J dims = J::object();
+        J coordinate_plan;
+        J solving_op = op;
+        if (force_mode != nullptr) {
+            last_sketch_solver_info = {
+                {"requested", op.value("dimensioning", "auto")},
+                {"used", force_mode},
+                {"selection_reason", "autodim_failed_fallback_to_coordinates"}};
+        } else {
+            last_sketch_solver_info = profile_dimensioning_choice(op);
+        }
+        solving_op["dimensioning"] = last_sketch_solver_info["used"];
+        fallback_eligible = (force_mode == nullptr && op.value("dimensioning", "auto") == "auto" &&
+                             last_sketch_solver_info["used"] == "autodim" &&
+                             op.value("dimensions", J::array()).empty() &&
+                             op.value("constraints", J::array()).empty());
+        if (fallback_eligible) {
+            for (const auto &entity : op.at("entities")) {
+                if (entity.value("type", "") == "spline") {
+                    fallback_eligible = false;
+                    break;
+                }
             }
         }
+        // FEAT-010/BUG-049: resolve the deviation policy before solving so a
+        // malformed explicit tolerance fails before any mutation.
+        const DeviationPolicy deviation_policy =
+            resolve_geometry_tolerance(op, solving_op["dimensioning"].get<std::string>());
+        const char *deviation_context = std::string(deviation_policy.source) == "request"
+                                            ? "geometry_tolerance_mm"
+                                            : "Coordinate dimensioning";
+        J deviation_targets;
+        last_sketch_reference_info = {
+            {"anchor_count", (int)coordinate_anchors.size()},
+            {"reference_incomplete", coordinate_anchors.size() < 2},
+            {"helper_orientation_created", !frame.orientation_exact},
+            {"helper_anchor_created", helper_anchor_surface_id >= 0},
+            {"entity_count", (int)entities.size()},
+            {"origin_pin_u", nullptr},
+            {"origin_pin_v", nullptr},
+            {"origin_pin_available", nullptr},
+        };
+        if (solving_op["dimensioning"] == "coordinates") {
+            if (!op.value("dimensions", J::array()).empty() ||
+                !op.value("constraints", J::array()).empty())
+                throw std::runtime_error("Coordinate dimensioning cannot be combined with supplied "
+                                         "dimensions/constraints");
+            // The section axes are whatever Creo picked for the support plane and its
+            // orientation reference; the sketch u axis may meet them at any angle.
+            // Coordinate dimensions are created and verified in native section
+            // coordinates either way, so name the input u/v components after their
+            // dominant section axis instead of rejecting unaligned frames. Under
+            // the frame-basis fallback the assumed section x axis is frame.u, so
+            // the effective matrix (not the placeholder identity) answers here.
+            double u_to_section_x =
+                dot(frame.u, V{effective_loc[0][0], effective_loc[0][1], effective_loc[0][2]});
+            std::array<int, 2> axes = fabs(u_to_section_x) >= sqrt(0.5) ? std::array<int, 2>{0, 1}
+                                                                        : std::array<int, 2>{1, 0};
+            log("COORDINATE_AXES u_to_section_x=%.9f axes=%d,%d\n", u_to_section_x, axes[0],
+                axes[1]);
+            coordinate_plan =
+                coordinate_dimensions(section, csid, entities, axes, coordinate_anchors);
+            dims = coordinate_plan["dimension_ids"];
+            deviation_targets = coordinate_plan["targets"];
+        }
+        for (auto d : op.value("dimensions", J::array())) {
+            std::vector<int> ids;
+            std::vector<ProSectionPointType> senses;
+            for (auto r : d["refs"]) {
+                ids.push_back(entities.at(r["entity"].get<std::string>()));
+                senses.push_back(logical_point(ids.back(), point_type(r.value("point", "whole"))));
+            }
+            double place[2];
+            project(d["position"], place);
+            int id;
+            CK(ProSecdimCreate(section, ids.data(), senses.data(), (int)ids.size(),
+                               dt.at(d["type"]), place, &id));
+            CK(ProSecdimValueSet(section, id, d["value"]));
+            dims[d["name"].get<std::string>()] = id;
+        }
+        // Non-coordinates modes snapshot the pre-solve section so the solved
+        // geometry can be measured against the same named entities afterwards.
+        if (deviation_targets.is_null())
+            deviation_targets = section_target_snapshot(section, entities);
+        in_solve = true;
+        J solver_info = solve_profile(section, solving_op);
+        in_solve = false;
+        solver_info["requested"] = op.value("dimensioning", "auto");
+        if (!fallback_from.empty()) {
+            solver_info["fallback_from"] = fallback_from;
+            solver_info["autodim_error"] = autodim_error;
+            solver_info["selection_reason"] = "autodim_failed_fallback_to_coordinates";
+        }
+        J deviation_regenerate =
+            geometry_deviation_stage(section, deviation_targets, deviation_policy);
+        // FEAT-039/W01: the weld residual is read back while the solved section is
+        // still the one the entities were written into.
+        double weld_residual = -1.0;
+        if (weld_report.value("applied_pairs", 0) > 0)
+            weld_residual = endpoint_weld_residual(section, entities, weld_report);
+        solver_info["section_location"] = section_location;
+        if (!coordinate_plan.is_null())
+            solver_info["coordinate_geometry"] =
+                verify_coordinate_plan(section, coordinate_plan["targets"],
+                                       coordinate_plan["origin_id"], deviation_policy);
+        CK(ProElementSpecialvalueSet(sk, (ProAppData)section));
+        redefine(&f, root);
+        feature_committed = true;
+        CK(ProFeatureElemtreeFree(&f, root));
+        root = nullptr;
+        ProSelectionFree(&plane_ref);
+        ProSelectionFree(&orient);
+        ProSection saved = nullptr;
+        ProError copy_code = ProFeatureSectionCopy(&f, 0, &saved);
+        J native_section = {{"available", false}, {"query_code", copy_code}};
+        J arc_geometry = J::array();
+        J deviation_feature;
+        if (!copy_code) {
+            try {
+                native_section = section_profile_summary(saved, "sketch");
+                arc_geometry =
+                    arc_geometry_report(saved, copy_code, op["entities"], entities, frame.origin,
+                                        frame.u, frame.v, effective_loc, mirrored);
+                if (!coordinate_plan.is_null())
+                    solver_info["coordinate_geometry_after_creation"] =
+                        verify_coordinate_plan(saved, coordinate_plan["targets"],
+                                               coordinate_plan["origin_id"], deviation_policy);
+                deviation_feature =
+                    geometry_deviation_stage(saved, deviation_targets, deviation_policy);
+            } catch (...) {
+                ProSectionFree(&saved);
+                throw;
+            }
+            CK(ProSectionFree(&saved));
+        } else if (!coordinate_plan.is_null())
+            check(copy_code, "CopySketchSection");
+        else {
+            log("SECTION_PROFILE_UNAVAILABLE phase=sketch copy_code=%d\n", copy_code);
+            deviation_feature = unavailable_deviation_stage(
+                "the solved feature section could not be copied (code " +
+                std::to_string((int)copy_code) + ")");
+        }
+        if (arc_geometry.empty())
+            arc_geometry =
+                arc_geometry_report(nullptr, copy_code, op["entities"], entities, frame.origin,
+                                    frame.u, frame.v, effective_loc, mirrored);
+        solver_info["native_section"] = native_section;
+        // FEAT-010/BUG-049: publish the two-stage fidelity report on the
+        // operation result; an enforced policy rejects before the feature ships.
+        J geometry_deviation = geometry_deviation_report(
+            deviation_regenerate, deviation_feature, deviation_policy.tolerance,
+            deviation_policy.enforce, deviation_policy.source);
+        // BUG-108: publish the shift verdict next to geometry_deviation before the
+        // policy is enforced, so the coordinates verdict is the one the shape gate
+        // sees. A deformed sketch is still rejected; a provable rigid translation
+        // inside the limit is accepted and says so.
+        J sketch_shifted;
+        if (!coordinate_plan.is_null()) {
+            const J &verification = solver_info.contains("coordinate_geometry_after_creation")
+                                        ? solver_info["coordinate_geometry_after_creation"]
+                                        : solver_info["coordinate_geometry"];
+            sketch_shifted = sketch_shift_block(verification, deviation_policy);
+            geometry_deviation["shift_detected"] = sketch_shifted["detected"];
+            geometry_deviation["accepted_by_request"] = sketch_shifted["accepted_by_request"];
+            geometry_deviation["accepted_rigid"] = sketch_shifted["accepted_rigid"];
+            if (sketch_shifted["rigid"].is_boolean()) {
+                geometry_deviation["rigid"] = sketch_shifted["rigid"];
+                geometry_deviation["translation_mm"] = sketch_shifted["translation_mm"];
+                geometry_deviation["translation_magnitude_mm"] =
+                    sketch_shifted["translation_magnitude_mm"];
+                if (sketch_shifted["residual_mm"].is_number()) {
+                    geometry_deviation["shape_deviation_mm"] = sketch_shifted["residual_mm"];
+                    geometry_deviation["residual_mm"] = sketch_shifted["residual_mm"];
+                }
+            }
+        } else {
+            geometry_deviation["shift_detected"] = nullptr;
+            geometry_deviation["accepted_by_request"] = nullptr;
+            // Only a measured coordinates solve can prove a rigid translation.
+            geometry_deviation["accepted_rigid"] = false;
+        }
+        enforce_geometry_deviation(geometry_deviation, deviation_policy, deviation_context);
+        solver_info["geometry_deviation"] = geometry_deviation;
+        solver_info["sketch_shifted"] = sketch_shifted;
+        J ids = J::object();
+        for (auto item : entities)
+            ids[item.first] = item.second;
+        remember(
+            op, f,
+            {{"feature_id", (int)f.id},
+             {"entity_ids", ids},
+             {"dimension_ids", dims},
+             {"solver", solver_info},
+             {"geometry", spec},
+             {"geometry_stale", false},
+             {"last_dimensioning", op.value("dimensioning", "auto")},
+             {"surface_id", frame.surface},
+             {"normal", frame.n},
+             {"origin", frame.origin},
+             {"u_axis", frame.u},
+             {"v_axis", frame.v},
+             {"section_normal_sign",
+              use_frame_basis ? 1
+                              : (dot(V{loc[2][0], loc[2][1], loc[2][2]}, frame.n) > 0 ? 1 : -1)}});
+        if (op.contains("profile"))
+            aliases[op["label"].get<std::string>()]["airfoil"] = op["profile"];
+        // FEAT-008/T09B: publish the section entity ids on the operation record so
+        // the reported revolve_axis.id for an internal centerline is verifiable
+        // from the client-visible result (same id space, no guessing).
+        // BUG-120/T2-B: the curves this section actually owns, read one by one. T2 on
+        // Creo 10 showed one straight line reporting two curve-type items (43/45) plus a
+        // third non-curve entry (44), and nothing in the public inspect output says which
+        // is which. These facts use the same calls the panel route uses, so a client can
+        // see why a position has more than one candidate id instead of guessing.
+        J curve_facts = J::array();
+        {
+            J owned = J::array();
+            if (!ProFeatureGeomitemVisit(&f, PRO_CURVE, collect_geom_ids, nullptr, &owned))
+                for (auto &entry : owned) {
+                    const int owned_id = entry.value("id", 0);
+                    ProCurve owned_curve;
+                    if (ProCurveInit((ProSolid)board, owned_id, &owned_curve) != PRO_TK_NO_ERROR) {
+                        curve_facts.push_back({{"id", owned_id}, {"readable", false}});
+                        continue;
+                    }
+                    ProEnttype owned_kind = (ProEnttype)0;
+                    const ProError kind_code = ProCurveTypeGet(owned_curve, &owned_kind);
+                    double owned_length = 0.0;
+                    const ProError length_code = ProCurveLengthEval(owned_curve, &owned_length);
+                    curve_facts.push_back(
+                        {{"id", owned_id},
+                         {"readable", true},
+                         {"type", kind_code == PRO_TK_NO_ERROR ? J((int)owned_kind) : J(nullptr)},
+                         {"type_code", (int)kind_code},
+                         {"composite", kind_code == PRO_TK_NO_ERROR
+                                           ? J(owned_kind == PRO_ENT_CMP_CRV)
+                                           : J(nullptr)},
+                         {"length_mm",
+                          length_code == PRO_TK_NO_ERROR ? J(owned_length) : J(nullptr)},
+                         {"length_code", (int)length_code}});
+                }
+        }
+        J sketch_result = {{"feature_id", (int)f.id},
+                           {"curve_facts", curve_facts},
+                           {"surface_id", frame.surface},
+                           {"solver", sketch_solver_receipt(solver_info)},
+                           {"section_references", last_sketch_reference_info},
+                           {"origin", frame.origin},
+                           {"normal", frame.n},
+                           {"u_axis", frame.u},
+                           {"v_axis", frame.v},
+                           {"native_section", native_section},
+                           {"arc_geometry", arc_geometry},
+                           {"geometry_deviation", geometry_deviation},
+                           {"section_location", section_location},
+                           {"entity_ids", ids}};
+        // BUG-187: warn when an implicit dictionary sketch plane (no explicit
+        // v_axis and no flip=true) resolves to the opposite normal of one of the
+        // canonical principal frames (XY=+Z, XZ=-Y, YZ=+X), preventing silent
+        // v_axis/extrusion sign inversion.
+        if (!op.at("plane").is_string() && !op.at("plane").contains("v_axis") &&
+            !op.at("plane").value("flip", false)) {
+            struct PrincipalFrameSpec {
+                const char *name;
+                V normal;
+                V v_axis;
+            };
+            static const PrincipalFrameSpec kCanonicalFrames[] = {
+                {"XY", {0, 0, 1}, {0, 1, 0}},
+                {"XZ", {0, -1, 0}, {0, 0, 1}},
+                {"YZ", {1, 0, 0}, {0, 0, 1}},
+            };
+            for (const auto &spec_frame : kCanonicalFrames) {
+                if (dot(frame.n, spec_frame.normal) < -1.0 + 1e-6) {
+                    sketch_result["frame_warning"] = {
+                        {"code", "frame_mismatch"},
+                        {"principal_frame", spec_frame.name},
+                        {"canonical_normal", xyz(spec_frame.normal.data())},
+                        {"canonical_v_axis", xyz(spec_frame.v_axis.data())},
+                        {"actual_normal", frame.n},
+                        {"actual_v_axis", frame.v},
+                        {"message",
+                         std::string("Dictionary sketch plane normal is opposite to frames.") +
+                             spec_frame.name +
+                             " canonical normal; pass explicit v_axis or flip=true if you intended "
+                             "the canonical frame orientation."}};
+                    break;
+                }
+            }
+        }
+        // FEAT-039/W01: the endpoint weld is reported with what the native side
+        // actually did. The coordinates were regularised before the entities were
+        // written, so the move is bounded by the request, and the residual is
+        // measured on the solved section.
+        if (solver_info.contains("weld_requested")) {
+            weld_report["epsilon_mm"] = solver_info.value("epsilon_mm", J(nullptr));
+            weld_report["epsilon_source"] = solver_info.value("epsilon_source", J(nullptr));
+            weld_report["max_residual_mm"] = weld_residual >= 0.0 ? J(weld_residual) : J(nullptr);
+            weld_report["applied"] = weld_report.value("applied_pairs", 0) > 0;
+            weld_report["note"] =
+                "the endpoints were regularised before the entities were written, so the move is "
+                "bounded by max_endpoint_move_mm; the residual is measured on the solved section";
+            sketch_result["endpoint_weld_native"] = weld_report;
+        }
+        if (!sketch_shifted.is_null())
+            sketch_result["sketch_shifted"] = sketch_shifted;
+        if (!approximations.empty())
+            sketch_result["b_spline_approximations"] = std::move(approximations);
+        return sketch_result;
+    } catch (const std::exception &ex) {
+        if (root) {
+            if (root_extracted)
+                ProFeatureElemtreeFree(&f, root);
+            else
+                ProElementFree(&root);
+            root = nullptr;
+        }
+        ProSelectionFree(&plane_ref);
+        ProSelectionFree(&orient);
+        if (!feature_committed && f.id > 0)
+            delete_feature_quiet(f.id);
+        if (in_solve && fallback_eligible)
+            throw SketchAutodimSolveFailed(ex.what());
+        throw;
+    } catch (...) {
+        if (root) {
+            if (root_extracted)
+                ProFeatureElemtreeFree(&f, root);
+            else
+                ProElementFree(&root);
+            root = nullptr;
+        }
+        ProSelectionFree(&plane_ref);
+        ProSelectionFree(&orient);
+        if (!feature_committed && f.id > 0)
+            delete_feature_quiet(f.id);
+        throw;
     }
-    // FEAT-039/W01: the endpoint weld is reported with what the native side
-    // actually did. The coordinates were regularised before the entities were
-    // written, so the move is bounded by the request, and the residual is
-    // measured on the solved section.
-    if (solver_info.contains("weld_requested")) {
-        weld_report["epsilon_mm"] = solver_info.value("epsilon_mm", J(nullptr));
-        weld_report["epsilon_source"] = solver_info.value("epsilon_source", J(nullptr));
-        weld_report["max_residual_mm"] = weld_residual >= 0.0 ? J(weld_residual) : J(nullptr);
-        weld_report["applied"] = weld_report.value("applied_pairs", 0) > 0;
-        weld_report["note"] =
-            "the endpoints were regularised before the entities were written, so the move is "
-            "bounded by max_endpoint_move_mm; the residual is measured on the solved section";
-        sketch_result["endpoint_weld_native"] = weld_report;
+}
+
+static J sketch(J op) {
+    J approximations = J::array();
+    for (auto &entity : op.at("entities")) {
+        if (entity.value("type", "") != "b_spline" || !entity.contains("approximation_segments") ||
+            entity["approximation_segments"].is_null())
+            continue;
+        const int segments = entity.at("approximation_segments");
+        const J name = entity.at("name");
+        J points = bspline_polyline_points(entity, segments);
+        entity = {{"type", "polyline"},
+                  {"name", name},
+                  {"points", std::move(points)},
+                  {"construction", entity.value("construction", false)}};
+        approximations.push_back({{"entity", name}, {"segments", segments}});
     }
-    if (!sketch_shifted.is_null())
-        sketch_result["sketch_shifted"] = sketch_shifted;
-    if (!approximations.empty())
-        sketch_result["b_spline_approximations"] = std::move(approximations);
-    return sketch_result;
+    try {
+        return sketch_attempt(op, approximations, nullptr, "", "");
+    } catch (const SketchAutodimSolveFailed &autodim_err) {
+        log("SKETCH_AUTO_FALLBACK_TO_COORDINATES reason=%s\n", autodim_err.what());
+        try {
+            return sketch_attempt(op, approximations, "coordinates", "autodim", autodim_err.what());
+        } catch (const std::exception &coord_err) {
+            throw std::runtime_error(std::string(autodim_err.what()) +
+                                     "; coordinates fallback also failed: " + coord_err.what());
+        }
+    }
 }
 // ProFeatureWithoptionsCreate reports an invalid section only as a bare code;
 // Toolkit validation stays authoritative. Report the native section counts

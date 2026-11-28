@@ -587,13 +587,22 @@ class SketchOp(_SketchWeldInput):
                     "Coordinate dimensioning cannot be combined with supplied dimensions/constraints"
                 )
             if any(
-                e.type not in {"line", "centerline", "rectangle", "polyline", "circle", "arc"}
+                e.type
+                not in {
+                    "line",
+                    "centerline",
+                    "rectangle",
+                    "polyline",
+                    "circle",
+                    "arc",
+                    "ellipse",
+                }
                 and not isinstance(e, BSpline)
                 for e in self.entities
             ):
                 raise ValueError(
                     "Coordinate dimensioning supports "
-                    "line/centerline/rectangle/polyline/circle/arc/b_spline entities"
+                    "line/centerline/rectangle/polyline/circle/arc/ellipse/b_spline entities"
                 )
         names = [e.name for e in self.entities]
         if len(names) != len(set(names)):
@@ -3425,13 +3434,11 @@ class BooleanOp(StrictModel):
         refs = [*self.targets, *self.tools]
         if any(r.get("kind") != "body" or type(r.get("id")) is not int for r in refs):
             raise ValueError("Explicit body IDs are required")
-        if any(r["id"] < 0 for r in refs):
+        if any(r["id"] < 0 and r["id"] != -5778 for r in refs):
             raise ValueError(
-                "BOOLEAN_BODY_REFERENCE_UNSUPPORTED: negative body IDs can be returned by "
-                "inspection but are not supported by this Boolean feature path; this is a "
-                "capability limit, not a malformed body reference. Sheetmetal-to-solid fusion "
-                "is unverified even with positive IDs; keep separate bodies or use verified "
-                "sheetmetal wall/flange operations"
+                "BOOLEAN_BODY_REFERENCE_UNSUPPORTED: negative body IDs other than Creo's "
+                "initial body ID (-5778) are not supported by this Boolean feature path; "
+                "sheetmetal-to-solid fusion remains unverified even with valid IDs"
             )
         if len({r["id"] for r in refs}) != len(refs):
             raise ValueError("Target and tool bodies must be distinct")

@@ -273,24 +273,38 @@ def require_worker_availability(operations: list[dict], identity: object) -> Non
 
 
 def require_kernel_completion(operations: list[dict], identity: object) -> None:
-    """BUG-122: refuse a conditional operation whose host kernel rejected its own tree.
+    """BUG-122 / BUG-205: refuse element_tree surface_loft before a job when unsupported.
 
-    BUG-120 published this as disclosure only, so a Creo 10 request still created an
-    incomplete boundary-blend shell and rolled the whole job back. The observation is
-    actionable only when it carries the signature measured on this executor: the same
-    worker SHA, a successful create and a refused extraction. Unknown, foreign-worker
-    or transient observations keep the pass-through, so one rollback cannot lock the
-    route. Only an entry in ``UNAVAILABLE_OPERATIONS`` may remove a compiled tool, and
-    this refusal is about the host, not the build.
+    On Creo 10 (release_numeric=42), ProFeatureElemtreeExtract (-18) and
+    redefine regeneration leave the feature incomplete with zero geometry even
+    when accept_unverified_completion=True, so element_tree is refused before
+    a job whenever kernel_completion != "supported". On other releases, the
+    worker-SHA-keyed extract refusal keeps accept_unverified_completion bypass.
     """
     if not _tree_route_operations(operations):
         return
-    # BUG-135: a request that explicitly accepts geometry-only verification is
-    # not blocked by the host's earlier extract refusal; the receipt still reports
-    # kernel_completion="unsupported" so the kept feature is never read as proven.
+    from creo_mechdog import panel_profiles
+
+    feature = _verified_worker_feature(identity, "surface_loft")
+    host_rel = panel_profiles.host_release(identity)
+    if (
+        host_rel == 42
+        and isinstance(identity, dict)
+        and identity.get("identity_status") == "verified"
+        and (feature is None or feature.get("kernel_completion") != "supported")
+    ):
+        raise ValueError(
+            "surface_loft creation_route='element_tree' is refused before a job on Creo 10 "
+            "(release_numeric=42): this Creo release refuses ProFeatureElemtreeExtract (-18) "
+            "and leaves the blend incomplete with zero geometry (SURFACE_LOFT_ACCEPT_INCOMPLETE) "
+            "even with accept_unverified_completion=true. No native job was queued. Use "
+            "creation_route='resident_panel' after confirming creo_callback_status readiness='ready'."
+        )
+    # BUG-135: on non-Creo-10 hosts, a request that explicitly accepts geometry-only
+    # verification is not blocked by an earlier extract refusal; the receipt still
+    # reports kernel_completion="unsupported" so the kept feature is never read as proven.
     if all(op.get("accept_unverified_completion") for op in _tree_route_operations(operations)):
         return
-    feature = _verified_worker_feature(identity, "surface_loft")
     if feature is None or feature.get("kernel_completion") != "unsupported":
         return
     evidence = feature.get("evidence")
@@ -729,6 +743,14 @@ KNOWN_LIMITATIONS = (
         "visible_hung_window_observed stays false, hung_implies_modal is always false, and the "
         "snapshot neither proves the Creo session is stuck nor authorizes ending a process or "
         "clearing protection",
+    },
+    {
+        "id": "sketch_tangent_or_intersecting_contours",
+        "condition": "a single sketch contains multi-boss loops that share an edge, touch at a point, cross, or branch (>2 curves at a vertex)",
+        "release": "all Creo releases supported by this worker",
+        "evidence": "BUG-209 / profile_diagnostics.validate_solid_profile",
+        "configurable": False,
+        "effect": "solid extrude/revolve rejects branched, self-intersecting, intersecting, and tangent contours before queuing a job and names the conflicting entity pair(s). Combine adjacent/tangent multi-boss regions into a single non-self-intersecting outer boundary, or split overlapping bosses into separate extrude operations that union onto the solid body; disjoint or nested closed loops remain supported in one sketch.",
     },
     {
         "id": "edge_selector_nearest_scope",
@@ -1255,7 +1277,7 @@ def families() -> dict:
             "modes": ["auto", "autodim", "coordinates"],
             "scope": "auto selects native coordinate dimensions on any valid sketch plane for supported undimensioned profiles with at least 10 expanded entities or coordinate/radius magnitude above 1000 mm; coordinates can be requested explicitly",
             "native_test": "19-line large-coordinate profile, R40000 12-gon, large capsule on XY and rotated/translated XZ, large YZ circle and explicit-coordinate rectangle; native sketch/solid IDs, named dimension edits, STL boundaries and save/erase/reload verified",
-            "limits": "auto selects coordinates for supported unconstrained profiles of any size (line/centerline/rectangle/polyline/circle) and rejects absolute deviation (including translation) above 1e-5 mm or geometry_tolerance_mm, and rejects incomplete measurement; spline/ellipse use autodim (and b_spline/arc also route to autodim under dimensioning='auto' to avoid Creo coordinate quantization exceeding 1e-5 mm), while explicit dimensioning='coordinates' supports line/centerline/rectangle/polyline/circle/arc and exact b_spline (control points, degree, optional knots; approximation_segments is not required there) on any valid sketch plane (principal string or dictionary plane), without user dimensions/constraints; input u/v components are named after their dominant native section axis; actual geometry checked to 1e-5 mm when creating/replacing; centerlines are verified as infinite lines (direction and offset) and skewed centerlines carry no endpoint dimensions; no normalization or rigid solving; solid extrude/revolve admission checks multi-loop input for open, branched, self-intersecting, intersecting, tangent, zero-area and near-tolerance contours and rejects only confirmed cases; sketch results report analytic contour/entity counts plus the solved native section counts (any b_spline/spline/ellipse entity sets profile analysis='partial', so those counts are a lower bound: compare with native_section, never read the partial profile as a missing contour); geometry_deviation reports post-solve fidelity at SectionRegenerate and CompleteFeature with bounded samples (unavailable measurements stay null with a reason, never zero); coordinates rejects shape changes above 1e-5 mm and autodim warns above 1e-3 mm unless geometry_tolerance_mm forces a stricter or looser cap (finite positive number; bool/NaN/Inf/zero/negative rejected; an explicit cap also rejects unmeasurable geometry); in explicit coordinates a measured rigid-body translation (every named point moved by the same vector, shape residual <= 1e-9 mm) is a solver artefact rather than a shape change, so it is accepted up to 1e-2 mm and reported with accepted_rigid=true, beyond which it is rejected with the measured translation and the limit; deformed profiles are still rejected at the shape gate; sketch_shifted publishes the post-solve movement at the top level (detected, rigid, translation_mm, residual_mm, shape_deviation_mm, accepted_rigid, max_point_mm, bounded sample) and accepted_by_request marks a moved sketch that only an explicit tolerance let through; geometry_tolerance_mm is an acceptance threshold, not a solve precision; no coordinates_lenient mode; the native solver remains authoritative; not proof of every constraint or extreme shape",
+            "limits": "auto selects coordinates for supported unconstrained profiles of any size (line/centerline/rectangle/polyline/circle) and rejects absolute deviation (including translation) above 1e-5 mm or geometry_tolerance_mm, and rejects incomplete measurement; spline uses autodim, while b_spline/arc/ellipse try autodim first in auto mode and fall back to coordinates if autodim fails on an unconstrained coordinate-supported profile; explicit dimensioning='coordinates' supports line/centerline/rectangle/polyline/circle/arc/ellipse and exact b_spline (control points, degree, optional knots; approximation_segments is not required there) on any valid sketch plane (principal string or dictionary plane), without user dimensions/constraints; input u/v components are named after their dominant native section axis; actual geometry checked to 1e-5 mm when creating/replacing; centerlines are verified as infinite lines (direction and offset) and skewed centerlines carry no endpoint dimensions; no normalization or rigid solving; solid extrude/revolve admission checks multi-loop input for open, branched, self-intersecting, intersecting, tangent, zero-area and near-tolerance contours and rejects only confirmed cases; sketch results report analytic contour/entity counts plus the solved native section counts (any b_spline/spline/ellipse entity sets profile analysis='partial', so those counts are a lower bound: compare with native_section, never read the partial profile as a missing contour); geometry_deviation reports post-solve fidelity at SectionRegenerate and CompleteFeature with bounded samples (unavailable measurements stay null with a reason, never zero); coordinates rejects shape changes above 1e-5 mm and autodim warns above 1e-3 mm unless geometry_tolerance_mm forces a stricter or looser cap (finite positive number; bool/NaN/Inf/zero/negative rejected; an explicit cap also rejects unmeasurable geometry); in explicit coordinates a measured rigid-body translation (every named point moved by the same vector, shape residual <= 1e-9 mm) is a solver artefact rather than a shape change, so it is accepted up to 1e-2 mm and reported with accepted_rigid=true, beyond which it is rejected with the measured translation and the limit; deformed profiles are still rejected at the shape gate; sketch_shifted publishes the post-solve movement at the top level (detected, rigid, translation_mm, residual_mm, shape_deviation_mm, accepted_rigid, max_point_mm, bounded sample) and accepted_by_request marks a moved sketch that only an explicit tolerance let through; geometry_tolerance_mm is an acceptance threshold, not a solve precision; no coordinates_lenient mode; the native solver remains authoritative; not proof of every constraint or extreme shape",
         },
         "sketch_geometry_edit": {
             "enabled": True,
@@ -1501,7 +1523,7 @@ def families() -> dict:
         "boolean_bodies": {
             "enabled": True,
             "native_test": "overlapping cubes: union 1500, difference 500 and intersection 500 mm3",
-            "limits": "multi-target/tool lists and keep_tools require further native validation; negative body IDs are inspection identities unsupported by this Boolean feature path; sheetmetal-to-solid fusion is unverified even with positive IDs",
+            "limits": "multi-target/tool lists and keep_tools require further native validation; Creo initial body ID -5778 is supported when active (other negative IDs and empty/inactive bodies are refused); sheetmetal-to-solid fusion is unverified even with positive IDs",
         },
         "rib": {
             "enabled": True,
@@ -1715,7 +1737,8 @@ def families() -> dict:
         "loft_seed": {
             "enabled": True,
             "tool": "creo_new_loft_part",
-            "scope": "new native part by rebinding an automatically selected bundled seed or explicit compatible seed to new XY sketch/airfoil sections",
+            "target_scope": "new_part_only",
+            "scope": "new native part ONLY (new_part_only; cannot append to an existing model) by rebinding an automatically selected bundled seed or explicit compatible seed to new XY sketch/airfoil sections",
             "section_count_input_range": [2, 20],
             "seed_section_count_must_match": True,
             "callback_required": False,
@@ -1732,6 +1755,7 @@ def families() -> dict:
                 {"section_count": 6, "interpolation": "straight"},
                 {"section_count": 6, "interpolation": "smooth"},
             ],
+            "missing_bundled_combinations": [{"section_count": 5, "interpolation": "straight"}],
             "mode_verification": "requested interpolation must match the saved seed; native PRO_FEAT_INFO checked before save, after parameter edits and after reload",
             "compatibility_evidence": (
                 "external Creo 9 reported the tested seeds failing with -16; a Creo 10 "
@@ -1743,7 +1767,7 @@ def families() -> dict:
                 "identity, SHA256 and the session release; the error alone never names the cause"
             ),
             "native_test": "five-section smooth rectangles and NACA 0012 spline airfoils; middle sketch/plane edits; saved reload, all-section STL checks and failed-assertion rollback; two-section rectangle/circle/triangle regression",
-            "limits": "requires a saved solid Blend seed with matching section count and interpolation, Chinese/English Creo; XY sketches with strictly increasing Z offsets; no seed section insertion/removal, mode conversion, cut/surface or tangency controls; use direct loft for existing-target insertion; seed endpoint settings and datums are inherited; input range is not proof that every count/profile is tested; free endpoints may produce identical geometry with two sections",
+            "limits": "new_part_only (no existing-target insertion); bundled seeds cover 2/3/4/6 straight and 2/3/4/5/6 smooth ONLY (5/straight is not bundled; 7-20 sections require an explicit compatible seed_file and seed_feature_id), Chinese/English Creo; XY sketches with strictly increasing Z offsets; no seed section insertion/removal, mode conversion, cut/surface or tangency controls; use direct creo_loft for existing-target insertion; seed endpoint settings and datums are inherited; input range is not proof that every count/profile is tested; free endpoints may produce identical geometry with two sections",
         },
         "sheetmetal": {
             "enabled": True,

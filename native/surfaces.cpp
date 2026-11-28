@@ -337,8 +337,71 @@ static void generic_surface_offset(const J &op) {
     stage_operation_result(extra);
     remember(op, f, extra);
 }
+static void require_boolean_body(int id) {
+    ProSolidBody *list = nullptr;
+    int n = 0;
+    CK(ProSolidBodiesCollect((ProSolid)board, &list));
+    CK(ProArraySizeGet((ProArray)list, &n));
+    bool found = false;
+    ProSolidBodyState found_state = PRO_BODY_STATE_NONE;
+    for (int i = 0; i < n; i++) {
+        if (list[i].id == id && list[i].owner == board && list[i].type == PRO_BODY) {
+            found = true;
+            CK(ProSolidBodyStateGet(&list[i], &found_state));
+            break;
+        }
+    }
+    if (list)
+        ProArrayFree((ProArray *)&list);
+    if (!found)
+        throw std::runtime_error("BOOLEAN_BODY_NOT_FOUND: boolean_bodies references a body id (" +
+                                 std::to_string(id) +
+                                 ") that this part does not contain; inspect bodies[].id");
+    if (found_state != PRO_BODY_STATE_ACTIVE)
+        throw std::runtime_error(
+            "BOOLEAN_BODY_INACTIVE: boolean_bodies references a body id (" + std::to_string(id) +
+            ") without active material (state=" + std::to_string((int)found_state) + ")");
+}
+
+static int active_solid_body_count() {
+    ProSolidBody *list = nullptr;
+    int n = 0;
+    CK(ProSolidBodiesCollect((ProSolid)board, &list));
+    CK(ProArraySizeGet((ProArray)list, &n));
+    int active = 0;
+    for (int i = 0; i < n; i++) {
+        ProSolidBodyState state = PRO_BODY_STATE_NONE;
+        if (list[i].owner == board && list[i].type == PRO_BODY &&
+            ProSolidBodyStateGet(&list[i], &state) == PRO_TK_NO_ERROR &&
+            state == PRO_BODY_STATE_ACTIVE)
+            active++;
+    }
+    if (list)
+        ProArrayFree((ProArray *)&list);
+    return active;
+}
+
 static void generic_boolean(const J &op) {
     std::string method = op["method"];
+    const int bodies_before = active_solid_body_count();
+    double volume_before = 0.0;
+    bool volume_before_known = true;
+    try {
+        volume_before = volume();
+    } catch (...) {
+        volume_before_known = false;
+    }
+    auto validate_bodies = [&](const J &bodies) {
+        for (const auto &body_ref : bodies) {
+            if (!body_ref.is_object() || body_ref.value("kind", "") != "body" ||
+                !body_ref.contains("id") || !body_ref["id"].is_number_integer())
+                throw std::runtime_error("Explicit body IDs are required for boolean_bodies");
+            require_boolean_body(body_ref["id"].get<int>());
+        }
+    };
+    validate_bodies(op["targets"]);
+    validate_bodies(op["tools"]);
+
     ProElement root = node(nullptr, PRO_E_FEATURE_TREE);
     integer(root, PRO_E_FEATURE_TYPE, PRO_FEAT_BOOLEANBODIES);
     text(root, PRO_E_STD_FEATURE_NAME, wide(op["label"]).c_str());
@@ -346,13 +409,23 @@ static void generic_boolean(const J &op) {
             method == "union"       ? PRO_MERGE_BOOL_TYPE
             : method == "intersect" ? PRO_INTERSECT_BOOL_TYPE
                                     : PRO_SUBTRACT_BOOL_TYPE);
-    auto set_bodies = [&](int id, const J &bodies) {
+    auto set_bodies = [&](int elem_id, const J &bodies) {
         if (bodies.size() == 1) {
-            ProSelection s = resolve(bodies[0]);
-            ref(root, id, s);
+            ProSelection s = selection(bodies[0]["id"].get<int>(), PRO_BODY);
+            ref(root, elem_id, s);
             ProSelectionFree(&s);
-        } else
-            set_refs(node(root, id), bodies);
+        } else {
+            ProElement elem = node(root, elem_id);
+            ProReference *values = nullptr;
+            CK(ProArrayAlloc((int)bodies.size(), sizeof(ProReference), 1, (ProArray *)&values));
+            for (size_t i = 0; i < bodies.size(); i++) {
+                ProSelection s = selection(bodies[i]["id"].get<int>(), PRO_BODY);
+                CK(ProSelectionToReference(s, &values[i]));
+                ProSelectionFree(&s);
+            }
+            CK(ProElementReferencesSet(elem, values));
+            ProArrayFree((ProArray *)&values);
+        }
     };
     set_bodies(PRO_E_TARGET_BODY, op["targets"]);
     set_bodies(PRO_E_TOOL_BODIES, op["tools"]);
@@ -361,7 +434,21 @@ static void generic_boolean(const J &op) {
                 op.value("keep_tools", false) ? PRO_KEEP_TOOL_YES : PRO_KEEP_TOOL_NO);
     ProFeature f = create(root);
     ProElementFree(&root);
-    remember(op, f);
+    const int bodies_after = active_solid_body_count();
+    double volume_after = 0.0;
+    bool volume_after_known = true;
+    try {
+        volume_after = volume();
+    } catch (...) {
+        volume_after_known = false;
+    }
+    J extra = {{"method", method},
+               {"bodies_before", bodies_before},
+               {"bodies_after", bodies_after},
+               {"volume_before_mm3", volume_before_known ? J(volume_before) : J(nullptr)},
+               {"volume_after_mm3", volume_after_known ? J(volume_after) : J(nullptr)}};
+    stage_operation_result(extra);
+    remember(op, f, extra);
 }
 static J rib_element_errors_snapshot() {
     J sample = J::array();

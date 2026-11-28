@@ -4,16 +4,21 @@
 static J last_sketch_solver_info = nullptr;
 static J sketch_solver_receipt(const J &info) {
     J stages = info.value("stages", J::object());
-    return {{"requested", info.value("requested", J(nullptr))},
-            {"used", info.value("used", J(nullptr))},
-            {"selection_reason", info.value("selection_reason", J(nullptr))},
-            {"stages",
-             {{"initial_solve", stages.value("initial_solve", J(nullptr))},
-              {"retry_without_inference", stages.value("retry_without_inference", J(nullptr))},
-              {"autodimension", stages.value("autodimension", J(nullptr))},
-              {"section_regenerate", stages.value("section_regenerate", J(nullptr))}}},
-            {"completed", info.value("completed", false)},
-            {"recovered", info.value("recovered", false)}};
+    J out = {{"requested", info.value("requested", J(nullptr))},
+             {"used", info.value("used", J(nullptr))},
+             {"selection_reason", info.value("selection_reason", J(nullptr))},
+             {"stages",
+              {{"initial_solve", stages.value("initial_solve", J(nullptr))},
+               {"retry_without_inference", stages.value("retry_without_inference", J(nullptr))},
+               {"autodimension", stages.value("autodimension", J(nullptr))},
+               {"section_regenerate", stages.value("section_regenerate", J(nullptr))}}},
+             {"completed", info.value("completed", false)},
+             {"recovered", info.value("recovered", false)}};
+    if (info.contains("fallback_from"))
+        out["fallback_from"] = info["fallback_from"];
+    if (info.contains("autodim_error"))
+        out["autodim_error"] = info["autodim_error"];
+    return out;
 }
 static void section_errors(ProWSecerror error, const char *phase) {
     int n = 0;

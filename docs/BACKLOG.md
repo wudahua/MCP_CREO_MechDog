@@ -1,6 +1,6 @@
 # 统一开发台账
 
-最新正式版 **0.49.0**（2026-11-28 MINOR，公开工具 112）。交付 [BUG-198](work-items/BUG-198.md)–[BUG-201](work-items/BUG-201.md) 与 [FEAT-093](work-items/FEAT-093.md)。完整近况见 [近期动态](#近期动态)，当前分类统计见 [使用与计数](#使用与计数)，更早记录见 [历史时间线](archive/BACKLOG_TIMELINE_2026.md)。
+最新正式版 **0.50.0**（2026-11-28 MINOR，公开工具 112）。交付 [BUG-202](work-items/BUG-202.md)–[BUG-209](work-items/BUG-209.md)、[DEV-113](work-items/DEV-113.md)、[FEAT-094](work-items/FEAT-094.md) 与 [FEAT-095](work-items/FEAT-095.md)。完整近况见 [近期动态](#近期动态)，当前分类统计见 [使用与计数](#使用与计数)，更早记录见 [历史时间线](archive/BACKLOG_TIMELINE_2026.md)。
 
 ## 使用与计数
 
@@ -8,18 +8,18 @@
 
 诊断交付不等于根因修复；部分交付不关整卡；缺其他版本证据不自动判未修。观察项等自然新现场，不制造故障。已完成且无保留范围的行移入 [完成档案](BACKLOG_COMPLETED.md#已完成事项)。原进展/证据保留日期，不再回填第二份待办。小修复沿用卡与证据，复杂跨模块任务才另建完整计划。
 
-当前唯一 ID **284**（BUG **149**、FEAT **90**、DEV **45**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
+当前唯一 ID **292**（BUG **155**、FEAT **92**、DEV **45**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
 
 | 当前分类 | 唯一 ID 数 |
 | --- | --- |
 | 仍需修复 | 3 |
 | 待复现/待核实 | 31 |
-| 已有修复但待验收 | 93 |
+| 已有修复但待验收 | 103 |
 | 观察中 | 3 |
 | 其它 agent 处理范围 | 20 |
-| 开发中 | 3 |
+| 开发中 | 0 |
 | 部分交付，剩余待验收 | 62 |
-| 部分交付，剩余待规划 | 17 |
+| 部分交付，剩余待规划 | 18 |
 | 待规划 | 52 |
 
 BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与真实缺口，勿重复派工。
@@ -74,6 +74,16 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
+| [BUG-202](work-items/BUG-202.md) | P1 | 已有修复但待验收 | 0.50.0 | 面板锁未知 `model_id` 披露/活动持有者保护与退役、无 Creo `restore_baseline`/`accept_live` 提交前拒绝并保留状态已通过 Creo 10 实机；剩：Creo 9/12.4 与 WorkBuddy 黑盒。 |
+| [DEV-113](work-items/DEV-113.md) | P1 | 已有修复但待验收 | 0.50.0 | `test_startup_retry.py` 改用显式事件握手消除 `join(2)` 竞态，隔离 `2×60` 与并发 `3×120` 压测均为 0 失败；剩：托管 CI 同并发复测。 |
+| [BUG-203](work-items/BUG-203.md) | P1 | 已有修复但待验收 | 0.50.0 | 分离公开 `weld_pairs` 与内部 `weld_plan`，40 弧等价夹具实机验证显式报错/仅 weld 拒绝/`snap_endpoints` `184.9802 mm³` 重载通过；剩：外部 `scripts/gear10.json`、Creo 9/12.4 与 WorkBuddy 黑盒。 |
+| [BUG-204](work-items/BUG-204.md) | P1 | 已有修复但待验收 | 0.50.0 | 定位冷启动 `not_loaded` 根因为 `protkdat` `delay_start true`；`startup`/`session` 补非阻塞 `callback_advisory`，`callback_status` 输出 `affected_operations`/`recovery_steps` 与 Creo 10 冷启动一致；剩：交互桌面手动启动回调后最小 `creo_loft` 创建、Creo 9/12.4 与 WorkBuddy 黑盒。 |
+| [BUG-205](work-items/BUG-205.md) | P1 | 已有修复但待验收 | 0.50.0 | Creo 10（release 42）`element_tree`（含 `accept_unverified_completion=true`）提交前拒绝并在 `creo_capabilities` compact 明确披露；剩：交互桌面启动回调后 `resident_panel` 100 mm² 曲面复验、Creo 9/12.4 与 WorkBuddy 黑盒。 |
+| [BUG-206](work-items/BUG-206.md) | P2 | 已有修复但待验收 | 0.50.0 | `creo_list_seeds` 输出精确 9 组合与 `5/straight` 缺失并标明 `new_part_only`，Creo 10 `5/straight` 拒绝与 `2/straight` 重载通过；剩：Creo 9/12.4 与 WorkBuddy 黑盒。 |
+| [BUG-207](work-items/BUG-207.md) | P1 | 已有修复但待验收 | 0.50.0 | 修正混合弧 `selection_reason`、补 `autodim→coordinates` 回退与 `PRO_2D_ELLIPSE` `coordinates` 标注/偏差快照，Creo 10 混合弧三路与偏置椭圆 `max_deviation=0.0` 重载通过；剩：Creo 9/12.4 与 WorkBuddy 黑盒。 |
+| [BUG-208](work-items/BUG-208.md) | P1 | 已有修复但待验收 | 0.50.0 | `boolean_bodies` 支持活动初始体 `-5778`（4625.0 mm³、1 实体、重载通过）与空 `-5778` 拒绝（`BOOLEAN_BODY_NOT_FOUND`）及正+正对照（12000.0 mm³）；剩：Creo 9/12.4 与 WorkBuddy 黑盒。 |
+| [BUG-209](work-items/BUG-209.md) | P2 | 已有修复但待验收 | 0.50.0 | `known_limitations` 披露相切/相交轮廓限制，共享边/点接触/自交三例提交前报错、合法嵌套 `1680.0 mm³` Creo 10 重载通过；剩：Creo 9/12.4 与 WorkBuddy 黑盒。 |
+| [FEAT-095](work-items/FEAT-095.md) | P2 | 已有修复但待验收 | 0.50.0 | 新增状态轮询 `detail="compact"`（实测缩减 90.7%–92.9% 至 1.2–1.9 KiB）及 20 操作计划体量量化；剩：WorkBuddy 黑盒与默认值变更兼容性评估。 |
 | [BUG-198](work-items/BUG-198.md) | P1 | 已有修复但待验收 | 0.49.0 | 修复 Windows JSON 原子替换把缺失目标/瞬时 `stat` 锁误判为永久 WinError 5 及 `.tmp` 清理失败，`dev_check` 4592 单测通过；剩：真实索引器/杀软锁与 WorkBuddy 黑盒。 |
 | [BUG-199](work-items/BUG-199.md) | P0 | 已有修复但待验收 | 0.49.0 | 补全 Job Object 实测探测/Explorer 脱离、`tid==0` 防护、`owner_liveness`、`cancel_job` PID/128、`confirm_panel_closed` 死所有者解锁及模态框日志，Creo 10 断连清锁通过；剩：`WinSta0\Default` 断连保活、Creo 9/12.4 与 WorkBuddy 黑盒。 |
 | [BUG-200](work-items/BUG-200.md) | P1 | 已有修复但待验收 | 0.49.0 | 移除 115 s 硬编码超时，落地可配/自适应 `utility_worker_timeout_seconds`（300–3600 s）及超时强杀证据，单测通过；剩：大模型实机加载与 WorkBuddy 黑盒。 |
@@ -205,9 +215,6 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
-| [BUG-202](work-items/BUG-202.md) | P1 | 开发中 | 未排期 | 面板锁恢复指引与无会话恢复准入。 |
-| [DEV-113](work-items/DEV-113.md) | P1 | 开发中 | 未排期 | 同刻度重试测试的确定性同步。 |
-| [BUG-203](work-items/BUG-203.md) | P1 | 开发中 | 未排期 | 草图焊接公开输入及实际执行回执。 |
 
 ## 部分交付，剩余待验收
 
@@ -280,6 +287,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
+| [FEAT-094](work-items/FEAT-094.md) | P2 | 部分交付，剩余待规划 | 0.50.0（范围边界与前置拦截）；剩余未排期 | 已界定 `creo_new_loft_part`（`new_part_only`）与已有零件 `creo_loft`（需已加载常驻回调）的契约边界；剩：交互桌面手动启动回调后 `creo_loft` 同 `model_id` 追加实机复验，以及免回调追加与 7 截面/导线能力后续规划。 |
 | [DEV-080](work-items/DEV-080.md) | P1 | 首批离线收口已随 0.19.3 交付；原生/实机余项待接手 | 0.19.3 | 接手0.19.0三份报告复核后仍未闭环的H01—H09及未编号缺口；首批交付手写TU头门控契约测试、COMPATIBILITY缺头降级说明、计数自检进CI；原生解耦/等价元素树、开放弧trim、残留quilt、原生截面面积、大作业compact、连续顶边选边、entities_file、native_bundle、负origin resize待Creo10 SDK或实机；解压单测发布前阻断与verify_stages优先留后续。 |
 | [DEV-082](work-items/DEV-082.md) | P1 | 部分交付，剩余待规划 | 0.23.0（门禁已交付）；H01 未排期 | 0.19.3反馈P1-1/P1-2 的跨TU符号门控已交付；0.21.0反馈P1 把 `surface_loft`/`surface_boundary_fill` 从 `__has_include(<Probbl.h>)` 改为 `MECHDOG_HAS_BNBLN_TREE`（`ProElemId.h` 五个 `PRO_E_BNBLN_*`），worker/能力文案同步，随 0.23.0 发布，Creo 12.4 实机放样回归全 PASS。H01抽 `element_tree_json.h`、单一真值源、真实Creo10 SDK整包编译与运行期元素树再生仍开放。 |
 | [DEV-101](work-items/DEV-101.md) | P1 | 部分交付，剩余待规划 | 0.44.0/0.47.1（已交付子项）；剩余未排期 | BUG-187..190、FEAT-088/089 已交付；剩余 FEAT-086/FEAT-087/DEV-092 待规划及跨环境验收。 |
@@ -360,7 +368,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 ## 近期动态
 
-2026-11-28：[三份 0.48.3 外部反馈](validation/feedback-0.48.3-2026-11-28/SOURCE_MANIFEST.json)。第一批见开发中三卡。后续依次复核放样回调与曲面、种子范围及已有件追加（BUG-193、BUG-154）；混合弧标注与椭圆、精确样条切除、布尔实体引用（BUG-194、BUG-153、FEAT-014）；其余为轮廓限制说明、作业与会话摘要、定向预览（原报告 P9–P12），均待排期。
+2026-11-28（0.50.0 MINOR，公开工具 112）：基于 v0.49.0 回填基线解决[三份 0.48.3 外部反馈](validation/feedback-0.48.3-2026-11-28/SOURCE_MANIFEST.json)，交付 [BUG-202](work-items/BUG-202.md)–[BUG-209](work-items/BUG-209.md)、[DEV-113](work-items/DEV-113.md)、[FEAT-094](work-items/FEAT-094.md) 与 [FEAT-095](work-items/FEAT-095.md)，并完成 [BUG-153](work-items/BUG-153.md) 精确 B 样条去料基准与 [FEAT-082](work-items/FEAT-082.md) 多视角预览复验。本机 Creo 10.0.0.0 完成第一/三批、四项回归对照与第二批冷启动/前置拒绝/种子矩阵实机验收；交互桌面手动启动回调后三项（已加载最小 `creo_loft`、`resident_panel` 100 mm² 曲面与已有零件追加）、外部 `scripts/gear10.json`、Creo 9/12.4 与 WorkBuddy 黑盒单列未测。[版本说明](release-notes/RELEASE_NOTES_0.50.0.md) · [发布记录](validation/RELEASE-0.50.0.md)
 
 2026-11-28（0.49.0 MINOR，公开工具 112）：逐字节归档 0.47.1 / 0.48.3 两份反馈原件至 [feedback-0.47.1-0.48.3-2026-11-27](validation/feedback-0.47.1-0.48.3-2026-11-27/SOURCE_MANIFEST.json)，交付 [BUG-198](work-items/BUG-198.md)（Windows JSON 原子替换瞬时 WinError 5 重试与 `.tmp` 清理）、[BUG-199](work-items/BUG-199.md)（runner Job Object 实测与 Explorer 脱离、`owner_liveness`、`cancel_job` PID/128、`confirm_panel_closed` 死所有者解锁及模态框观测）、[BUG-200](work-items/BUG-200.md)（可配自适应 `utility_worker_timeout_seconds` 及超时强杀证据）、[BUG-201](work-items/BUG-201.md)（`direct_blend_callback.readiness` 口径统一、`startup_in_progress` 消歧、UTF-8 stderr 与提示补全）与 [FEAT-093](work-items/FEAT-093.md)（`ExtrudeOp.depth2` 双向不等深拉伸、`datum_planes[].name` 与 `cut_scope` 实体级边界说明）；本机 Creo 10.0.0.0 实机与离线门禁全通过。 [版本说明](release-notes/RELEASE_NOTES_0.49.0.md) · [发布记录](validation/RELEASE-0.49.0.md)
 

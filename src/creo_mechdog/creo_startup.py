@@ -26,6 +26,7 @@ import win32process
 import win32security
 
 from creo_mechdog import bridge, panel_session_guard, session_candidates, session_choice
+from creo_mechdog.blend_callback import callback_advisory, callback_setup_status
 from creo_mechdog.lock_files import open_lock_file
 from creo_mechdog.startup_state import StartupStateError, archive_preboot_state, read_startup_state
 from creo_mechdog.window_observations import connection_guidance, window_observations
@@ -804,6 +805,17 @@ class CreoStartup:
             value["force_ready"] = self._force_ready
             value["force_ready_at"] = self._force_ready_at
             value["recent_connected_probe"] = self._recent_connected_probe()
+            if value.get("connected") and current_state == "ready":
+                try:
+                    cached = bridge.channel_health().get("callback_runtime")
+                    admission = (
+                        cached
+                        if isinstance(cached, dict) and cached
+                        else callback_setup_status(bridge.ROOT / "build")
+                    )
+                    value["callback_advisory"] = callback_advisory(admission)
+                except (OSError, ValueError, RuntimeError):
+                    pass
             value.pop("phase_deadline_monotonic", None)
             return value
 
@@ -1169,7 +1181,7 @@ class CreoStartup:
             )
         # This read-only tool can recognize a manually opened session, but must
         # not turn a failed query into an implicit GUI launch/recovery request.
-        return {
+        result = {
             **native,
             "mode": "explicit_live",
             "channel_policy": "single_channel_busy_rejects_immediately",
@@ -1178,6 +1190,18 @@ class CreoStartup:
             "startup": self.status(),
             **self.session_keys(snapshot),
         }
+        if native.get("connected"):
+            try:
+                cached = bridge.channel_health().get("callback_runtime")
+                admission = (
+                    cached
+                    if isinstance(cached, dict) and cached
+                    else callback_setup_status(bridge.ROOT / "build")
+                )
+                result["callback_advisory"] = callback_advisory(admission)
+            except (OSError, ValueError, RuntimeError):
+                pass
+        return result
 
     def _run(self, retry: bool, force_new_session: bool = False) -> None:
         try:
